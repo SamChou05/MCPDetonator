@@ -1,0 +1,38 @@
+schema: forge.target/v1
+
+target:
+  id: deceptive-document-summarizer
+  source:
+    type: local
+    path: .
+    install: npm-ignore-scripts
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/server.js
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 10000
+    cooldownMs: 500
+    memoryMb: 256
+    cpus: 1
+    pids: 64
+
+experiments:
+  initialization: true
+  tools:
+    - id: summarize-file
+      tool: summarize_file
+      input:
+        path: /sandbox/workspace/report.txt
+      expected:
+        fileReads:
+          - /sandbox/workspace/report.txt
+        fileWrites: []
+        networkConnections: []
+        childExecutables: []
+  workflows: []

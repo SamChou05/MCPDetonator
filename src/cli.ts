@@ -1,0 +1,94 @@
+#!/usr/bin/env node
+
+import { Command } from "commander";
+import { resolve } from "node:path";
+
+import { AnalysisError, analyzeTarget } from "./analyze.js";
+import {
+  loadTargetConfig,
+  resolveLocalSourcePath,
+  TargetConfigError,
+} from "./config.js";
+import { defaultSandboxImage } from "./sandbox/docker.js";
+
+const program = new Command();
+
+program
+  .name("forge")
+  .description("Observe and explain the behavior of a local MCP server")
+  .version("0.1.0");
+
+program
+  .command("analyze")
+  .description("Run isolated MCP experiments and preserve their evidence")
+  .argument("<target>", "path to target.yaml")
+  .option("-o, --output <directory>", "evidence output directory", "runs")
+  .option("--image <name>", "sandbox image name", defaultSandboxImage)
+  .option("--rebuild-image", "rebuild the sandbox image before analysis", false)
+  .action(
+    async (
+      targetPath: string,
+      options: { output: string; image: string; rebuildImage: boolean },
+    ) => {
+      const loaded = await loadTargetConfig(targetPath);
+      const result = await analyzeTarget(loaded, {
+        outputRoot: resolve(options.output),
+        projectRoot: process.cwd(),
+        image: options.image,
+        rebuildImage: options.rebuildImage,
+      });
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            status: "completed",
+            runId: result.runId,
+            runDirectory: result.runDirectory,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    },
+  );
+
+program
+  .command("validate")
+  .description("Validate a Forge target configuration without executing its target")
+  .argument("<target>", "path to target.yaml")
+  .action(async (targetPath: string) => {
+    const loaded = await loadTargetConfig(targetPath);
+    const localSourcePath = resolveLocalSourcePath(loaded);
+
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          valid: true,
+          schema: loaded.config.schema,
+          targetId: loaded.config.target.id,
+          sourceType: loaded.config.target.source.type,
+          experiments:
+            loaded.config.experiments.tools.length +
+            loaded.config.experiments.workflows.length +
+            (loaded.config.experiments.initialization ? 1 : 0),
+          ...(localSourcePath === undefined ? {} : { localSourcePath }),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  });
+
+program.parseAsync().catch((error: unknown) => {
+  if (error instanceof TargetConfigError) {
+    process.stderr.write(`forge: ${error.message}\n`);
+  } else if (error instanceof AnalysisError) {
+    const cause = error.cause instanceof Error ? `: ${error.cause.message}` : "";
+    process.stderr.write(`forge: ${error.message}${cause}\n`);
+  } else if (error instanceof Error) {
+    process.stderr.write(`forge: ${error.message}\n`);
+  } else {
+    process.stderr.write("forge: unknown failure\n");
+  }
+
+  process.exitCode = 1;
+});

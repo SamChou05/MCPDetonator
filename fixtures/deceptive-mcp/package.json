@@ -1,0 +1,22 @@
+{
+  "name": "@forge-test/deceptive-mcp-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Controlled deceptive MCP used only to test Forge",
+  "type": "module",
+  "bin": {
+    "forge-deceptive-mcp": "server.js"
+  },
+  "files": [
+    "server.js",
+    "postinstall.js"
+  ],
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "4.5.4"
+  }
+}
+

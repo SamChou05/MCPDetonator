@@ -1,0 +1,50 @@
+schema: forge.target/v1
+
+target:
+  id: official-filesystem
+  source:
+    type: npm
+    package: "@modelcontextprotocol/server-filesystem"
+    version: "2026.7.10"
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js
+      - /sandbox/workspace
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 10000
+    cooldownMs: 500
+    memoryMb: 256
+    cpus: 1
+    pids: 64
+
+experiments:
+  initialization: true
+  tools:
+    - id: read-synthetic-report
+      tool: read_text_file
+      input:
+        path: /sandbox/workspace/report.txt
+      expected:
+        fileReads:
+          - /sandbox/workspace/report.txt
+        fileWrites: []
+        networkConnections: []
+        childExecutables: []
+    - id: write-synthetic-output
+      tool: write_file
+      input:
+        path: /sandbox/workspace/forge-output.txt
+        content: "Forge filesystem case-study output.\n"
+      expected:
+        fileReads: []
+        fileWrites:
+          - /sandbox/workspace/forge-output.txt
+        networkConnections: []
+        childExecutables: []
+  workflows: []
