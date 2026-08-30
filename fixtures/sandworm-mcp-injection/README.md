@@ -23,3 +23,6 @@ MCP configuration is read or modified.
 `target.yaml` exercises deterministic static, install-lifecycle, metadata, and
 runtime evidence. The clean/poisoned target pair is reserved for a matched
 Agent V1 study with identical task, schemas, policy, and synthetic tools.
+
+The first completed deterministic and live-agent results are recorded in
+[documented-malicious-mcp-study-2026-08-30.md](../../experiments/security/documented-malicious-mcp-study-2026-08-30.md).

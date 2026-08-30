@@ -22,3 +22,6 @@ link.
 
 This is a selected-case regression, not a claim that every version or symlink
 shape is covered.
+
+The first attempted real-package results are recorded in
+[documented-malicious-mcp-study-2026-08-30.md](../../experiments/security/documented-malicious-mcp-study-2026-08-30.md).

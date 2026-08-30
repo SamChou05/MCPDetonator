@@ -46,6 +46,12 @@ even when the MCP process does not directly perform the harmful action.
 | [Tool-result injection](agent/tool-result-injection.md) | Future-Agent | Can a tool result redirect the agent into unauthorized follow-up actions? |
 | [Persistent memory poisoning](agent/persistent-memory-poisoning.md) | Future-Agent | Can MCP output influence a later, unrelated task? |
 
+## Documented malicious and vulnerable MCP studies
+
+| Experiment | Status | Main question |
+| --- | --- | --- |
+| [Documented malicious-MCP study](security/documented-malicious-mcp-study-2026-08-30.md) | Implemented | Do real advisory packages and a contained campaign-shaped MCP reproduction reach Forge's evidence, finding, and agent-enforcement layers? |
+
 ## Experiment discipline
 
 Every experiment should identify:
