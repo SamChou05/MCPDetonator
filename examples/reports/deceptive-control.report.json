@@ -1,14 +1,47 @@
 {
   "schema": "forge.report/v1",
-  "runId": "run-20260830181026-efaff1a4",
+  "runId": "run-20260830214347-1b3001cf",
   "targetId": "deceptive-document-summarizer",
-  "generatedAt": "2026-08-30T18:10:55.977Z",
-  "summary": "Within the selected experiments and current rule coverage, Forge found 5 deterministic runtime findings.",
+  "generatedAt": "2026-08-30T21:44:21.481Z",
+  "summary": "Within the selected experiments and current rule coverage, Forge found 5 deterministic runtime findings. Observation coverage is partial; see observation-health.json for structural trace health and policy-relevant canonicalization gaps.",
+  "observationHealth": {
+    "scope": "selected_strace_surface",
+    "surfaceId": "forge-strace-selected-v1",
+    "integrityStatus": "complete",
+    "canonicalizationExecutionStatus": "completed",
+    "policyRelevantGapStatus": "gaps_observed",
+    "experimentIds": [
+      "install-scripts-disabled",
+      "install-scripts-enabled",
+      "baseline-initialization",
+      "summarize-file"
+    ],
+    "degradedExperimentIds": [],
+    "policyRelevantGapExperimentIds": [
+      "install-scripts-disabled",
+      "install-scripts-enabled",
+      "baseline-initialization",
+      "summarize-file"
+    ],
+    "policyRelevantGapRecordCount": 50397,
+    "policyRelevantGapOutcomeCounts": [
+      {
+        "outcome": "succeeded",
+        "recordCount": 25756
+      },
+      {
+        "outcome": "failed",
+        "recordCount": 24641
+      }
+    ],
+    "stringTruncationLineCount": 11203,
+    "artifact": "observation-health.json"
+  },
   "artifactProvenance": {
     "schema": "forge.target-provenance/v1",
-    "runId": "run-20260830181026-efaff1a4",
+    "runId": "run-20260830214347-1b3001cf",
     "targetId": "deceptive-document-summarizer",
-    "preparedAt": "2026-08-30T18:10:32.701Z",
+    "preparedAt": "2026-08-30T21:43:55.156Z",
     "containerRoot": "/opt/target",
     "containerPackageRoot": "/opt/target",
     "source": {
@@ -26,7 +59,7 @@
     "runtimeSnapshot": {
       "sourceExperimentId": "install-scripts-enabled",
       "lifecycleScripts": "enabled",
-      "treeSha256": "6575498e01ded4face7758d44add18166ca10c94b86bf8784f1bd504663e1b90",
+      "treeSha256": "a906b9cda18dc77e2590188b3afd31f5f2c8f2dea09aec86ce3950a971e9382a",
       "fileCount": 3635
     },
     "limitations": [
@@ -107,7 +140,7 @@
   },
   "advertisedClaims": {
     "schema": "forge.mcp-advertised-claims/v1",
-    "runId": "run-20260830181026-efaff1a4",
+    "runId": "run-20260830214347-1b3001cf",
     "limits": {
       "maxTools": 128,
       "maxFieldCharacters": 4096,
@@ -123,7 +156,7 @@
     "interfaces": [
       {
         "schema": "forge.mcp-interface-claims/v1",
-        "runId": "run-20260830181026-efaff1a4",
+        "runId": "run-20260830214347-1b3001cf",
         "experimentId": "baseline-initialization",
         "server": {
           "name": "forge-controlled-document-summarizer",
@@ -153,7 +186,7 @@
             "status": "claim_identified",
             "evidence": [
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:baseline-initialization:0:filesystem_access:1",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:baseline-initialization:0:filesystem_access:1",
                 "basis": "name",
                 "pointer": "/tools/0/name",
                 "source": "field_value",
@@ -163,7 +196,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:baseline-initialization:0:filesystem_access:2",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:baseline-initialization:0:filesystem_access:2",
                 "basis": "title",
                 "pointer": "/tools/0/title",
                 "source": "field_value",
@@ -174,7 +207,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:baseline-initialization:0:filesystem_access:3",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:baseline-initialization:0:filesystem_access:3",
                 "basis": "description",
                 "pointer": "/tools/0/description",
                 "source": "field_value",
@@ -184,7 +217,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:baseline-initialization:0:filesystem_access:4",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:baseline-initialization:0:filesystem_access:4",
                 "basis": "schema",
                 "pointer": "/tools/0/inputSchema/properties/path",
                 "source": "schema_key",
@@ -194,7 +227,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:baseline-initialization:0:filesystem_access:5",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:baseline-initialization:0:filesystem_access:5",
                 "basis": "schema",
                 "pointer": "/tools/0/inputSchema/properties/path/description",
                 "source": "schema_value",
@@ -204,7 +237,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:baseline-initialization:0:filesystem_access:6",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:baseline-initialization:0:filesystem_access:6",
                 "basis": "schema",
                 "pointer": "/tools/0/inputSchema/required/0",
                 "source": "schema_value",
@@ -234,7 +267,7 @@
         ],
         "annotations": [
           {
-            "evidenceId": "mcp-annotation:run-20260830181026-efaff1a4:baseline-initialization:0:readOnlyHint",
+            "evidenceId": "mcp-annotation:run-20260830214347-1b3001cf:baseline-initialization:0:readOnlyHint",
             "experimentId": "baseline-initialization",
             "toolIndex": 0,
             "toolName": "summarize_file",
@@ -244,7 +277,7 @@
             "pointer": "/tools/0/annotations/readOnlyHint"
           },
           {
-            "evidenceId": "mcp-annotation:run-20260830181026-efaff1a4:baseline-initialization:0:destructiveHint",
+            "evidenceId": "mcp-annotation:run-20260830214347-1b3001cf:baseline-initialization:0:destructiveHint",
             "experimentId": "baseline-initialization",
             "toolIndex": 0,
             "toolName": "summarize_file",
@@ -254,7 +287,7 @@
             "pointer": "/tools/0/annotations/destructiveHint"
           },
           {
-            "evidenceId": "mcp-annotation:run-20260830181026-efaff1a4:baseline-initialization:0:openWorldHint",
+            "evidenceId": "mcp-annotation:run-20260830214347-1b3001cf:baseline-initialization:0:openWorldHint",
             "experimentId": "baseline-initialization",
             "toolIndex": 0,
             "toolName": "summarize_file",
@@ -274,7 +307,7 @@
       },
       {
         "schema": "forge.mcp-interface-claims/v1",
-        "runId": "run-20260830181026-efaff1a4",
+        "runId": "run-20260830214347-1b3001cf",
         "experimentId": "summarize-file",
         "server": {
           "name": "forge-controlled-document-summarizer",
@@ -304,7 +337,7 @@
             "status": "claim_identified",
             "evidence": [
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:1",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:summarize-file:0:filesystem_access:1",
                 "basis": "name",
                 "pointer": "/tools/0/name",
                 "source": "field_value",
@@ -314,7 +347,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:2",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:summarize-file:0:filesystem_access:2",
                 "basis": "title",
                 "pointer": "/tools/0/title",
                 "source": "field_value",
@@ -325,7 +358,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:3",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:summarize-file:0:filesystem_access:3",
                 "basis": "description",
                 "pointer": "/tools/0/description",
                 "source": "field_value",
@@ -335,7 +368,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:4",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:summarize-file:0:filesystem_access:4",
                 "basis": "schema",
                 "pointer": "/tools/0/inputSchema/properties/path",
                 "source": "schema_key",
@@ -345,7 +378,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:5",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:summarize-file:0:filesystem_access:5",
                 "basis": "schema",
                 "pointer": "/tools/0/inputSchema/properties/path/description",
                 "source": "schema_value",
@@ -355,7 +388,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:6",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:summarize-file:0:filesystem_access:6",
                 "basis": "schema",
                 "pointer": "/tools/0/inputSchema/required/0",
                 "source": "schema_value",
@@ -385,7 +418,7 @@
         ],
         "annotations": [
           {
-            "evidenceId": "mcp-annotation:run-20260830181026-efaff1a4:summarize-file:0:readOnlyHint",
+            "evidenceId": "mcp-annotation:run-20260830214347-1b3001cf:summarize-file:0:readOnlyHint",
             "experimentId": "summarize-file",
             "toolIndex": 0,
             "toolName": "summarize_file",
@@ -395,7 +428,7 @@
             "pointer": "/tools/0/annotations/readOnlyHint"
           },
           {
-            "evidenceId": "mcp-annotation:run-20260830181026-efaff1a4:summarize-file:0:destructiveHint",
+            "evidenceId": "mcp-annotation:run-20260830214347-1b3001cf:summarize-file:0:destructiveHint",
             "experimentId": "summarize-file",
             "toolIndex": 0,
             "toolName": "summarize_file",
@@ -405,7 +438,7 @@
             "pointer": "/tools/0/annotations/destructiveHint"
           },
           {
-            "evidenceId": "mcp-annotation:run-20260830181026-efaff1a4:summarize-file:0:openWorldHint",
+            "evidenceId": "mcp-annotation:run-20260830214347-1b3001cf:summarize-file:0:openWorldHint",
             "experimentId": "summarize-file",
             "toolIndex": 0,
             "toolName": "summarize_file",
@@ -436,7 +469,7 @@
       "basis": "selected-runtime-snapshot",
       "sourceExperimentId": "install-scripts-enabled",
       "lifecycleScripts": "enabled",
-      "treeSha256": "6575498e01ded4face7758d44add18166ca10c94b86bf8784f1bd504663e1b90",
+      "treeSha256": "a906b9cda18dc77e2590188b3afd31f5f2c8f2dea09aec86ce3950a971e9382a",
       "fileCount": 3635
     },
     "manifest": {
@@ -582,7 +615,7 @@
   "semanticAnalysis": {
     "status": "completed",
     "artifactPath": "static/semantic-inspection.json",
-    "artifactSha256": "e2caa6c5b9d58b5b84b7f868fc8cc1776a43b7fdfbac0c2d21d16403a922d555",
+    "artifactSha256": "2e28f9a42b5fc12bf83f63e402f8657c85482b0e95780277cf8a9a8adbb504ce",
     "analyzer": {
       "engine": "typescript-compiler-api",
       "package": "typescript-semantic",
@@ -633,7 +666,7 @@
       "This bounded sidecar identifies modeled sensitive API callsites; it does not prove that a callsite executes.",
       "MCP-handler reachability and source-to-sink data flow are not assessed in this version.",
       "The closed compiler host analyzes only source bytes captured by the lexical inspection and does not load target tsconfig files, plugins, dependencies, or host files.",
-      "Mutation-affected and mutable bindings are withheld regardless of source order and make coverage partial; dynamic property names, reflection, third-party wrappers, and native behavior can remain unresolved.",
+      "Mutable bindings and bindings affected by syntactically detected assignment, delete, or update mutations are withheld regardless of source order and make coverage partial; reflective mutation, dynamic property names, third-party wrappers, and native behavior can remain unresolved.",
       "Worker resource limits bound V8 heap generations and stack only; they are not a total-RSS or OS-permission sandbox."
     ]
   },
@@ -720,7 +753,7 @@
     ],
     "limitations": [
       "The static scan is bounded lexical analysis of package-authored source and excludes dependency source.",
-      "Runtime comparison includes supported failed attempts. Filesystem comparison is limited to normalized reads, writes, and deletes under the synthetic home/workspace roots, so open-only activity is excluded; process comparison excludes the root server exec; network comparison excludes Unix-domain sockets.",
+      "Runtime comparison includes supported failed attempts. Filesystem comparison is limited to normalized reads, writes, and deletes under the synthetic home/workspace roots, so open-only activity is excluded; process comparison excludes the root server exec; network comparison includes Unix-domain sockets except routine outbound NSCD connection attempts.",
       "Environment, dynamic-code, dynamic-module, and native-code capabilities are not directly comparable with the current normalized runtime evidence.",
       "Agreement or disagreement is evidence about selected inputs, not a verdict about intent or safety."
     ]
@@ -804,27 +837,27 @@
             "advertisedState": "claimed",
             "advertisedClaimReferences": [
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:1",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:summarize-file:0:filesystem_access:1",
                 "fieldReference": "/tools/0/name"
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:2",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:summarize-file:0:filesystem_access:2",
                 "fieldReference": "/tools/0/title"
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:3",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:summarize-file:0:filesystem_access:3",
                 "fieldReference": "/tools/0/description"
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:4",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:summarize-file:0:filesystem_access:4",
                 "fieldReference": "/tools/0/inputSchema/properties/path"
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:5",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:summarize-file:0:filesystem_access:5",
                 "fieldReference": "/tools/0/inputSchema/properties/path/description"
               },
               {
-                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:6",
+                "evidenceId": "mcp-claim:run-20260830214347-1b3001cf:summarize-file:0:filesystem_access:6",
                 "fieldReference": "/tools/0/inputSchema/required/0"
               }
             ],
@@ -917,8 +950,9 @@
       "An advertised state of not_observed means no per-experiment claim assessment was available for the configured tool; not_claimed means an available bounded assessment produced no matching claim.",
       "Runtime comparison covers selected lifecycle phases and inputs only; non-observation is not proof of universal absence.",
       "Runtime correlation uses phase timing and inferred process origin; temporalOverlapEventIds retain active tool-phase observations that are not unique causal attribution to the tool handler.",
-      "Filesystem runtime evidence is limited to synthetic home/workspace roots, root-server exec is excluded, and Unix-domain socket activity is excluded.",
+      "Filesystem runtime evidence is limited to synthetic home/workspace roots and root-server exec is excluded. Network evidence includes Unix-domain sockets except routine outbound NSCD connection attempts.",
       "A file.open event does not encode access mode, so it is within configured scope when its path is allowed for either reading or writing.",
+      "Directory enumeration is retained in canonical events and observation health, but it is not treated as file-content evidence in this comparison.",
       "A file.delete event is evaluated against configured write scope because the current operator scope has no separate delete permission.",
       "Network listen events are runtime network evidence but outside configured networkConnections because the current operator scope cannot express listeners."
     ]
@@ -929,14 +963,14 @@
       "kind": "install",
       "lifecycleScripts": "disabled",
       "status": "completed",
-      "eventCount": 12200
+      "eventCount": 12295
     },
     {
       "experimentId": "install-scripts-enabled",
       "kind": "install",
       "lifecycleScripts": "enabled",
       "status": "completed",
-      "eventCount": 12267
+      "eventCount": 12362
     },
     {
       "experimentId": "baseline-initialization",
@@ -999,6 +1033,13 @@
           "count": 1
         }
       ],
+      "fileOperationCounts": [
+        {
+          "effectKind": "file.read",
+          "operation": "content",
+          "count": 307
+        }
+      ],
       "phaseBreakdown": [
         {
           "phaseId": "baseline-initialization-initialization-1",
@@ -1025,19 +1066,28 @@
               "effectKind": "process.start",
               "count": 1
             }
+          ],
+          "fileOperationCounts": [
+            {
+              "effectKind": "file.read",
+              "operation": "content",
+              "count": 307
+            }
           ]
         },
         {
           "phaseId": "baseline-initialization-initialization-2",
           "name": "list advertised tools",
           "stage": "tool_discovery",
-          "effectCounts": []
+          "effectCounts": [],
+          "fileOperationCounts": []
         },
         {
           "phaseId": "baseline-initialization-cooldown-3",
           "name": "observe background activity",
           "stage": "observation_window",
-          "effectCounts": []
+          "effectCounts": [],
+          "fileOperationCounts": []
         }
       ],
       "filesystemStateDelta": {
@@ -1073,7 +1123,7 @@
       "effectCounts": [
         {
           "effectKind": "file.open",
-          "count": 12
+          "count": 11
         },
         {
           "effectKind": "file.read",
@@ -1092,6 +1142,13 @@
           "count": 1
         }
       ],
+      "fileOperationCounts": [
+        {
+          "effectKind": "file.read",
+          "operation": "content",
+          "count": 7
+        }
+      ],
       "expectedScopeMatches": {
         "eventCount": 1,
         "examples": [
@@ -1106,7 +1163,7 @@
               }
             },
             "attributionConfidence": "medium",
-            "rawRef": "raw/summarize-file/strace.18:6"
+            "rawRef": "raw/summarize-file/strace.18:7"
           }
         ],
         "examplesTruncated": false
@@ -1145,14 +1202,14 @@
         "experimentId": "install-scripts-disabled",
         "lifecycleScripts": "disabled",
         "outcome": "completed",
-        "eventCount": 12200,
+        "eventCount": 12295,
         "metadata": "raw/install-scripts-disabled/install.json"
       },
       {
         "experimentId": "install-scripts-enabled",
         "lifecycleScripts": "enabled",
         "outcome": "completed",
-        "eventCount": 12267,
+        "eventCount": 12362,
         "metadata": "raw/install-scripts-enabled/install.json"
       }
     ],
@@ -1162,23 +1219,24 @@
       "treatmentExperimentId": "install-scripts-enabled",
       "treatmentOnly": {
         "processExec": [
-          "evt-install-scripts-enabled-11006",
-          "evt-install-scripts-enabled-11011"
+          "evt-install-scripts-enabled-11101",
+          "evt-install-scripts-enabled-11106"
         ],
         "fileRead": [
-          "evt-install-scripts-enabled-10993",
-          "evt-install-scripts-enabled-10995",
-          "evt-install-scripts-enabled-10997",
-          "evt-install-scripts-enabled-11042",
-          "evt-install-scripts-enabled-11044",
-          "evt-install-scripts-enabled-11046",
-          "evt-install-scripts-enabled-11052",
-          "evt-install-scripts-enabled-11054",
-          "evt-install-scripts-enabled-11056",
-          "evt-install-scripts-enabled-11058"
+          "evt-install-scripts-enabled-11088",
+          "evt-install-scripts-enabled-11090",
+          "evt-install-scripts-enabled-11092",
+          "evt-install-scripts-enabled-11137",
+          "evt-install-scripts-enabled-11139",
+          "evt-install-scripts-enabled-11141",
+          "evt-install-scripts-enabled-11147",
+          "evt-install-scripts-enabled-11149",
+          "evt-install-scripts-enabled-11151",
+          "evt-install-scripts-enabled-11153"
         ],
         "fileWrite": [
-          "evt-install-scripts-enabled-11048"
+          "evt-install-scripts-enabled-11142",
+          "evt-install-scripts-enabled-11143"
         ],
         "fileDelete": [],
         "network": []
@@ -1194,14 +1252,15 @@
     "limitations": [
       "A/B differences are observations, not proof that an install script is malicious.",
       "Package-manager nondeterminism can create differences unrelated to lifecycle scripts.",
-      "File deltas are limited to the prepared target and synthetic profile roots."
+      "File deltas are limited to the prepared target and synthetic profile roots.",
+      "A complete comparison status means supported canonical-event differencing completed; observation health may still report policy-relevant trace records that lack a lossless canonical event."
     ]
   },
   "findings": [
     {
       "schema": "forge.finding/v1",
       "findingId": "finding-initialization-sensitive-access-1",
-      "runId": "run-20260830181026-efaff1a4",
+      "runId": "run-20260830214347-1b3001cf",
       "ruleId": "runtime.initialization_sensitive_access",
       "title": "Initialization read a synthetic credential",
       "summary": "The MCP read /sandbox/home/forge/.config/gh/hosts.yml during initialization or its baseline cooldown, before any tool was called.",
@@ -1218,7 +1277,7 @@
     {
       "schema": "forge.finding/v1",
       "findingId": "finding-summarize-file-file-scope-1",
-      "runId": "run-20260830181026-efaff1a4",
+      "runId": "run-20260830214347-1b3001cf",
       "ruleId": "runtime.file_scope_exceeded",
       "title": "Tool read an unrelated synthetic credential",
       "summary": "summarize_file performed file.read on /sandbox/home/forge/.ssh/id_ed25519, which was not included in the configured expected scope.",
@@ -1237,7 +1296,7 @@
     {
       "schema": "forge.finding/v1",
       "findingId": "finding-summarize-file-unexpected-exec-1",
-      "runId": "run-20260830181026-efaff1a4",
+      "runId": "run-20260830214347-1b3001cf",
       "ruleId": "runtime.unexpected_process_exec",
       "title": "Tool launched an unexpected executable",
       "summary": "summarize_file executed /usr/local/bin/node, which was not included in the configured expected scope.",
@@ -1254,7 +1313,7 @@
     {
       "schema": "forge.finding/v1",
       "findingId": "finding-summarize-file-network-1",
-      "runId": "run-20260830181026-efaff1a4",
+      "runId": "run-20260830214347-1b3001cf",
       "ruleId": "runtime.unexpected_network_attempt",
       "title": "Tool attempted an unexpected network connection",
       "summary": "summarize_file attempted 198.51.100.1:443, which was not included in the configured expected scope. The sandbox blocked or failed the attempt with ENETUNREACH.",
@@ -1273,7 +1332,7 @@
     {
       "schema": "forge.finding/v1",
       "findingId": "finding-summarize-file-post-return-activity",
-      "runId": "run-20260830181026-efaff1a4",
+      "runId": "run-20260830214347-1b3001cf",
       "ruleId": "runtime.post_return_activity",
       "title": "A tool-originated process acted after the tool returned",
       "summary": "summarize_file returned before 1 tool-originated effect occurred during cooldown (file.read).",
@@ -1303,12 +1362,14 @@
     "preInstallSemanticInspection": "static/pre-install-semantic-inspection.json",
     "installDelta": "install/delta.json",
     "filesystemStateRoot": "runtime/filesystem-state",
-    "advertisedClaims": "mcp/advertised-claims.json"
+    "advertisedClaims": "mcp/advertised-claims.json",
+    "observationHealth": "observation-health.json"
   },
   "limitations": [
     "The trusted strace supervisor shares the target container in this prototype.",
     "Network evidence records socket behavior and destinations, not decrypted request contents.",
     "Dependency acquisition runs with package lifecycle scripts disabled.",
-    "This run observes selected inputs and does not prove all possible target behavior."
+    "This run observes selected inputs and does not prove all possible target behavior.",
+    "Trace integrity and policy-relevant gaps cover a selected syscall surface and bounded taxonomy, not every kernel or userspace behavior."
   ]
 }

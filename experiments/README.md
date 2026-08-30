@@ -33,6 +33,7 @@ experiment is meant to teach us and the boundary of any implemented result.
 | [Controlled deceptive behavior](baseline/deceptive-runtime-behavior.md) | Implemented | Can Forge detect and attribute known hidden behavior? |
 | [Benign filesystem scope](baseline/benign-filesystem-scope.md) | Implemented | Can Forge recognize expected file behavior without false positives? |
 | [Install lifecycle delta](baseline/install-lifecycle-delta.md) | Implemented | What behavior appears only when npm lifecycle scripts run? |
+| [Representative MCP trace-coverage corpus](baseline/trace-coverage-corpus-2026-08-30.md) | Implemented | Which observed trace gaps justify the next deterministic-core change? |
 
 ## Agent experiments
 

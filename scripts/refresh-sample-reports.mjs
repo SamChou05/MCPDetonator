@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
+import { constants } from "node:fs";
 import {
+  open,
   readFile,
   realpath,
   rename,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
@@ -16,6 +19,10 @@ const defaultSampleRoot = join(defaultProjectRoot, "examples", "reports");
 const DECEPTIVE_SAMPLE = "deceptive-control.report.json";
 const FILESYSTEM_SAMPLE = "official-filesystem.report.json";
 const SAMPLE_README = "README.md";
+const MAX_RUN_MANIFEST_BYTES = 8 * 1_024 * 1_024;
+const MAX_REPORT_BYTES = 64 * 1_024 * 1_024;
+const MAX_SEMANTIC_ARTIFACT_BYTES = 16 * 1_024 * 1_024;
+const MAX_OBSERVATION_HEALTH_BYTES = 16 * 1_024 * 1_024;
 
 let schemaModulePromise;
 
@@ -47,7 +54,8 @@ async function loadCurrentSchemas() {
   const schemas = await schemaModulePromise;
   if (
     schemas.reportV1Schema === undefined ||
-    schemas.runManifestV1Schema === undefined
+    schemas.runManifestV1Schema === undefined ||
+    schemas.observationHealthV1Schema === undefined
   ) {
     throw new Error("loaded Forge contracts do not export the required schemas");
   }
@@ -193,6 +201,118 @@ function containedArtifactPath(runDirectory, artifactPath) {
   return resolvedPath;
 }
 
+function sameFileState(left, right) {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs
+  );
+}
+
+function sameFileIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+async function readBoundedRegularArtifact(
+  runDirectory,
+  artifactPath,
+  maximumBytes,
+  label,
+) {
+  const path = containedArtifactPath(runDirectory, artifactPath);
+  let handle;
+  try {
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    throw new Error(`${label} is not a readable regular file`, { cause: error });
+  }
+
+  try {
+    const before = await handle.stat({ bigint: true });
+    if (!before.isFile()) {
+      throw new Error(`${label} is not a regular file`);
+    }
+    if (
+      before.size < 0n ||
+      before.size > BigInt(Number.MAX_SAFE_INTEGER) ||
+      before.size > BigInt(maximumBytes)
+    ) {
+      throw new Error(`${label} exceeds the ${maximumBytes}-byte parsing limit`);
+    }
+
+    let canonicalPath;
+    let visibleBefore;
+    try {
+      [canonicalPath, visibleBefore] = await Promise.all([
+        realpath(path),
+        stat(path, { bigint: true }),
+      ]);
+    } catch (error) {
+      throw new Error(`${label} changed while it was being verified`, {
+        cause: error,
+      });
+    }
+    containedArtifactPath(runDirectory, canonicalPath);
+    if (
+      !sameFileIdentity(before, visibleBefore) ||
+      !sameFileState(before, visibleBefore)
+    ) {
+      throw new Error(`${label} changed while it was being verified`);
+    }
+
+    const expectedSize = Number(before.size);
+    const source = Buffer.allocUnsafe(expectedSize);
+    let offset = 0;
+    while (offset < expectedSize) {
+      const { bytesRead } = await handle.read(
+        source,
+        offset,
+        expectedSize - offset,
+        offset,
+      );
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    const extraByte = Buffer.allocUnsafe(1);
+    const { bytesRead: extraBytesRead } = await handle.read(
+      extraByte,
+      0,
+      1,
+      expectedSize,
+    );
+    let after;
+    let canonicalPathAfter;
+    let visibleAfter;
+    try {
+      [after, canonicalPathAfter, visibleAfter] = await Promise.all([
+        handle.stat({ bigint: true }),
+        realpath(path),
+        stat(path, { bigint: true }),
+      ]);
+    } catch (error) {
+      throw new Error(`${label} changed while it was being verified`, {
+        cause: error,
+      });
+    }
+    containedArtifactPath(runDirectory, canonicalPathAfter);
+    if (
+      offset !== expectedSize ||
+      extraBytesRead !== 0 ||
+      canonicalPathAfter !== canonicalPath ||
+      !sameFileState(before, after) ||
+      !sameFileIdentity(before, visibleAfter) ||
+      !sameFileState(before, visibleAfter)
+    ) {
+      throw new Error(`${label} changed while it was being verified`);
+    }
+    return source;
+  } finally {
+    await handle.close();
+  }
+}
+
 async function loadSemanticArtifact(options) {
   const matchingArtifacts = options.manifest.artifacts.filter(
     (artifact) => artifact.path === options.artifactPath,
@@ -209,13 +329,12 @@ async function loadSemanticArtifact(options) {
     );
   }
 
-  const unresolvedPath = containedArtifactPath(
+  const source = await readBoundedRegularArtifact(
     options.directory,
     options.artifactPath,
+    MAX_SEMANTIC_ARTIFACT_BYTES,
+    `run ${options.runId} ${options.stage} semantic artifact`,
   );
-  const realArtifactPath = await realpath(unresolvedPath);
-  containedArtifactPath(options.directory, realArtifactPath);
-  const source = await readFile(realArtifactPath);
   const digest = sha256(source);
   if (artifact.sha256 !== digest) {
     throw new Error(
@@ -282,18 +401,172 @@ async function verifySemanticArtifacts(options) {
   ]);
 }
 
+function assertObservationHealthIdentity(report, health, runId) {
+  const summary = report.observationHealth;
+  if (summary === undefined) {
+    throw new Error(
+      `run ${runId} observation-health evidence has no report summary`,
+    );
+  }
+
+  const experimentIds = health.experiments.map(
+    (experiment) => experiment.experimentId,
+  );
+  const policyRelevantGapRecordCount = health.experiments.reduce(
+    (sum, experiment) => sum + experiment.policyRelevantGaps.recordCount,
+    0,
+  );
+  const stringTruncationLineCount = health.experiments.reduce(
+    (sum, experiment) => sum + experiment.stringTruncationLineCount,
+    0,
+  );
+  const policyRelevantGapOutcomeCounts = [
+    "succeeded",
+    "failed",
+    "unknown",
+  ].flatMap((outcome) => {
+    const recordCount = health.experiments.reduce(
+      (sum, experiment) =>
+        sum +
+        (experiment.policyRelevantGaps.outcomeCounts.find(
+          (row) => row.outcome === outcome,
+        )?.recordCount ?? 0),
+      0,
+    );
+    return recordCount === 0 ? [] : [{ outcome, recordCount }];
+  });
+  const sameJson = (left, right) =>
+    JSON.stringify(left) === JSON.stringify(right);
+
+  if (
+    health.runId !== report.runId ||
+    health.scope !== summary.scope ||
+    health.surfaceId !== summary.surfaceId ||
+    health.integrityStatus !== summary.integrityStatus ||
+    health.canonicalizationExecutionStatus !==
+      summary.canonicalizationExecutionStatus ||
+    health.policyRelevantGapStatus !== summary.policyRelevantGapStatus ||
+    !sameJson(experimentIds, summary.experimentIds) ||
+    !sameJson(health.degradedExperimentIds, summary.degradedExperimentIds) ||
+    !sameJson(
+      health.policyRelevantGapExperimentIds,
+      summary.policyRelevantGapExperimentIds,
+    ) ||
+    policyRelevantGapRecordCount !== summary.policyRelevantGapRecordCount ||
+    !sameJson(
+      policyRelevantGapOutcomeCounts,
+      summary.policyRelevantGapOutcomeCounts,
+    ) ||
+    stringTruncationLineCount !== summary.stringTruncationLineCount
+  ) {
+    throw new Error(
+      `run ${runId} observation-health identity and counters do not match report.json`,
+    );
+  }
+
+  for (const [index, experiment] of health.experiments.entries()) {
+    if (
+      experiment.canonicalization.status === "completed" &&
+      experiment.canonicalization.emittedEventCount !==
+        report.experiments[index]?.eventCount
+    ) {
+      throw new Error(
+        `run ${runId} observation-health canonical event counts do not match report.json`,
+      );
+    }
+  }
+}
+
+async function verifyObservationHealthArtifact(options) {
+  const artifactPath = options.report.evidence.observationHealth;
+  if (artifactPath === undefined) return;
+
+  const matchingArtifacts = options.manifest.artifacts.filter(
+    (artifact) => artifact.path === artifactPath,
+  );
+  if (matchingArtifacts.length !== 1) {
+    throw new Error(
+      `run ${options.runId} must bind exactly one observation-health artifact`,
+    );
+  }
+  const [artifact] = matchingArtifacts;
+  if (artifact.mediaType !== "application/json") {
+    throw new Error(
+      `run ${options.runId} observation-health artifact is not JSON`,
+    );
+  }
+
+  const source = await readBoundedRegularArtifact(
+    options.directory,
+    artifactPath,
+    MAX_OBSERVATION_HEALTH_BYTES,
+    `run ${options.runId} observation-health artifact`,
+  );
+  if (artifact.sha256 !== sha256(source)) {
+    throw new Error(
+      `run ${options.runId} does not bind its observation-health artifact to the manifest`,
+    );
+  }
+
+  let decoded;
+  try {
+    decoded = new TextDecoder("utf-8", { fatal: true }).decode(source);
+  } catch (error) {
+    throw new Error(
+      `run ${options.runId} observation-health artifact is not valid UTF-8`,
+      { cause: error },
+    );
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(decoded);
+  } catch (error) {
+    throw new Error(
+      `run ${options.runId} observation-health artifact is not valid JSON`,
+      { cause: error },
+    );
+  }
+  let health;
+  try {
+    health = options.observationHealthV1Schema.parse(parsed);
+  } catch (error) {
+    throw new Error(
+      `run ${options.runId} observation-health artifact does not satisfy forge.observation-health/v1`,
+      { cause: error },
+    );
+  }
+  assertObservationHealthIdentity(options.report, health, options.runId);
+}
+
 async function loadRun(
   projectRoot,
   argument,
   expectedTargetId,
   reportV1Schema,
   runManifestV1Schema,
+  observationHealthV1Schema,
 ) {
   const { directory, runId } = await checkedRunDirectory(projectRoot, argument);
-  const [reportSource, manifestSource] = await Promise.all([
-    readFile(join(directory, "report.json"), "utf8"),
-    readFile(join(directory, "run.json"), "utf8"),
+  const [reportBytes, manifestBytes] = await Promise.all([
+    readBoundedRegularArtifact(
+      directory,
+      "report.json",
+      MAX_REPORT_BYTES,
+      `run ${runId} report.json`,
+    ),
+    readBoundedRegularArtifact(
+      directory,
+      "run.json",
+      MAX_RUN_MANIFEST_BYTES,
+      `run ${runId} run.json`,
+    ),
   ]);
+  const reportSource = new TextDecoder("utf-8", { fatal: true }).decode(
+    reportBytes,
+  );
+  const manifestSource = new TextDecoder("utf-8", { fatal: true }).decode(
+    manifestBytes,
+  );
   const report = reportV1Schema.parse(JSON.parse(reportSource));
   const manifest = runManifestV1Schema.parse(JSON.parse(manifestSource));
 
@@ -311,13 +584,19 @@ async function loadRun(
     throw new Error(`run ${runId} is not a completed Forge analysis`);
   }
 
-  const reportArtifact = manifest.artifacts.find(
+  const reportArtifacts = manifest.artifacts.filter(
     (artifact) => artifact.path === "report.json",
   );
-  if (
-    reportArtifact?.mediaType !== "application/json" ||
-    reportArtifact.sha256 !== sha256(reportSource)
-  ) {
+  if (reportArtifacts.length !== 1) {
+    throw new Error(
+      `run ${runId} must bind exactly one report.json artifact`,
+    );
+  }
+  const [reportArtifact] = reportArtifacts;
+  if (reportArtifact.mediaType !== "application/json") {
+    throw new Error(`run ${runId} report.json artifact is not JSON`);
+  }
+  if (reportArtifact.sha256 !== sha256(reportBytes)) {
     throw new Error(`run ${runId} does not bind report.json to its manifest`);
   }
 
@@ -327,6 +606,13 @@ async function loadRun(
     targetId: expectedTargetId,
     manifest,
     report,
+  });
+  await verifyObservationHealthArtifact({
+    directory,
+    runId,
+    manifest,
+    report,
+    observationHealthV1Schema,
   });
 
   const realProjectRoot = await realpath(projectRoot);
@@ -387,6 +673,7 @@ export async function refreshSampleReports(options = {}) {
       "deceptive-document-summarizer",
       schemas.reportV1Schema,
       schemas.runManifestV1Schema,
+      schemas.observationHealthV1Schema,
     ),
     loadRun(
       projectRoot,
@@ -394,6 +681,7 @@ export async function refreshSampleReports(options = {}) {
       "official-filesystem",
       schemas.reportV1Schema,
       schemas.runManifestV1Schema,
+      schemas.observationHealthV1Schema,
     ),
     readFile(join(sampleRoot, SAMPLE_README), "utf8"),
   ]);

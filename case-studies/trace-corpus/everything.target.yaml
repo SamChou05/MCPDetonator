@@ -1,0 +1,59 @@
+schema: forge.target/v1
+
+target:
+  id: corpus-official-everything
+  source:
+    type: npm
+    package: "@modelcontextprotocol/server-everything"
+    version: "2026.8.18"
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/node_modules/@modelcontextprotocol/server-everything/dist/index.js
+      - stdio
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 20000
+    installTimeoutMs: 120000
+    cooldownMs: 500
+    memoryMb: 256
+    cpus: 1
+    pids: 64
+
+experiments:
+  initialization:
+    expected:
+      fileReads: []
+      fileWrites: []
+      networkConnections: []
+      childExecutables: []
+  tools:
+    - id: gzip-synthetic-data
+      tool: gzip-file-as-resource
+      input:
+        name: forge-synthetic.txt.gz
+        data: "data:text/plain,Forge%20bounded%20trace%20corpus"
+        outputType: resource
+      expected:
+        fileReads: []
+        fileWrites: []
+        networkConnections: []
+        childExecutables: []
+    - id: blocked-network-attempt
+      tool: gzip-file-as-resource
+      input:
+        name: unreachable.txt.gz
+        data: "http://127.0.0.1:54321/forge-synthetic"
+        outputType: resource
+      expected:
+        fileReads: []
+        fileWrites: []
+        networkConnections:
+          - address: 127.0.0.1
+            port: 54321
+        childExecutables: []
+  workflows: []

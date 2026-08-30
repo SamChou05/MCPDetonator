@@ -75,11 +75,16 @@ deterministic baseline without receiving execution authority.
 
 By the end of the day on Sunday, we'd like to see:
 
-- [ ] A working prototype we can point at a real local MCP server and get back a concrete report of what it observed.
-- [ ] Some useful static analysis of the MCP itself: its tools, inputs, dependencies, source behavior, and anything else you think helps establish what the software claims or appears to do.
-- [ ] Runtime observation of the MCP during initialization and during one or more tool calls, including signals such as processes spawned, filesystem activity, network activity, resources accessed, and other relevant system behavior.
-- [ ] The ability to connect that runtime behavior back to MCP lifecycle events or specific tool invocations so that we can understand why a particular system action occurred.
-- [ ] If time permits: your answer to the agent-behavior question above, either as a design proposal or prototype for automatically evaluating what additional information can be learned from agent rollouts.
+Within the prototype's explicitly documented local Node.js/STDIO/Linux scope,
+the repository now satisfies each requested deliverable. These checkmarks do
+not claim universal behavior coverage; see
+[`CapabilitiesAndLimitations.md`](CapabilitiesAndLimitations.md).
+
+- [x] A working prototype we can point at a real local MCP server and get back a concrete report of what it observed.
+- [x] Some useful static analysis of the MCP itself: its tools, inputs, dependencies, source behavior, and anything else you think helps establish what the software claims or appears to do.
+- [x] Runtime observation of the MCP during initialization and during one or more tool calls, including signals such as processes spawned, filesystem activity, network activity, resources accessed, and other relevant system behavior.
+- [x] The ability to connect that runtime behavior back to MCP lifecycle events or specific tool invocations so that we can understand why a particular system action occurred.
+- [x] If time permits: your answer to the agent-behavior question above, either as a design proposal or prototype for automatically evaluating what additional information can be learned from agent rollouts.
 
 Our goal is to measure your ability to make intelligent design choices and think through a largely unexplored systems and security problem. There are interesting considerations here around sandbox infrastructure, runtime instrumentation, static analysis, behavioral attribution, and, optionally, agent evals.
 
@@ -89,6 +94,10 @@ Our goal is to measure your ability to make intelligent design choices and think
 
 - [`Prototype.md`](Prototype.md) explains the implemented architecture,
   evidence model, verified cases, limitations, and core demo.
+- [`case-studies/trace-corpus/README.md`](case-studies/trace-corpus/README.md)
+  provides four pinned public MCP targets and a manifest-bound coverage
+  summarizer; the [recorded experiment](experiments/baseline/trace-coverage-corpus-2026-08-30.md)
+  explains which gaps warranted implementation work.
 - [`PublisherDemo.md`](PublisherDemo.md) runs the optional synthetic
   S3/PostgreSQL completed-run publisher locally.
 - [`HardenedEvidenceInfrastructurePlan.md`](HardenedEvidenceInfrastructurePlan.md)

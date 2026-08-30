@@ -112,6 +112,21 @@ describe("runtime observation report summary", () => {
       rawRef: "raw/read-document/strace.10:8",
       outcome: { status: "failed", errno: "EACCES" },
     });
+    const directoryEnumeration = observedEventV1Schema.parse({
+      ...expected,
+      eventId: "evt-directory-enumeration",
+      sequence: 5,
+      effect: {
+        kind: "file.read",
+        path: "/sandbox/workspace",
+        operation: "directory_entries",
+        outcome: { status: "succeeded" },
+      },
+      source: {
+        collector: "strace",
+        rawRef: "raw/read-document/strace.10:9",
+      },
+    });
     const activeAttribution = (eventId: string) =>
       attributionV1Schema.parse({
         schema: "forge.attribution/v1",
@@ -155,12 +170,19 @@ describe("runtime observation report summary", () => {
 
     const result = summarizeRuntimeObservations({
       config,
-      events: [expected, unrelated, outsideToolPhase, failedExpected],
+      events: [
+        expected,
+        unrelated,
+        outsideToolPhase,
+        failedExpected,
+        directoryEnumeration,
+      ],
       phases: [phase],
       attributions: [
         activeAttribution(expected.eventId),
         activeAttribution(unrelated.eventId),
         activeAttribution(failedExpected.eventId),
+        activeAttribution(directoryEnumeration.eventId),
         attributionV1Schema.parse({
           schema: "forge.attribution/v1",
           attributionId: "attr-late-expected-read",
@@ -178,7 +200,15 @@ describe("runtime observation report summary", () => {
         experimentId: "read-document",
         kind: "tool",
         toolName: "read_document",
-        effectCounts: [{ effectKind: "file.read", count: 3 }],
+        effectCounts: [{ effectKind: "file.read", count: 4 }],
+        fileOperationCounts: [
+          { effectKind: "file.read", operation: "content", count: 3 },
+          {
+            effectKind: "file.read",
+            operation: "directory_entries",
+            count: 1,
+          },
+        ],
         expectedScopeMatches: {
           eventCount: 1,
           examples: [
@@ -388,24 +418,35 @@ describe("runtime observation report summary", () => {
         { effectKind: "file.read", count: 1 },
         { effectKind: "file.write", count: 1 },
       ],
+      fileOperationCounts: [
+        { effectKind: "file.read", operation: "content", count: 1 },
+        { effectKind: "file.write", operation: "content", count: 1 },
+      ],
       phaseBreakdown: [
         {
           phaseId: handshakePhase.phaseId,
           name: "initialize MCP session",
           stage: "handshake",
           effectCounts: [{ effectKind: "file.read", count: 1 }],
+          fileOperationCounts: [
+            { effectKind: "file.read", operation: "content", count: 1 },
+          ],
         },
         {
           phaseId: discoveryPhase.phaseId,
           name: "list advertised tools",
           stage: "tool_discovery",
           effectCounts: [{ effectKind: "file.open", count: 1 }],
+          fileOperationCounts: [],
         },
         {
           phaseId: cooldownPhase.phaseId,
           name: "observe background activity",
           stage: "observation_window",
           effectCounts: [{ effectKind: "file.write", count: 1 }],
+          fileOperationCounts: [
+            { effectKind: "file.write", operation: "content", count: 1 },
+          ],
         },
       ],
     });

@@ -3,8 +3,8 @@
 These representative report snapshots come from a paired end-to-end
 verification documented in `Prototype.md` and `ImplementationPlan.md`:
 
-- `deceptive-control.report.json` is the report from `run-20260830181026-efaff1a4`.
-- `official-filesystem.report.json` is the report from `run-20260830181057-0a5ff552`.
+- `deceptive-control.report.json` is the report from `run-20260830214347-1b3001cf`.
+- `official-filesystem.report.json` is the report from `run-20260830214423-2072a19a`.
 
 The deceptive control's machine-specific absolute `configuredPath` is redacted
 to `<repository-root>/fixtures/deceptive-mcp`; the rest of each report is

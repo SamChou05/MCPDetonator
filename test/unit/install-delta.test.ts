@@ -59,18 +59,58 @@ describe("install lifecycle delta", () => {
       bytes: 30,
       outcome: { status: "succeeded" },
     });
+    const controlContentWrite = event(controlId, "evt-control-content-write", {
+      kind: "file.write",
+      path: "/opt/target/shared-output.txt",
+      bytes: 4,
+      outcome: { status: "succeeded" },
+    });
+    const treatmentTruncate = event(
+      treatmentId,
+      "evt-treatment-truncate",
+      {
+        kind: "file.write",
+        path: "/opt/target/shared-output.txt",
+        operation: "truncate",
+        outcome: { status: "succeeded" },
+      },
+    );
+    const directoryEnumeration = event(
+      treatmentId,
+      "evt-treatment-directory-enumeration",
+      {
+        kind: "file.read",
+        path: "/opt/target",
+        operation: "directory_entries",
+        outcome: { status: "succeeded" },
+      },
+    );
 
     const delta = await compareInstallLifecycle({
       store,
       runId: "run-install-delta",
-      events: [sharedControl, sharedTreatment, marker, ignoredCacheWrite],
+      events: [
+        sharedControl,
+        sharedTreatment,
+        controlContentWrite,
+        marker,
+        ignoredCacheWrite,
+        treatmentTruncate,
+        directoryEnumeration,
+      ],
       controlExperimentId: controlId,
       treatmentExperimentId: treatmentId,
       includedFileRoots: ["/opt/target", "/sandbox/home/forge"],
     });
 
     expect(delta.treatmentOnly.processExec).toEqual([]);
-    expect(delta.treatmentOnly.fileWrite).toEqual([marker.eventId]);
+    expect(delta.treatmentOnly.fileRead).toEqual([]);
+    expect(delta.treatmentOnly.fileWrite).toEqual([
+      marker.eventId,
+      treatmentTruncate.eventId,
+    ]);
+    expect(delta.controlOnly.fileWrite).toEqual([controlContentWrite.eventId]);
     expect(JSON.stringify(delta)).not.toContain(ignoredCacheWrite.eventId);
+    expect(JSON.stringify(delta)).not.toContain(directoryEnumeration.eventId);
   });
 });

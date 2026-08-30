@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { pathMatchesExpectedScope } from "../../src/expected-scope.js";
+import {
+  isRoutineNameServiceConnection,
+  pathMatchesExpectedScope,
+} from "../../src/expected-scope.js";
 
 describe("pathMatchesExpectedScope", () => {
   it("compares canonical absolute Linux paths", () => {
@@ -41,5 +44,44 @@ describe("pathMatchesExpectedScope", () => {
     expect(pathMatchesExpectedScope("opt/helpers/tool", [], ["/opt/helpers"])).toBe(
       false,
     );
+  });
+
+  it("exempts only outbound connections to the routine NSCD Unix sockets", () => {
+    const connection = (protocol: "tcp" | "unix", address: string) => ({
+      kind: "network.connect_attempt" as const,
+      protocol,
+      address,
+      outcome: { status: "succeeded" as const },
+    });
+
+    expect(
+      isRoutineNameServiceConnection(
+        connection("unix", "/var/run/nscd/socket"),
+      ),
+    ).toBe(true);
+    expect(
+      isRoutineNameServiceConnection(connection("unix", "/run/nscd/socket")),
+    ).toBe(true);
+    expect(
+      isRoutineNameServiceConnection(
+        connection("tcp", "/var/run/nscd/socket"),
+      ),
+    ).toBe(false);
+    expect(
+      isRoutineNameServiceConnection(
+        connection("unix", "/var/run/docker.sock"),
+      ),
+    ).toBe(false);
+    expect(
+      isRoutineNameServiceConnection(connection("unix", "/tmp/server.sock")),
+    ).toBe(false);
+    expect(
+      isRoutineNameServiceConnection({
+        kind: "network.listen",
+        protocol: "unix",
+        address: "/var/run/nscd/socket",
+        outcome: { status: "succeeded" },
+      }),
+    ).toBe(false);
   });
 });

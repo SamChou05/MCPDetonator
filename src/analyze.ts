@@ -9,6 +9,7 @@ import {
   targetProvenanceV1Schema,
   type ArtifactReferenceV1,
   type McpInterfaceV1,
+  type ObservationHealthV1,
   type PhaseV1,
   type RunManifestV1,
   type TargetProvenanceV1,
@@ -20,6 +21,10 @@ import {
   normalizeRun,
   type ObservedPathMapping,
 } from "./observe/strace-normalizer.js";
+import {
+  discoverStraceExperimentIds,
+  writeObservationHealth,
+} from "./observe/observation-health.js";
 import {
   captureFilesystemState,
   persistFilesystemStateEvidence,
@@ -160,6 +165,7 @@ export async function analyzeTarget(
     "Network evidence records socket behavior and destinations, not decrypted request contents.",
     "Dependency acquisition runs with package lifecycle scripts disabled.",
     "This run observes selected inputs and does not prove all possible target behavior.",
+    "Trace integrity and policy-relevant gaps cover a selected syscall surface and bounded taxonomy, not every kernel or userspace behavior.",
   ];
   const manifestBase = {
     schema: "forge.run/v1" as const,
@@ -213,6 +219,53 @@ export async function analyzeTarget(
   let preparedTarget: PreparedTarget | undefined;
   let installObservation: InstallLifecycleObservation | undefined;
   let installDelta: InstallLifecycleDeltaV1 | undefined;
+  let observationHealth: ObservationHealthV1 | undefined;
+
+  async function writeCurrentObservationHealth(
+    events?: Parameters<typeof writeObservationHealth>[0]["events"],
+  ): Promise<ObservationHealthV1> {
+    const preferredExperimentIds = [
+      ...(preparedTarget?.hostNpmCache === undefined
+        ? []
+        : ["install-scripts-disabled", "install-scripts-enabled"]),
+      ...(installObservation?.experiments.map(
+        (experiment) => experiment.experimentId,
+      ) ?? []),
+      ...experiments.map((experiment) => experiment.id),
+    ];
+    const discoveredExperimentIds = await discoverStraceExperimentIds(store);
+    const experimentIds = [
+      ...new Set([...preferredExperimentIds, ...discoveredExperimentIds]),
+    ];
+    const policyRelevantPathPrefixesByExperiment = new Map<
+      string,
+      readonly string[]
+    >();
+    const installExperimentIds = new Set([
+      "install-scripts-disabled",
+      "install-scripts-enabled",
+      ...(installObservation?.experiments.map(
+        (experiment) => experiment.experimentId,
+      ) ?? []),
+    ]);
+    for (const experimentId of experimentIds) {
+      if (installExperimentIds.has(experimentId)) {
+        policyRelevantPathPrefixesByExperiment.set(experimentId, [
+          "/opt/target",
+          "/sandbox/home/forge",
+          "/sandbox/workspace",
+        ]);
+      }
+    }
+    return writeObservationHealth({
+      store,
+      runId,
+      experimentIds,
+      pathMappingsByExperiment,
+      policyRelevantPathPrefixesByExperiment,
+      ...(events === undefined ? {} : { events }),
+    });
+  }
 
   try {
     preparedTarget = await prepareTarget({
@@ -380,6 +433,7 @@ export async function analyzeTarget(
       experimentIds: allExperimentIds,
       pathMappingsByExperiment,
     });
+    observationHealth = await writeCurrentObservationHealth(events);
     if (
       installObservation !== undefined &&
       installObservation.scriptsDisabled.outcome.status === "completed" &&
@@ -431,6 +485,7 @@ export async function analyzeTarget(
       semanticAnalysis,
       profileRootsByExperiment,
       filesystemStateDeltas,
+      observationHealth,
       ...(installObservation === undefined
         ? {}
         : {
@@ -449,6 +504,11 @@ export async function analyzeTarget(
     await store.writeJson("run.json", runManifestV1Schema, completedManifest);
     return { runId, runDirectory: store.runDirectory };
   } catch (error) {
+    if (observationHealth === undefined) {
+      observationHealth = await writeCurrentObservationHealth().catch(
+        () => undefined,
+      );
+    }
     const failedManifest: RunManifestV1 = {
       ...manifestBase,
       status: "failed",

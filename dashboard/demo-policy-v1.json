@@ -28,7 +28,7 @@
         "summarize-file"
       ],
       "sampleReportFile": "deceptive-control.report.json",
-      "sampleReportSha256": "45fa8a54cb9b6bf5ede4da2a03bd36e4ada55e8ae9cfcb3cf332171a87ab5411",
+      "sampleReportSha256": "7bb1ba2a957565622a7a1703f5179cdd946abda65fa3cfdde05d0dcfe15bb4e2",
       "eligibility": {
         "sandboxProfile": "developer-v1",
         "network": "blocked",
@@ -76,7 +76,7 @@
         "write-synthetic-output"
       ],
       "sampleReportFile": "official-filesystem.report.json",
-      "sampleReportSha256": "c1402b752d842d9717067ba4b17ed7aedfa2ba059c6c6eea4299a247ded0a34a",
+      "sampleReportSha256": "6c1394701f9d27a7fb6bbc0485e54c27c29574fc43a56e8d007a7482b0b86310",
       "eligibility": {
         "sandboxProfile": "developer-v1",
         "network": "blocked",

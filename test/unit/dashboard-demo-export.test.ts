@@ -15,11 +15,11 @@ import {
 } from "../../src/dashboard/demo-export.js";
 
 const CONTROLLED_SHA256 =
-  "45fa8a54cb9b6bf5ede4da2a03bd36e4ada55e8ae9cfcb3cf332171a87ab5411";
+  "7bb1ba2a957565622a7a1703f5179cdd946abda65fa3cfdde05d0dcfe15bb4e2";
 const REFERENCE_SHA256 =
-  "c1402b752d842d9717067ba4b17ed7aedfa2ba059c6c6eea4299a247ded0a34a";
-const CONTROLLED_RUN_ID = "run-20260830181026-efaff1a4";
-const REFERENCE_RUN_ID = "run-20260830181057-0a5ff552";
+  "6c1394701f9d27a7fb6bbc0485e54c27c29574fc43a56e8d007a7482b0b86310";
+const CONTROLLED_RUN_ID = "run-20260830214347-1b3001cf";
+const REFERENCE_RUN_ID = "run-20260830214423-2072a19a";
 const CONTROLLED_TARGET_ID = "deceptive-document-summarizer";
 const REFERENCE_TARGET_ID = "official-filesystem";
 
@@ -209,7 +209,7 @@ describe("public dashboard demo export", () => {
     expect(controlled?.runtime.effectCounts).toEqual([
       { effectKind: "process.start", count: 2 },
       { effectKind: "process.exec", count: 7 },
-      { effectKind: "file.open", count: 447 },
+      { effectKind: "file.open", count: 446 },
       { effectKind: "file.read", count: 314 },
       { effectKind: "network.connect_attempt", count: 5 },
     ]);
@@ -247,8 +247,8 @@ describe("public dashboard demo export", () => {
       findings: [],
       semantic: {
         status: "partial",
-        callsiteCount: 25,
-        capabilityCounts: [{ capability: "filesystem_access", count: 25 }],
+        callsiteCount: 27,
+        capabilityCounts: [{ capability: "filesystem_access", count: 27 }],
       },
       runtime: {
         filesystemChangeCounts: {
@@ -273,7 +273,7 @@ describe("public dashboard demo export", () => {
 
     expect(output).toMatchObject({
       role: "controlled",
-      analyzedAt: "2026-08-30T18:10:55.977Z",
+      analyzedAt: "2026-08-30T21:44:21.481Z",
       presentation: {
         source: "published",
         publishedAt: "2026-08-30T20:00:00.000Z",

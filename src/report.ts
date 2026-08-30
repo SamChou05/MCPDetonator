@@ -16,6 +16,7 @@ import {
   type AttributionV1,
   type FindingV1,
   type McpInterfaceV1,
+  type ObservationHealthV1,
   type ObservedEventV1,
   type PhaseV1,
   type ReportV1,
@@ -24,6 +25,7 @@ import {
 import { sha256, type EvidenceStore } from "./evidence-store.js";
 import {
   destinationMatchesExpectedScope,
+  isRoutineNameServiceConnection,
   pathMatchesExpectedScope,
 } from "./expected-scope.js";
 import {
@@ -237,7 +239,10 @@ function eventMatchesExpectedScope(
 ): boolean {
   switch (event.effect.kind) {
     case "file.read":
-      if (event.effect.outcome.status !== "succeeded") {
+      if (
+        event.effect.operation === "directory_entries" ||
+        event.effect.outcome.status !== "succeeded"
+      ) {
         return false;
       }
       return pathMatchesExpectedScope(
@@ -286,7 +291,9 @@ function eventMatchesExpectedScope(
 function expectedScopeExampleKey(event: ObservedEventV1): string {
   switch (event.effect.kind) {
     case "file.read":
+      return `${event.effect.kind}:${event.effect.operation ?? "content"}:${event.effect.path}`;
     case "file.write":
+      return `${event.effect.kind}:${event.effect.operation ?? "content"}:${event.effect.path}`;
     case "file.delete":
       return `${event.effect.kind}:${event.effect.path}`;
     case "process.exec":
@@ -306,6 +313,36 @@ function effectCounts(events: readonly ObservedEventV1[]): RuntimeObservation["e
   return [...counts.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([effectKind, count]) => ({ effectKind, count }));
+}
+
+function fileOperationCounts(
+  events: readonly ObservedEventV1[],
+): NonNullable<RuntimeObservation["fileOperationCounts"]> {
+  const counts = new Map<
+    string,
+    NonNullable<RuntimeObservation["fileOperationCounts"]>[number]
+  >();
+  for (const event of events) {
+    if (
+      event.effect.kind !== "file.read" &&
+      event.effect.kind !== "file.write"
+    ) {
+      continue;
+    }
+    const operation = event.effect.operation ?? "content";
+    const key = `${event.effect.kind}:${operation}`;
+    const existing = counts.get(key);
+    counts.set(key, {
+      effectKind: event.effect.kind,
+      operation,
+      count: (existing?.count ?? 0) + 1,
+    });
+  }
+  return [...counts.values()].sort(
+    (left, right) =>
+      left.effectKind.localeCompare(right.effectKind) ||
+      left.operation.localeCompare(right.operation),
+  );
 }
 
 function summarizeFilesystemStateDelta(
@@ -422,6 +459,7 @@ export function summarizeRuntimeObservations(options: {
       experimentId: "baseline-initialization",
       kind: "initialization",
       effectCounts: effectCounts(initializationEvents),
+      fileOperationCounts: fileOperationCounts(initializationEvents),
       phaseBreakdown: baselinePhases.map((phase) => {
         const phaseEvents = experimentEvents.filter(
           (event) =>
@@ -432,6 +470,7 @@ export function summarizeRuntimeObservations(options: {
           name: phase.name,
           ...(phase.stage === undefined ? {} : { stage: phase.stage }),
           effectCounts: effectCounts(phaseEvents),
+          fileOperationCounts: fileOperationCounts(phaseEvents),
         };
       }),
       ...(filesystemStateDelta === undefined
@@ -482,6 +521,7 @@ export function summarizeRuntimeObservations(options: {
       kind: "tool",
       toolName: experiment.tool,
       effectCounts: effectCounts(toolEvents),
+      fileOperationCounts: fileOperationCounts(toolEvents),
       expectedScopeMatches: {
         eventCount: matchingEvents.length,
         examples,
@@ -572,7 +612,8 @@ export function compareStaticAndRuntime(options: {
       continue;
     }
     if (
-      event.effect.kind === "file.read" ||
+      (event.effect.kind === "file.read" &&
+        event.effect.operation !== "directory_entries") ||
       event.effect.kind === "file.write" ||
       event.effect.kind === "file.delete"
     ) {
@@ -598,7 +639,7 @@ export function compareStaticAndRuntime(options: {
     if (
       (event.effect.kind === "network.connect_attempt" ||
         event.effect.kind === "network.listen") &&
-      event.effect.protocol !== "unix"
+      !isRoutineNameServiceConnection(event.effect)
     ) {
       addRuntimeEvent("network_access", event);
     }
@@ -653,7 +694,7 @@ export function compareStaticAndRuntime(options: {
     rows,
     limitations: [
       "The static scan is bounded lexical analysis of package-authored source and excludes dependency source.",
-      "Runtime comparison includes supported failed attempts. Filesystem comparison is limited to normalized reads, writes, and deletes under the synthetic home/workspace roots, so open-only activity is excluded; process comparison excludes the root server exec; network comparison excludes Unix-domain sockets.",
+      "Runtime comparison includes supported failed attempts. Filesystem comparison is limited to normalized reads, writes, and deletes under the synthetic home/workspace roots, so open-only activity is excluded; process comparison excludes the root server exec; network comparison includes Unix-domain sockets except routine outbound NSCD connection attempts.",
       "Environment, dynamic-code, dynamic-module, and native-code capabilities are not directly comparable with the current normalized runtime evidence.",
       "Agreement or disagreement is evidence about selected inputs, not a verdict about intent or safety.",
     ],
@@ -878,6 +919,7 @@ export async function writeReport(options: {
   readonly semanticAnalysis?: NodeSemanticAnalysisResult;
   readonly profileRootsByExperiment: ProfileRootsByExperiment;
   readonly filesystemStateDeltas?: readonly FilesystemStateDeltaV1[];
+  readonly observationHealth?: ObservationHealthV1;
   readonly installObservation?: InstallLifecycleObservation;
   readonly installDelta?: InstallLifecycleDeltaV1;
   readonly limitations: readonly string[];
@@ -963,15 +1005,118 @@ export async function writeReport(options: {
         .length,
     })),
   ];
+  if (
+    options.observationHealth !== undefined &&
+    options.observationHealth.runId !== options.runId
+  ) {
+    throw new Error("observation health does not belong to the report run");
+  }
+  if (options.observationHealth !== undefined) {
+    const healthExperimentIds = options.observationHealth.experiments.map(
+      (experiment) => experiment.experimentId,
+    );
+    const reportExperimentIds = experiments.map(
+      (experiment) => experiment.experimentId,
+    );
+    if (
+      healthExperimentIds.length !== reportExperimentIds.length ||
+      healthExperimentIds.some(
+        (experimentId, index) =>
+          experimentId !== reportExperimentIds[index],
+      )
+    ) {
+      throw new Error(
+        "observation health must exactly cover report experiments in order",
+      );
+    }
+    for (const [index, experimentHealth] of
+      options.observationHealth.experiments.entries()) {
+      const canonicalization = experimentHealth.canonicalization;
+      if (
+        canonicalization.status === "completed" &&
+        canonicalization.emittedEventCount !== experiments[index]?.eventCount
+      ) {
+        throw new Error(
+          "observation-health canonical event counts must match report experiments",
+        );
+      }
+    }
+  }
+  const observationCoveragePartial =
+    options.observationHealth !== undefined &&
+    (options.observationHealth.integrityStatus !== "complete" ||
+      options.observationHealth.canonicalizationExecutionStatus !==
+        "completed" ||
+      options.observationHealth.policyRelevantGapStatus !== "none_observed");
+  const findingSummary =
+    options.findings.length === 0
+      ? "Within the selected experiments and current rule coverage, Forge found no deterministic runtime findings."
+      : `Within the selected experiments and current rule coverage, Forge found ${options.findings.length} deterministic runtime ${options.findings.length === 1 ? "finding" : "findings"}.`;
   const report: ReportV1 = {
     schema: "forge.report/v1",
     runId: options.runId,
     targetId: options.config.target.id,
     generatedAt: new Date().toISOString(),
-    summary:
-      options.findings.length === 0
-        ? "Within the selected experiments and current rule coverage, Forge found no deterministic runtime findings."
-        : `Within the selected experiments and current rule coverage, Forge found ${options.findings.length} deterministic runtime ${options.findings.length === 1 ? "finding" : "findings"}.`,
+    summary: observationCoveragePartial
+      ? `${findingSummary} Observation coverage is partial; see observation-health.json for structural trace health and policy-relevant canonicalization gaps.`
+      : findingSummary,
+    ...(options.observationHealth === undefined
+      ? {}
+      : {
+          observationHealth: {
+            scope: options.observationHealth.scope,
+            surfaceId: options.observationHealth.surfaceId,
+            integrityStatus: options.observationHealth.integrityStatus,
+            canonicalizationExecutionStatus:
+              options.observationHealth.canonicalizationExecutionStatus,
+            policyRelevantGapStatus:
+              options.observationHealth.policyRelevantGapStatus,
+            experimentIds: options.observationHealth.experiments.map(
+              (experiment) => experiment.experimentId,
+            ),
+            degradedExperimentIds: [
+              ...options.observationHealth.degradedExperimentIds,
+            ],
+            policyRelevantGapExperimentIds: [
+              ...options.observationHealth.policyRelevantGapExperimentIds,
+            ],
+            policyRelevantGapRecordCount:
+              options.observationHealth.experiments.reduce(
+                (sum, experiment) =>
+                  sum + experiment.policyRelevantGaps.recordCount,
+                0,
+              ),
+            policyRelevantGapOutcomeCounts: [
+              "succeeded",
+              "failed",
+              "unknown",
+            ].flatMap((outcome) => {
+              const recordCount = options.observationHealth?.experiments.reduce(
+                (sum, experiment) =>
+                  sum +
+                  (experiment.policyRelevantGaps.outcomeCounts.find(
+                    (row) => row.outcome === outcome,
+                  )?.recordCount ?? 0),
+                0,
+              ) ?? 0;
+              return recordCount === 0
+                ? []
+                : [
+                    {
+                      outcome: outcome as "succeeded" | "failed" | "unknown",
+                      recordCount,
+                    },
+                  ];
+            }),
+            stringTruncationLineCount:
+              options.observationHealth.experiments.reduce(
+                (sum, experiment) =>
+                  sum + experiment.stringTruncationLineCount,
+                0,
+              ),
+            artifact: "observation-health.json" as const,
+          },
+        }),
     artifactProvenance: options.provenance,
     sandboxPolicy: {
       profile: options.config.sandbox.profile,
@@ -1084,6 +1229,9 @@ export async function writeReport(options: {
               "static/pre-install-semantic-inspection.json",
           }),
       advertisedClaims: "mcp/advertised-claims.json",
+      ...(options.observationHealth === undefined
+        ? {}
+        : { observationHealth: "observation-health.json" as const }),
       ...(options.installDelta === undefined
         ? {}
         : { installDelta: "install/delta.json" }),

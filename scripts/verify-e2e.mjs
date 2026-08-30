@@ -5,6 +5,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual, promisify } from "node:util";
 
+import { observationHealthV1Schema } from "../dist/contracts/v1.js";
+
 const execFileAsync = promisify(execFile);
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -192,6 +194,85 @@ async function assertSemanticEvidence(runDirectory, report, manifest, label) {
         JSON.stringify(report.semanticAnalysis.handlerReachability),
     `${label} semantic report partitions diverge from the retained artifact`,
   );
+}
+
+async function assertObservationHealth(runDirectory, report, manifest, label) {
+  const artifactPath = report.evidence.observationHealth;
+  const summary = report.observationHealth;
+  invariant(
+    artifactPath === "observation-health.json" && summary !== undefined,
+    `${label} is missing report-bound observation health`,
+  );
+  const source = await readFile(join(runDirectory, artifactPath));
+  const artifactRows = manifest.artifacts.filter(
+    (artifact) => artifact.path === artifactPath,
+  );
+  invariant(
+    artifactRows.length === 1 &&
+      artifactRows[0].mediaType === "application/json" &&
+      artifactRows[0].sha256 === sha256(source),
+    `${label} observation health is not uniquely hash-bound as JSON`,
+  );
+  const health = observationHealthV1Schema.parse(
+    JSON.parse(source.toString("utf8")),
+  );
+  const experimentIds = health.experiments.map(
+    (experiment) => experiment.experimentId,
+  );
+  const gapRecordCount = health.experiments.reduce(
+    (sum, experiment) => sum + experiment.policyRelevantGaps.recordCount,
+    0,
+  );
+  const stringTruncationLineCount = health.experiments.reduce(
+    (sum, experiment) => sum + experiment.stringTruncationLineCount,
+    0,
+  );
+  const gapOutcomeCounts = ["succeeded", "failed", "unknown"].flatMap(
+    (outcome) => {
+      const recordCount = health.experiments.reduce(
+        (sum, experiment) =>
+          sum +
+          (experiment.policyRelevantGaps.outcomeCounts.find(
+            (row) => row.outcome === outcome,
+          )?.recordCount ?? 0),
+        0,
+      );
+      return recordCount === 0 ? [] : [{ outcome, recordCount }];
+    },
+  );
+  invariant(
+    health.runId === report.runId &&
+      health.scope === summary.scope &&
+      health.surfaceId === summary.surfaceId &&
+      health.integrityStatus === summary.integrityStatus &&
+      health.canonicalizationExecutionStatus ===
+        summary.canonicalizationExecutionStatus &&
+      health.policyRelevantGapStatus === summary.policyRelevantGapStatus &&
+      isDeepStrictEqual(experimentIds, summary.experimentIds) &&
+      isDeepStrictEqual(
+        health.degradedExperimentIds,
+        summary.degradedExperimentIds,
+      ) &&
+      isDeepStrictEqual(
+        health.policyRelevantGapExperimentIds,
+        summary.policyRelevantGapExperimentIds,
+      ) &&
+      gapRecordCount === summary.policyRelevantGapRecordCount &&
+      isDeepStrictEqual(gapOutcomeCounts, summary.policyRelevantGapOutcomeCounts) &&
+      stringTruncationLineCount === summary.stringTruncationLineCount &&
+      isDeepStrictEqual(
+        experimentIds,
+        report.experiments.map((experiment) => experiment.experimentId),
+      ) &&
+      health.experiments.every(
+        (experiment, index) =>
+          experiment.canonicalization.status === "completed" &&
+          experiment.canonicalization.emittedEventCount ===
+            report.experiments[index]?.eventCount,
+      ),
+    `${label} observation-health summary or experiment counts diverge`,
+  );
+  return health;
 }
 
 function claimReferenceKeys(claims) {
@@ -437,6 +518,12 @@ await assertSemanticEvidence(
   deceptiveRunManifest,
   "deceptive control",
 );
+await assertObservationHealth(
+  deceptive.runDirectory,
+  deceptiveReport,
+  deceptiveRunManifest,
+  "deceptive control",
+);
 assertBehaviorComparisonCompleteness(deceptiveReport, "deceptive control");
 await readAllFilesystemStateEvidence(deceptive.runDirectory, deceptiveReport);
 invariant(
@@ -611,6 +698,12 @@ await assertSemanticEvidence(
   filesystemRunManifest,
   "Filesystem",
 );
+await assertObservationHealth(
+  filesystem.runDirectory,
+  filesystemReport,
+  filesystemRunManifest,
+  "Filesystem",
+);
 assertBehaviorComparisonCompleteness(filesystemReport, "Filesystem case study");
 const filesystemStateEvidence = await readAllFilesystemStateEvidence(
   filesystem.runDirectory,
@@ -670,16 +763,36 @@ invariant(
 );
 
 const filesystemEvents = await readJsonl(join(filesystem.runDirectory, "events.jsonl"));
-const expectedEvents = filesystemEvents.filter(
+const expectedReadEvents = filesystemEvents.filter(
   (event) =>
-    (event.experimentId === "read-synthetic-report" &&
-      event.effect.kind === "file.read" &&
-      event.effect.path === "/sandbox/workspace/report.txt") ||
-    (event.experimentId === "write-synthetic-output" &&
-      event.effect.kind === "file.write" &&
-      event.effect.path === "/sandbox/workspace/forge-output.txt"),
+    event.experimentId === "read-synthetic-report" &&
+    event.effect.kind === "file.read" &&
+    event.effect.operation !== "directory_entries" &&
+    event.effect.path === "/sandbox/workspace/report.txt",
 );
-invariant(expectedEvents.length === 2, "Filesystem positive read/write evidence is incomplete");
+const expectedWriteEvents = filesystemEvents.filter(
+  (event) =>
+    event.experimentId === "write-synthetic-output" &&
+    event.effect.kind === "file.write" &&
+    event.effect.path === "/sandbox/workspace/forge-output.txt",
+);
+invariant(
+  expectedReadEvents.length === 1 &&
+    expectedWriteEvents.length === 2 &&
+    expectedWriteEvents.some(
+      (event) =>
+        event.effect.operation === "truncate" &&
+        event.effect.bytes === undefined,
+    ) &&
+    expectedWriteEvents.some(
+      (event) =>
+        event.effect.operation === undefined &&
+        Number.isInteger(event.effect.bytes) &&
+        event.effect.bytes > 0,
+    ),
+  "Filesystem positive read/truncate/content-write evidence is incomplete",
+);
+const expectedEvents = [...expectedReadEvents, ...expectedWriteEvents];
 const reportPositiveExamples = filesystemReport.runtimeObservations.flatMap(
   (observation) => observation.expectedScopeMatches?.examples ?? [],
 );
@@ -704,8 +817,16 @@ invariant(
     ]) &&
     JSON.stringify(writeObservation?.effectCounts) ===
       JSON.stringify([
-        { effectKind: "file.open", count: 1 },
-        { effectKind: "file.write", count: 1 },
+        { effectKind: "file.write", count: 2 },
+      ]) &&
+    JSON.stringify(readObservation?.fileOperationCounts) ===
+      JSON.stringify([
+        { effectKind: "file.read", operation: "content", count: 1 },
+      ]) &&
+    JSON.stringify(writeObservation?.fileOperationCounts) ===
+      JSON.stringify([
+        { effectKind: "file.write", operation: "content", count: 1 },
+        { effectKind: "file.write", operation: "truncate", count: 1 },
       ]),
   "Filesystem report effect counts are not scoped to the active tool phases",
 );

@@ -12,6 +12,7 @@ import {
 import type { EvidenceStore } from "./evidence-store.js";
 import {
   destinationMatchesExpectedScope,
+  isRoutineNameServiceConnection,
   pathMatchesExpectedScope,
 } from "./expected-scope.js";
 
@@ -122,6 +123,7 @@ export async function evaluateRuntimeRules(options: {
     for (const event of initializationEvents) {
       if (
         event.effect.kind !== "file.read" ||
+        event.effect.operation === "directory_entries" ||
         !initializationSensitivePaths.has(event.effect.path)
       ) {
         continue;
@@ -190,6 +192,12 @@ export async function evaluateRuntimeRules(options: {
         continue;
       }
       const effect = event.effect;
+      if (
+        effect.kind === "file.read" &&
+        effect.operation === "directory_entries"
+      ) {
+        continue;
+      }
       if (sensitiveInitializationEventIds.has(event.eventId)) {
         continue;
       }
@@ -293,7 +301,7 @@ export async function evaluateRuntimeRules(options: {
     const unexpectedConnections = initializationEvents.filter(
       (event) =>
         event.effect.kind === "network.connect_attempt" &&
-        event.effect.protocol !== "unix" &&
+        !isRoutineNameServiceConnection(event.effect) &&
         !destinationMatchesExpectedScope(
           event.effect.address,
           event.effect.port,
@@ -350,6 +358,12 @@ export async function evaluateRuntimeRules(options: {
         event.effect.kind !== "file.read" &&
         event.effect.kind !== "file.write" &&
         event.effect.kind !== "file.delete"
+      ) {
+        continue;
+      }
+      if (
+        event.effect.kind === "file.read" &&
+        event.effect.operation === "directory_entries"
       ) {
         continue;
       }
@@ -447,6 +461,7 @@ export async function evaluateRuntimeRules(options: {
     const unexpectedConnections = activeEvents.filter(
       (event) =>
         event.effect.kind === "network.connect_attempt" &&
+        !isRoutineNameServiceConnection(event.effect) &&
         !destinationMatchesExpectedScope(
           event.effect.address,
           event.effect.port,
@@ -502,8 +517,9 @@ export async function evaluateRuntimeRules(options: {
           return syntheticRoots.some((root) => pathIsInside(path, root));
         }
         case "network.connect_attempt":
+          return !isRoutineNameServiceConnection(event.effect);
         case "network.listen":
-          return event.effect.protocol !== "unix";
+          return true;
         case "process.exec":
           return event.effect.outcome.status === "succeeded";
         default:

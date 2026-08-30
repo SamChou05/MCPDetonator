@@ -1,0 +1,48 @@
+schema: forge.target/v1
+
+target:
+  id: corpus-official-sequential-thinking
+  source:
+    type: npm
+    package: "@modelcontextprotocol/server-sequential-thinking"
+    version: "2026.7.4"
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/node_modules/@modelcontextprotocol/server-sequential-thinking/dist/index.js
+    env:
+      DISABLE_THOUGHT_LOGGING: "true"
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 15000
+    installTimeoutMs: 120000
+    cooldownMs: 500
+    memoryMb: 256
+    cpus: 1
+    pids: 64
+
+experiments:
+  initialization:
+    expected:
+      fileReads: []
+      fileWrites: []
+      networkConnections: []
+      childExecutables: []
+  tools:
+    - id: one-synthetic-thought
+      tool: sequentialthinking
+      input:
+        thought: Validate one bounded synthetic reasoning step.
+        nextThoughtNeeded: false
+        thoughtNumber: 1
+        totalThoughts: 1
+      expected:
+        fileReads: []
+        fileWrites: []
+        networkConnections: []
+        childExecutables: []
+  workflows: []

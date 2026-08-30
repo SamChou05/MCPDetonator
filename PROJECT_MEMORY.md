@@ -101,9 +101,9 @@ Handoffs reconciled:
   temporal overlap rather than causal proof.
 - Initialization policy: boolean configurations remain compatible; object form
   supplies expected scope. Deterministic initialization findings cover
-  synthetic file reads/writes, successful child execs, non-Unix connections,
-  credentials, and the full baseline pre-tool observation window without
-  duplicating credential findings.
+  synthetic file reads/writes, successful child execs, network connections
+  other than the two routine NSCD endpoints, credentials, and the full baseline
+  pre-tool observation window without duplicating credential findings.
 - Root integration: initialization observations aggregate all staged phases and
   the baseline observation window, expose a per-phase breakdown, persist the
   optional expected scope in the report, distinguish failed attempts from
@@ -182,8 +182,8 @@ Handoffs reconciled:
   advertised claims, package-source signals, selected runtime events, and
   operator scope. Runtime IDs are partitioned inside/outside/unclassified, and
   tool-phase temporal-overlap IDs preserve correlation uncertainty. Failed
-  attempts are retained; root execs, Unix sockets, and non-profile filesystem
-  activity remain excluded by documented rules.
+  attempts are retained; root execs, routine NSCD socket attempts, and
+  non-profile filesystem activity remain excluded by documented rules.
 - Root integration: report contracts enforce row/partition invariants, preserve
   interface titles/annotations, disclose the source interface and cross-run
   catalog drift/duplicate names, link claim/state artifacts, summarize bounded
@@ -1176,3 +1176,287 @@ Completed: 2026-08-30
   out of scope and must remain unstaged and uncommitted.
 
 Suggested commit subject: `feat: add analyze-and-publish convenience flow`.
+
+## Active deterministic trace-coverage wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `codex/trace-coverage-v1` at `7d904b0`
+  (`docs: record publisher milestone`).
+- Starting worktree: clean. This isolated worktree was created because the
+  primary `main` worktree contains an active dashboard wave and the separate
+  `/private/tmp/forge-v2-outcome.oS4qJ8` worktree contains active V2 controlled
+  result-content work. Neither concurrent scope is owned by this wave.
+- Goal: make the selected `strace` observation surface coverage-accounted,
+  turn low-ambiguity high-value syscall families into canonical evidence, and
+  represent harder policy-relevant operations as explicit coverage gaps rather
+  than silently clean non-observation.
+- Root owns shared contracts, analysis/report integration, this ledger, Git
+  coordination, and final verification. Parallel editing scopes are disjoint:
+  parser health owns `src/observe/strace-parser.ts`, the trace entrypoint, and
+  a new focused parser-health test; syscall normalization owns
+  `src/observe/strace-normalizer.ts` and its focused existing test. A separate
+  reviewer is read-only.
+- No agent may edit V2 result-content files, dashboard files, publisher files,
+  or another agent's active scope. Root will not stage or commit until every
+  editing agent has completed.
+- Scope amendment after read-only integration review: root may make the minimal
+  `src/publish/bundle.ts` evidence-reference update (plus a focused test) needed
+  to require the new report-bound health artifact in completed publication
+  bundles. No parallel task owns those paths; broader publisher behavior remains
+  out of scope.
+- Final read-only audit wave baseline: commit remains `7d904b0`; the dirty
+  worktree consists only of the trace-coverage implementation and refreshed
+  verified sample reports listed by `git status --short` on 2026-08-30. Audit
+  agents may inspect but must not edit, stage, or commit any path.
+- Scope amendments owned by root: bind health into the report, publication
+  bundle, real sample refresh, E2E/publisher verifiers, directory-enumeration
+  policy consumers, install comparison, compact file-operation counts, and the
+  public README/limitations documents. These are direct consumers of the new
+  evidence contract and no active parallel task owned the paths.
+
+Completed behavior and handoffs:
+
+- The parser now exactly partitions every nonempty line emitted by the selected
+  filter into parsed syscall/signal-termination, recognized exit/signal-delivery
+  control, unfinished, resumed, or malformed counts. It separately records
+  string abbreviation, bounded raw references, and per-file terminal markers.
+- The selected filter and normalizer now cover high-value descriptor, directory,
+  xattr, file-transfer, legacy/uring I/O, mapping, endpoint, mutation, and
+  escape/interference families. Canonical additions include `execveat`,
+  directory enumeration, truncation, and correlated bind/listen evidence.
+  Ambiguous return text no longer becomes false successful canonical evidence.
+- Descriptor correlation distinguishes shared/copied `CLONE_FILES` tables and
+  handles close, close-range/unshare/CLOEXEC, dup, fcntl duplication, and target
+  reuse conservatively. The final audit added successful unresolved metadata,
+  conditional O_CREAT+O_TRUNC creation, failed relevant mmap, and ordinary
+  TCP/UDP descriptor I/O to explicit gap accounting.
+- `observation-health.json` is schema validated and report/manifest/hash bound.
+  It records the complete captured-syscall histogram, exact structural health,
+  canonicalization execution/event counts, and bounded selected gap examples
+  with exact category/syscall/outcome totals. Contract refinements reject
+  aggregate/example, trace-detail, cross-experiment, and report/artifact
+  contradictions.
+- Directory enumeration remains a labeled canonical event plus an
+  alternate-access gap, but deterministic read/scope/comparison/install
+  consumers do not treat it as file-content proof. Additive
+  `fileOperationCounts` partition compact read/write totals into content,
+  directory enumeration, and truncation.
+- Failed analyses retain the failed manifest and partial artifacts, best-effort
+  write incomplete health, and do not synthesize a completed report. Current
+  successful analyzes always include health; report V1 keeps it optional for
+  legacy compatibility and publication validates it whenever present.
+- Sample refresh now uses bounded FD-pinned regular-file reads, no-follow and
+  containment/state checks, exact manifest rows, and health/report/event-count
+  cross-binding. Its residual intermediate-component race limitation is
+  documented by the handoff because Node lacks portable atomic openat traversal.
+- Two independent final read-only audits reported no remaining high-severity or
+  material correctness issue after the audit findings above were fixed.
+
+Verification for this milestone:
+
+- `npm run typecheck`: passed.
+- `npm test`: passed, 67 files / 558 tests.
+- `npm run build`: passed.
+- `npm run verify:e2e`: passed against the deceptive fixture and official
+  filesystem MCP.
+  - Observer image:
+    `sha256:c491d431445d2e28b03a69e81c0c46e5c7d4e49a893183694a9f52d8a35ef767`
+  - Deceptive run: `runs/run-20260830214347-1b3001cf`
+  - Filesystem run: `runs/run-20260830214423-2072a19a`
+- Checked-in sample reports were refreshed from those exact runs. The official
+  filesystem run has complete selected-surface structural integrity, completed
+  canonicalization, and 57,328 selected gap records; these are coverage records,
+  not findings.
+- `npm run verify:publisher`: passed with 19 artifacts, 5 findings, idempotent
+  retry, and rejection of tampered evidence before publication.
+- Focused parser/normalizer/health/publication/sample suites, Linux filter
+  acceptance, `git diff --check`, shell syntax, and JavaScript syntax checks
+  passed during the wave.
+
+Post-rebase integration verification:
+
+- Rebased the milestone onto `e2f1729` (`feat: add bounded dashboard run
+  history`) and preserved both publisher/dashboard behavior and trace-health
+  bundle validation.
+- Synchronized the reviewed dashboard policy and exact dashboard fixture tests
+  with the refreshed sample report hashes and identities. The checked-in
+  samples remain the hash-bound reports from the trace wave above; the rebase
+  did not change the trace producer or report semantics.
+- `npm run typecheck`, `npm run build`, and `npm run verify:publisher` passed.
+  Publisher verification retained 19 artifacts, 5 findings, idempotent
+  publish-driven dashboard refresh, and pre-publication tamper rejection.
+- `npm test` passed, 71 files / 604 tests.
+- A fresh `npm run verify:e2e` passed on the integrated branch:
+  - Observer image:
+    `sha256:7ad6c08789925fbe5c964f7522d49c419f1aff81905c03653ac086c4946bcce3`
+  - Deceptive run: `runs/run-20260830214903-6f684acf`
+  - Filesystem run: `runs/run-20260830214939-db0a53ba`
+
+Residual scope is explicit: selected-filter accounting is not all-syscall
+capture; the gap taxonomy is not exhaustive; raw trace ingestion is batch based
+without its own aggregate byte/line quota; descriptor correlation is best
+effort across uncommon transfer/exec/unshare cases; thread-local `exit` is not
+guessed into a process exit; and legacy report V1 can omit health.
+
+Status: complete. The implementation commit is the commit containing this
+ledger entry (`feat: expand and account for deterministic trace coverage`).
+
+## Active evidence-driven trace-corpus wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `codex/trace-corpus-v1` at `c460abd`
+  (`feat: expand and account for deterministic trace coverage`).
+- Starting isolated worktree: clean. The primary `main` worktree remains at
+  `e2f1729` with unrelated active `.gitignore`, `ImplementationPlan.md`,
+  `PROJECT_MEMORY.md`, generated `agent-runs/`, and unseen-MCP holdout changes;
+  none is owned by this wave.
+- Goal: run a small representative corpus of exact-version Node/STDIO MCPs in
+  the existing network-blocked Linux sandbox, aggregate their bound
+  `observation-health.json` records, rank selected-surface gaps by frequency,
+  policy relevance, and semantic ambiguity, then implement and measure only
+  the highest-value timely canonicalization improvements.
+- Safety and claim boundary: package metadata and runtime evidence are
+  untrusted; experiments use synthetic inputs and directories, no host
+  credentials, no configured live MCPs, and no universal coverage claim.
+  Corpus results are observations for the exact packages/tools/inputs only.
+- Root owns this ledger, Git coordination, target admission, execution,
+  integration, normalizer/contracts/report decisions, documentation, and final
+  verification. Parallel scopes are disjoint:
+  - corpus-design agent is read-only and recommends bounded exact targets and
+    controlled calls from repository/package evidence;
+  - aggregation agent owns only
+    `scripts/summarize-trace-coverage.mjs` and
+    `test/unit/summarize-trace-coverage.test.ts`;
+  - normalizer-review agent is read-only and ranks current gap families and
+    identifies low-ambiguity additive candidates.
+- Root will not stage or commit until every editing agent has completed. Core
+  observation changes require typecheck, full tests, build, and Docker E2E;
+  any new corpus harness also receives focused deterministic validation.
+
+Scope amendments and completed handoffs:
+
+- The corpus-design agent's follow-up editing scope was limited to
+  `case-studies/trace-corpus/README.md` and
+  `test/unit/trace-corpus-configs.test.ts`. It documented and regression-tested
+  the four exact pins, synthetic calls, network/resource bounds, and direct
+  `runs/run-*` workflow.
+- The normalizer reviewer found that failed `io_uring_setup` records were
+  overstated as opaque I/O. Its follow-up editing scope was limited to the
+  normalizer, health contract, and focused tests. Definitive failures now use
+  `failed_capability_probe`; succeeded/unknown setup and all other ring/AIO
+  control or submission records remain `opaque_io`.
+- The aggregation agent added a deterministic bounded summarizer. It FD-pins
+  and no-follow reads `run.json` and `observation-health.json`, validates both
+  current contracts, requires a terminal matching run and exactly one JSON
+  health artifact, verifies the health SHA-256, rejects duplicate identities,
+  and emits stable run/experiment plus install/initialization/tool cohort
+  partitions.
+- Root added the four configs, executed the corpus, reviewed raw/event/report
+  evidence, and fixed routine outbound NSCD socket connection attempts being
+  misclassified as unexpected network destinations. The exemption is limited
+  to `/run/nscd/socket` and `/var/run/nscd/socket` connections across
+  initialization, tool, cooldown, and comparison paths. Listeners and other
+  Unix socket paths remain reportable and can be explicitly allowed by address;
+  adversarial listen, Docker-socket, and TCP regression tests preserve that
+  boundary.
+- The generated comparison limitations and both checked-in sample reports now
+  describe the same narrow NSCD-connection exemption. Their two reviewed
+  dashboard-policy digests and digest regression constants were refreshed; no
+  dashboard behavior or layout changed.
+
+Final corpus evidence:
+
+- Memory: `run-20260830220441-a105ae93`.
+- Sequential Thinking: `run-20260830220519-c6aa0f41`.
+- Everything: `run-20260830221048-ab50a46c`. Its controlled
+  `127.0.0.1:54321` TCP attempt emitted a canonical failed
+  `network.connect_attempt` and no selected gap. Port 9 was rejected by Fetch
+  before a syscall in an exploratory run and was replaced before the final
+  corpus.
+- Community Shell post-fix: `run-20260830223403-5dedeb50`. The exploratory run
+  produced four false network findings for `/var/run/nscd/socket`; the final
+  run retained those Unix events and produced zero findings.
+- All 17 experiments had complete selected-trace integrity and completed
+  canonicalization. The four final reports contain zero findings for their
+  configured expected scopes.
+- The manifest-bound aggregate contains 581,136 parsed selected syscall
+  records and 204,984 selected gap records. Installation accounts for 204,966
+  gaps (99.991%); baseline initialization has 6 and tools have 12. `statx`,
+  `mkdirat`, and mutating `openat` account for 99.43% of install gaps, while
+  scripts-enabled/disabled counts differ by only 2-8 records per target.
+- The eighteen non-install gaps are eight metadata probes, four conservative
+  `openat` creation/truncation gaps already backed by canonical file evidence,
+  and six definitively failed `io_uring_setup` capability probes that created
+  no ring. No repeated high-consequence gap-only runtime operation was observed.
+  Therefore this wave does not mislabel metadata probes as content reads or
+  bulk-normalize npm mechanics to improve a percentage.
+
+Final verification:
+
+- Focused trace/policy integration suite: 8 files / 58 tests passed.
+- `npm run typecheck`: passed.
+- `npm test`: passed, 73 files / 620 tests.
+- `npm run build`: passed.
+- `npm run verify:e2e`: passed.
+  - Observer image:
+    `sha256:5a9fcc22e53136a5348d12b7ffd87acbe09768e24b74d382da3c12d4ceae829f`
+  - Deceptive run: `runs/run-20260830223516-c7029a9e`
+  - Official Filesystem run: `runs/run-20260830223550-aefd9e2f`
+- The four-run manifest-bound summarizer completed with exact cohort
+  partitions; `node --check scripts/summarize-trace-coverage.mjs` and
+  `git diff --check` passed.
+- A final independent read-only audit found no remaining correctness or
+  security issue after the NSCD exemption was narrowed to outbound connections
+  and adversarial listener coverage was added.
+
+Residual scope remains explicit: this is a four-package Node/STDIO calibration
+corpus over the selected Linux trace filter, not all-syscall or universal MCP
+coverage. Compatible transitive dependencies may change across acquisitions;
+raw runs are gitignored; and V1 manifest artifact rows do not carry a byte-size
+field, so the summarizer enforces local per-file and aggregate byte ceilings but
+cannot compare them with a manifest-declared size. The corpus forbids workflows;
+the summarizer classifies all non-install/non-baseline experiment IDs as tools
+and is not a general workflow-kind classifier. The next evidence priority is
+separating gap-only behavior from lossy canonical projections, followed by
+multi-effect file transfers such as `sendfile`, `splice`, and `copy_file_range`
+when a corpus actually exercises them.
+
+Status: complete. The implementation commit is the commit containing this
+ledger entry (`feat: calibrate trace coverage with MCP corpus`).
+
+## Main integration of trace-coverage milestones
+
+Completed: 2026-08-30
+
+- Merged `codex/trace-corpus-v1` into `main` at `5940330`, bringing both
+  `c460abd` (`feat: expand and account for deterministic trace coverage`) and
+  `e8c6169` (`feat: calibrate trace coverage with MCP corpus`) into mainline.
+- The only content conflict was this ledger's independently appended history;
+  both the analyze-and-publish and trace-coverage records were retained.
+  `Prototype.md` merged cleanly and preserves both the current publication UX
+  and the new observation-health semantics.
+- Pre-existing modified `.gitignore` and `ImplementationPlan.md`, generated
+  `agent-runs/`, and the untracked unseen-MCP holdout directory/test remained
+  unstaged and uncommitted.
+- Integrated verification passed:
+  - `npm run typecheck`;
+  - `npm test`, 76 files / 634 tests, including the preserved untracked holdout
+    test;
+  - `npm run build`;
+  - `npm run verify:publisher`, with 19 artifacts, 5 findings, idempotent retry,
+    publish-driven dashboard refresh, and pre-publication tamper rejection;
+  - final isolated `npm run verify:e2e`, with observer image
+    `sha256:5364fb66b4b313efc22b6017af9edb3bf088104896d31d4361ccabe36a62e0c2`,
+    deceptive run `runs/run-20260830224521-26bac001`, and Filesystem run
+    `runs/run-20260830224559-75d3b086`.
+- An earlier integration E2E attempt retained the expected canonical Filesystem
+  read, but its timestamp landed 10 ms after the tool phase and inside cooldown;
+  the compact tool-phase summary therefore omitted it and the verifier failed.
+  The isolated rerun passed. This exposes an existing phase-boundary timing
+  sensitivity worth addressing separately; it does not change the retained
+  event or the trace-coverage corpus result.
+
+Status: complete. The integration commit is the merge commit containing this
+ledger entry.

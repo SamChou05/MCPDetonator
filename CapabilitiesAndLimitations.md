@@ -168,7 +168,8 @@ test settings
    Forge uses Linux `strace`, which acts like an audit log of requests made to
    the operating system. It follows the server and the child processes it
    starts, adds timestamps and file names, and writes a separate raw log for
-   each process. It watches selected process, file, network, read, and write
+   each process. It watches selected process, file, network, read, write,
+   directory-enumeration, file-transfer, memory-mapping, and interference-related
    operations. The MCP runs as a low-permission user with no extra system powers
    and cannot change the protected trace logs.
 
@@ -192,15 +193,37 @@ test settings
 
    - A process started, ran or attempted to run a program, or exited normally
      or because of a recorded terminal signal.
-   - A process opened, read, wrote, or deleted a file, including supported
-     failed attempts whose target path is known.
-   - A process tried to connect to or listen on a network address.
+   - A process opened, read, enumerated, wrote, or deleted a filesystem path,
+     including supported failed attempts whose target path is known.
+   - A process tried to connect to or establish a listening endpoint.
 
    Forge also changes temporary host file paths back into the stable paths seen
    inside the test container. Every readable action points back to the exact raw
-   trace line it came from. Lines Forge does not understand are skipped, but the
-   original trace files remain available for inspection. This conversion loses
-   some detail, which is why Forge keeps both forms.
+   trace line it came from. `observation-health.json` accounts for every nonempty
+   selected-trace line as a parsed record, recognized control line,
+   unfinished/resumed call, or malformed line; it also checks per-process
+   terminal markers. Routine `strace` string abbreviation is counted separately
+   because it loses argument detail without making the line structurally
+   unparsable. A complete captured-syscall histogram makes every parsed syscall
+   family auditable even when it produces neither a canonical action nor a
+   selected policy-gap classification.
+
+   Parsing and readable-action conversion are deliberately different claims.
+   Not every parsed syscall becomes a canonical action. Forge therefore also
+   records bounded examples and exact counts for a selected taxonomy of
+   policy-relevant operations it cannot yet represent faithfully, including
+   filesystem mutations, alternate file access, data transfer, opaque I/O,
+   definitively failed capability probes, endpoint-establishment semantics,
+   escape/interference attempts, and
+   unresolved relevant paths, truncated relied-on arguments, or indeterminate
+   syscall outcomes. These are coverage gaps, not automatic findings.
+   Directory enumeration is retained as an explicitly labeled read-like event
+   plus a gap, but it is not treated as proof that file contents were read in
+   expected-scope matching, deterministic read findings, behavior comparison,
+   or install `fileRead` deltas. The original trace files remain the source
+   evidence. Compact runtime summaries retain their existing effect totals and
+   add `fileOperationCounts`, which separates content reads, directory
+   enumeration, content writes, and truncation without changing older fields.
 
 6. **Connect actions to the part of the test that was running.** Forge records
    the start and end time of installation, the MCP handshake, tool discovery,
@@ -224,15 +247,20 @@ test settings
    - Reading or attempting to read a fake credential during MCP startup or its
      pre-tool observation window.
    - Exceeding an optional operator-authored initialization scope for synthetic
-     files, child programs, or non-local network destinations.
+     files, child programs, or network destinations, including non-routine Unix
+     socket paths.
    - Reading, writing, or deleting a file outside the allowed list for a tool;
      deletions use the configured write scope.
    - Starting a program outside the allowed list.
-   - Trying an unexpected network connection.
+   - Trying an unexpected network connection, including a Unix domain socket
+     not listed in the expected scope. Outbound connection attempts to the
+     routine NSCD endpoints `/run/nscd/socket` and `/var/run/nscd/socket` are
+     retained as canonical evidence but exempted from this policy check;
+     listeners on those paths remain network evidence.
    - A process created by a tool continuing to act after the tool returned.
 
    Forge also compares four deliberately separate facts for file access, child
-   programs, and non-local network use: whether the tool interface made a
+   programs, and network use: whether the tool interface made a
    bounded positive claim, whether package-authored source contained a lexical
    signal, whether the selected runtime phases produced matching events, and
    whether those exact events fell inside the operator-authored scope. Tool
@@ -263,7 +291,7 @@ The main code for these steps is in
 [`src/behavior-comparison.ts`](src/behavior-comparison.ts),
 [`src/rules.ts`](src/rules.ts), and [`src/report.ts`](src/report.ts).
 
-### What the core test produces
+### What a completed core test produces
 
 - A short completion message and the main
   `runs/<run-id>/report.json` report.
@@ -274,10 +302,18 @@ The main code for these steps is in
 - MCP tool information and message logs.
 - Bounded advertised-claim evidence and standard MCP annotation evidence.
 - Raw `strace` logs and the smaller list of readable actions created from them.
+- `observation-health.json`, containing exact parser-integrity accounting and
+  bounded policy-relevant canonicalization-gap evidence for each experiment.
 - Before/after synthetic-profile snapshots and durable filesystem deltas for
   every initialization or tool experiment.
 - Test-step timings, action-to-step links, rule results, server error output, and
   a claimed/source/observed/configured-scope comparison.
+
+If analysis fails before those layers can be reconciled, Forge deliberately
+does not synthesize a normal `report.json`. It preserves a failed manifest and
+the partial raw artifacts instead, and now best-effort writes
+`observation-health.json` with incomplete canonicalization so operators can
+distinguish retained trace evidence from a completed assessment.
 
 ### What the core test cannot tell you
 
@@ -294,6 +330,26 @@ The main code for these steps is in
 - The operating-system recorder watches a selected set of operations. It does
   not capture every possible effect or the readable contents of encrypted
   network traffic.
+- Trace integrity does not mean semantic completeness. The policy-gap taxonomy
+  is intentionally selected and cannot prove that every parsed but
+  non-canonical syscall is irrelevant.
+- Bind/listen descriptor correlation models common clone/fork, duplication,
+  close, and close-range behavior, but remains best effort across equal trace
+  timestamps, exec-time descriptor-table separation, standalone
+  `unshare(CLONE_FILES)`, and uncommon descriptor-transfer mechanisms.
+- Thread-local `exit` syscalls and normal terminal control lines are
+  structurally accounted for but do not always become canonical process-exit
+  events; Forge avoids guessing that one thread exiting ended the process.
+- Trace parsing and classification currently batch-read the selected per-process
+  logs. Runtime time/resource limits constrain the target, but Forge does not
+  yet enforce a separate aggregate raw-trace byte/line quota; bounded streaming
+  ingestion is required before treating this as hostile multi-tenant
+  infrastructure.
+- Observation health is optional in the V1 report schema for compatibility with
+  previously retained reports. Current `forge analyze` runs always emit it, and
+  publication cross-validates it when present; a legacy V1 bundle without the
+  field remains accepted until a producer capability marker or report V2 can
+  require it without reinterpreting old artifacts.
 - Supported failed syscall attempts are evidence of attempted behavior, not
   proof that the requested access or execution succeeded.
 - Filesystem snapshots are bounded and omit some metadata. Large same-size

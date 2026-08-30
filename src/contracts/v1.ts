@@ -256,10 +256,45 @@ const fileEffectSchema = z
   .object({
     kind: z.enum(["file.open", "file.read", "file.write", "file.delete"]),
     path: z.string().startsWith("/"),
+    operation: z.enum(["content", "directory_entries", "truncate"]).optional(),
     bytes: z.number().int().nonnegative().optional(),
     outcome: outcomeSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((effect, context) => {
+    if (
+      effect.operation !== undefined &&
+      !(
+        (effect.kind === "file.read" &&
+          ["content", "directory_entries"].includes(effect.operation)) ||
+        (effect.kind === "file.write" && effect.operation === "truncate")
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "file operation detail does not match the file effect kind",
+        path: ["operation"],
+      });
+    }
+    if (
+      effect.operation === "directory_entries" &&
+      effect.bytes !== undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "directory-entry reads do not claim file-content byte counts",
+        path: ["bytes"],
+      });
+    }
+    if (effect.operation === "truncate" && effect.bytes !== undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "truncate effects do not claim content-write byte counts",
+        path: ["bytes"],
+      });
+    }
+  });
 
 const networkEffectSchema = z
   .object({
@@ -360,6 +395,604 @@ export const findingV1Schema = z
     limitations: z.array(z.string().min(1)),
   })
   .strict();
+
+const traceHealthExampleLimit = 5;
+const traceHealthFileDetailLimit = 64;
+const policyRelevantTraceGapExampleLimit = 25;
+
+const traceTerminalMarkerV1Schema = z.discriminatedUnion("status", [
+  z
+    .object({
+      status: z.literal("present"),
+      kind: z.enum(["exit", "signal-termination"]),
+      rawRef: z.string().min(1),
+    })
+    .strict(),
+  z.object({ status: z.literal("missing") }).strict(),
+]);
+
+const policyRelevantTraceGapCategorySchema = z.enum([
+  "filesystem_mutation",
+  "data_transfer",
+  "escape_or_interference",
+  "opaque_io",
+  "failed_capability_probe",
+  "network_endpoint",
+  "alternate_file_access",
+  "indeterminate_outcome",
+  "truncated_arguments",
+  "unresolved_path",
+]);
+
+const experimentObservationHealthV1Schema = z
+  .object({
+    experimentId: identifierSchema,
+    traceDirectoryPresent: z.boolean(),
+    traceFileCount: z.number().int().nonnegative(),
+    nonemptyLineCount: z.number().int().nonnegative(),
+    parsedRecordCount: z.number().int().nonnegative(),
+    parsedSyscallRecordCount: z.number().int().nonnegative(),
+    parsedSignalTerminationRecordCount: z.number().int().nonnegative(),
+    capturedSyscallCounts: z.array(
+      z
+        .object({
+          syscall: identifierSchema,
+          recordCount: z.number().int().positive(),
+        })
+        .strict(),
+    ),
+    recognizedControlLineCount: z.number().int().nonnegative(),
+    recognizedExitControlLineCount: z.number().int().nonnegative(),
+    recognizedSignalDeliveryControlLineCount: z.number().int().nonnegative(),
+    unfinishedLineCount: z.number().int().nonnegative(),
+    resumedLineCount: z.number().int().nonnegative(),
+    malformedLineCount: z.number().int().nonnegative(),
+    stringTruncationIndicatorCount: z.number().int().nonnegative(),
+    stringTruncationLineCount: z.number().int().nonnegative(),
+    unfinishedRawRefs: z
+      .array(z.string().min(1))
+      .max(traceHealthExampleLimit),
+    resumedRawRefs: z.array(z.string().min(1)).max(traceHealthExampleLimit),
+    malformedRawRefs: z.array(z.string().min(1)).max(traceHealthExampleLimit),
+    stringTruncationRawRefs: z
+      .array(z.string().min(1))
+      .max(traceHealthExampleLimit),
+    terminalMarkerPresentTraceFileCount: z.number().int().nonnegative(),
+    missingTerminalMarkerTraceFileCount: z.number().int().nonnegative(),
+    missingTerminalMarkerTraceFileRawRefs: z
+      .array(z.string().min(1))
+      .max(traceHealthExampleLimit),
+    traceFileDetails: z
+      .array(
+        z
+          .object({
+            rawRef: z.string().min(1),
+            pid: z.number().int().positive(),
+            nonemptyLineCount: z.number().int().nonnegative(),
+            terminalMarker: traceTerminalMarkerV1Schema,
+          })
+          .strict(),
+      )
+      .max(traceHealthFileDetailLimit),
+    traceFileDetailOmittedCount: z.number().int().nonnegative(),
+    integrityComplete: z.boolean(),
+    canonicalization: z.discriminatedUnion("status", [
+      z
+        .object({
+          status: z.literal("completed"),
+          emittedEventCount: z.number().int().nonnegative(),
+        })
+        .strict(),
+      z.object({ status: z.literal("not_completed") }).strict(),
+    ]),
+    policyRelevantGaps: z
+      .object({
+        recordCount: z.number().int().nonnegative(),
+        categoryCounts: z.array(
+          z
+            .object({
+              category: policyRelevantTraceGapCategorySchema,
+              recordCount: z.number().int().positive(),
+            })
+            .strict(),
+        ),
+        syscallCounts: z.array(
+          z
+            .object({
+              syscall: identifierSchema,
+              recordCount: z.number().int().positive(),
+            })
+            .strict(),
+        ),
+        outcomeCounts: z.array(
+          z
+            .object({
+              outcome: z.enum(["succeeded", "failed", "unknown"]),
+              recordCount: z.number().int().positive(),
+            })
+            .strict(),
+        ),
+        examples: z
+          .array(
+            z
+              .object({
+                category: policyRelevantTraceGapCategorySchema,
+                syscall: identifierSchema,
+                rawRef: z.string().min(1),
+                outcome: z.enum(["succeeded", "failed", "unknown"]),
+              })
+              .strict(),
+          )
+          .max(policyRelevantTraceGapExampleLimit),
+        truncatedExampleCount: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((health, context) => {
+    if (
+      health.parsedRecordCount !==
+      health.parsedSyscallRecordCount +
+        health.parsedSignalTerminationRecordCount
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "parsed record counters must form an exact partition",
+        path: ["parsedRecordCount"],
+      });
+    }
+    if (
+      health.capturedSyscallCounts.reduce(
+        (sum, row) => sum + row.recordCount,
+        0,
+      ) !== health.parsedSyscallRecordCount ||
+      new Set(health.capturedSyscallCounts.map((row) => row.syscall)).size !==
+        health.capturedSyscallCounts.length ||
+      health.capturedSyscallCounts.some(
+        (row, index) =>
+          index > 0 &&
+          (health.capturedSyscallCounts[index - 1]?.syscall ?? "") >=
+            row.syscall,
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "captured syscall counts must be a sorted, unique, exact partition",
+        path: ["capturedSyscallCounts"],
+      });
+    }
+    if (
+      health.recognizedControlLineCount !==
+      health.recognizedExitControlLineCount +
+        health.recognizedSignalDeliveryControlLineCount
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "recognized control-line counters must form an exact partition",
+        path: ["recognizedControlLineCount"],
+      });
+    }
+    if (
+      health.nonemptyLineCount !==
+      health.parsedRecordCount +
+        health.recognizedControlLineCount +
+        health.unfinishedLineCount +
+        health.resumedLineCount +
+        health.malformedLineCount
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "trace counters must account for every nonempty line",
+        path: ["nonemptyLineCount"],
+      });
+    }
+    if (
+      health.stringTruncationLineCount > health.nonemptyLineCount ||
+      health.stringTruncationIndicatorCount < health.stringTruncationLineCount
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "string truncation counters are inconsistent",
+        path: ["stringTruncationLineCount"],
+      });
+    }
+
+    const boundedCounters: readonly [string, number, readonly string[]][] = [
+      ["unfinishedRawRefs", health.unfinishedLineCount, health.unfinishedRawRefs],
+      ["resumedRawRefs", health.resumedLineCount, health.resumedRawRefs],
+      ["malformedRawRefs", health.malformedLineCount, health.malformedRawRefs],
+      [
+        "stringTruncationRawRefs",
+        health.stringTruncationLineCount,
+        health.stringTruncationRawRefs,
+      ],
+      [
+        "missingTerminalMarkerTraceFileRawRefs",
+        health.missingTerminalMarkerTraceFileCount,
+        health.missingTerminalMarkerTraceFileRawRefs,
+      ],
+    ];
+    for (const [path, count, examples] of boundedCounters) {
+      if (
+        examples.length !== Math.min(count, traceHealthExampleLimit) ||
+        new Set(examples).size !== examples.length
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "bounded raw references must contain unique examples up to the limit",
+          path: [path],
+        });
+      }
+    }
+    const mutuallyExclusiveStructuralRawRefs = [
+      ...health.unfinishedRawRefs,
+      ...health.resumedRawRefs,
+      ...health.malformedRawRefs,
+    ];
+    if (
+      new Set(mutuallyExclusiveStructuralRawRefs).size !==
+      mutuallyExclusiveStructuralRawRefs.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "unfinished, resumed, and malformed examples must identify distinct lines",
+        path: ["malformedRawRefs"],
+      });
+    }
+    const experimentRawPrefix = `raw/${health.experimentId}/`;
+    if (
+      [
+        ...health.unfinishedRawRefs,
+        ...health.resumedRawRefs,
+        ...health.malformedRawRefs,
+        ...health.stringTruncationRawRefs,
+        ...health.missingTerminalMarkerTraceFileRawRefs,
+        ...health.traceFileDetails.map((detail) => detail.rawRef),
+        ...health.policyRelevantGaps.examples.map((example) => example.rawRef),
+      ].some((rawRef) => !rawRef.startsWith(experimentRawPrefix))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "observation-health raw references must belong to the experiment",
+        path: ["experimentId"],
+      });
+    }
+
+    if (
+      health.terminalMarkerPresentTraceFileCount +
+        health.missingTerminalMarkerTraceFileCount !==
+      health.traceFileCount
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "terminal-marker counters must account for every trace file",
+        path: ["terminalMarkerPresentTraceFileCount"],
+      });
+    }
+    if (
+      health.traceFileDetails.length + health.traceFileDetailOmittedCount !==
+        health.traceFileCount ||
+      health.traceFileDetails.length !==
+        Math.min(health.traceFileCount, traceHealthFileDetailLimit) ||
+      new Set(health.traceFileDetails.map((detail) => detail.rawRef)).size !==
+        health.traceFileDetails.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "bounded trace-file details must account for every trace file",
+        path: ["traceFileDetails"],
+      });
+    }
+    const detailedNonemptyLineCount = health.traceFileDetails.reduce(
+      (sum, detail) => sum + detail.nonemptyLineCount,
+      0,
+    );
+    const detailedPresentTerminalCount = health.traceFileDetails.filter(
+      (detail) => detail.terminalMarker.status === "present",
+    ).length;
+    const detailedMissingTerminalCount =
+      health.traceFileDetails.length - detailedPresentTerminalCount;
+    const allTraceFilesDetailed = health.traceFileDetailOmittedCount === 0;
+    const detailsByRawRef = new Map(
+      health.traceFileDetails.map((detail) => [detail.rawRef, detail]),
+    );
+    const missingTerminalExamplesContradictDetails =
+      health.missingTerminalMarkerTraceFileRawRefs.some((rawRef) => {
+        const detail = detailsByRawRef.get(rawRef);
+        return (
+          (allTraceFilesDetailed && detail === undefined) ||
+          detail?.terminalMarker.status === "present"
+        );
+      });
+    if (
+      detailedNonemptyLineCount > health.nonemptyLineCount ||
+      (allTraceFilesDetailed &&
+        detailedNonemptyLineCount !== health.nonemptyLineCount) ||
+      detailedPresentTerminalCount >
+        health.terminalMarkerPresentTraceFileCount ||
+      detailedMissingTerminalCount >
+        health.missingTerminalMarkerTraceFileCount ||
+      (allTraceFilesDetailed &&
+        (detailedPresentTerminalCount !==
+          health.terminalMarkerPresentTraceFileCount ||
+          detailedMissingTerminalCount !==
+            health.missingTerminalMarkerTraceFileCount)) ||
+      missingTerminalExamplesContradictDetails ||
+      health.traceFileDetails.some(
+        (detail) =>
+          !detail.rawRef.endsWith(`/strace.${detail.pid}`) ||
+          (detail.terminalMarker.status === "present" &&
+            !detail.terminalMarker.rawRef.startsWith(`${detail.rawRef}:`)),
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "retained trace-file details must agree with aggregate lines and terminal markers",
+        path: ["traceFileDetails"],
+      });
+    }
+    if (
+      !health.traceDirectoryPresent &&
+      (health.traceFileCount !== 0 ||
+        health.nonemptyLineCount !== 0 ||
+        health.parsedRecordCount !== 0 ||
+        health.recognizedControlLineCount !== 0 ||
+        health.unfinishedLineCount !== 0 ||
+        health.resumedLineCount !== 0 ||
+        health.malformedLineCount !== 0 ||
+        health.stringTruncationIndicatorCount !== 0 ||
+        health.stringTruncationLineCount !== 0 ||
+        health.terminalMarkerPresentTraceFileCount !== 0 ||
+        health.missingTerminalMarkerTraceFileCount !== 0 ||
+        health.traceFileDetailOmittedCount !== 0 ||
+        health.capturedSyscallCounts.length !== 0 ||
+        health.unfinishedRawRefs.length !== 0 ||
+        health.resumedRawRefs.length !== 0 ||
+        health.malformedRawRefs.length !== 0 ||
+        health.stringTruncationRawRefs.length !== 0 ||
+        health.missingTerminalMarkerTraceFileRawRefs.length !== 0 ||
+        health.traceFileDetails.length !== 0)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "an absent trace directory cannot contain trace-derived data",
+        path: ["traceDirectoryPresent"],
+      });
+    }
+    if (
+      health.parsedRecordCount === 0 &&
+      health.canonicalization.status === "completed" &&
+      health.canonicalization.emittedEventCount !== 0
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "zero parsed trace records cannot emit canonical trace events",
+        path: ["canonicalization"],
+      });
+    }
+    const expectedIntegrity =
+      health.traceDirectoryPresent &&
+      health.traceFileCount > 0 &&
+      health.parsedSyscallRecordCount > 0 &&
+      health.unfinishedLineCount === 0 &&
+      health.resumedLineCount === 0 &&
+      health.malformedLineCount === 0 &&
+      health.missingTerminalMarkerTraceFileCount === 0;
+    if (health.integrityComplete !== expectedIntegrity) {
+      context.addIssue({
+        code: "custom",
+        message: `integrityComplete must be ${expectedIntegrity}`,
+        path: ["integrityComplete"],
+      });
+    }
+
+    const gaps = health.policyRelevantGaps;
+    if (
+      gaps.categoryCounts.reduce((sum, row) => sum + row.recordCount, 0) !==
+        gaps.recordCount ||
+      gaps.syscallCounts.reduce((sum, row) => sum + row.recordCount, 0) !==
+        gaps.recordCount ||
+      gaps.outcomeCounts.reduce((sum, row) => sum + row.recordCount, 0) !==
+        gaps.recordCount ||
+      gaps.examples.length + gaps.truncatedExampleCount !== gaps.recordCount ||
+      gaps.examples.length !==
+        Math.min(gaps.recordCount, policyRelevantTraceGapExampleLimit) ||
+      gaps.recordCount > health.parsedSyscallRecordCount
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "policy-relevant gap counters are inconsistent",
+        path: ["policyRelevantGaps"],
+      });
+    }
+    if (
+      new Set(gaps.categoryCounts.map((row) => row.category)).size !==
+        gaps.categoryCounts.length ||
+      new Set(gaps.syscallCounts.map((row) => row.syscall)).size !==
+        gaps.syscallCounts.length ||
+      new Set(gaps.outcomeCounts.map((row) => row.outcome)).size !==
+        gaps.outcomeCounts.length ||
+      gaps.outcomeCounts.some(
+        (row, index) =>
+          index > 0 &&
+          ["succeeded", "failed", "unknown"].indexOf(
+            gaps.outcomeCounts[index - 1]?.outcome ?? "",
+          ) >=
+            ["succeeded", "failed", "unknown"].indexOf(row.outcome),
+      ) ||
+      new Set(gaps.examples.map((example) => example.rawRef)).size !==
+        gaps.examples.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "policy-relevant gap categories, syscalls, and examples must be unique",
+        path: ["policyRelevantGaps"],
+      });
+    }
+    const capturedCountsBySyscall = new Map(
+      health.capturedSyscallCounts.map((row) => [row.syscall, row.recordCount]),
+    );
+    const gapCategories = new Set(
+      gaps.categoryCounts.map((row) => row.category),
+    );
+    const gapSyscalls = new Set(gaps.syscallCounts.map((row) => row.syscall));
+    const gapOutcomes = new Set(gaps.outcomeCounts.map((row) => row.outcome));
+    const categoryCountByValue = new Map(
+      gaps.categoryCounts.map((row) => [row.category, row.recordCount]),
+    );
+    const syscallCountByValue = new Map(
+      gaps.syscallCounts.map((row) => [row.syscall, row.recordCount]),
+    );
+    const outcomeCountByValue = new Map(
+      gaps.outcomeCounts.map((row) => [row.outcome, row.recordCount]),
+    );
+    const exampleCategoryCounts = new Map<string, number>();
+    const exampleSyscallCounts = new Map<string, number>();
+    const exampleOutcomeCounts = new Map<string, number>();
+    for (const example of gaps.examples) {
+      exampleCategoryCounts.set(
+        example.category,
+        (exampleCategoryCounts.get(example.category) ?? 0) + 1,
+      );
+      exampleSyscallCounts.set(
+        example.syscall,
+        (exampleSyscallCounts.get(example.syscall) ?? 0) + 1,
+      );
+      exampleOutcomeCounts.set(
+        example.outcome,
+        (exampleOutcomeCounts.get(example.outcome) ?? 0) + 1,
+      );
+    }
+    if (
+      gaps.syscallCounts.some(
+        (row) =>
+          row.recordCount > (capturedCountsBySyscall.get(row.syscall) ?? 0),
+      ) ||
+      gaps.examples.some(
+        (example) =>
+          !gapCategories.has(example.category) ||
+          !gapSyscalls.has(example.syscall) ||
+          !gapOutcomes.has(example.outcome),
+      ) ||
+      [...exampleCategoryCounts].some(
+        ([category, count]) =>
+          count >
+          (categoryCountByValue.get(
+            category as z.infer<typeof policyRelevantTraceGapCategorySchema>,
+          ) ?? 0),
+      ) ||
+      [...exampleSyscallCounts].some(
+        ([syscall, count]) => count > (syscallCountByValue.get(syscall) ?? 0),
+      ) ||
+      [...exampleOutcomeCounts].some(
+        ([outcome, count]) =>
+          count >
+          (outcomeCountByValue.get(
+            outcome as "succeeded" | "failed" | "unknown",
+          ) ?? 0),
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "policy-relevant gap rows and example multiplicities must be backed by captured syscall counts",
+        path: ["policyRelevantGaps"],
+      });
+    }
+  });
+
+export const observationHealthV1Schema = z
+  .object({
+    schema: z.literal("forge.observation-health/v1"),
+    runId: identifierSchema,
+    generatedAt: timestampSchema,
+    scope: z.literal("selected_strace_surface"),
+    surfaceId: z.literal("forge-strace-selected-v1"),
+    integrityStatus: z.enum(["complete", "degraded"]),
+    canonicalizationExecutionStatus: z.enum(["completed", "incomplete"]),
+    policyRelevantGapStatus: z.enum(["none_observed", "gaps_observed"]),
+    degradedExperimentIds: z.array(identifierSchema),
+    policyRelevantGapExperimentIds: z.array(identifierSchema),
+    experiments: z.array(experimentObservationHealthV1Schema).min(1),
+    limitations: z.array(z.string().min(1)).min(1),
+  })
+  .strict()
+  .superRefine((health, context) => {
+    const experimentIds = health.experiments.map(
+      (experiment) => experiment.experimentId,
+    );
+    if (new Set(experimentIds).size !== experimentIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "observation-health experiment IDs must be unique",
+        path: ["experiments"],
+      });
+    }
+    const expectedDegradedIds = health.experiments
+      .filter((experiment) => !experiment.integrityComplete)
+      .map((experiment) => experiment.experimentId);
+    const expectedGapIds = health.experiments
+      .filter((experiment) => experiment.policyRelevantGaps.recordCount > 0)
+      .map((experiment) => experiment.experimentId);
+    const sameOrderedStrings = (
+      actual: readonly string[],
+      expected: readonly string[],
+    ): boolean =>
+      actual.length === expected.length &&
+      actual.every((value, index) => value === expected[index]);
+    if (!sameOrderedStrings(health.degradedExperimentIds, expectedDegradedIds)) {
+      context.addIssue({
+        code: "custom",
+        message: "degraded experiment IDs must exactly match parser health",
+        path: ["degradedExperimentIds"],
+      });
+    }
+    if (
+      !sameOrderedStrings(health.policyRelevantGapExperimentIds, expectedGapIds)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "gap experiment IDs must exactly match classified records",
+        path: ["policyRelevantGapExperimentIds"],
+      });
+    }
+    const expectedIntegrityStatus =
+      expectedDegradedIds.length === 0 ? "complete" : "degraded";
+    const expectedCanonicalizationExecutionStatus = health.experiments.every(
+      (experiment) => experiment.canonicalization.status === "completed",
+    )
+      ? "completed"
+      : "incomplete";
+    const expectedGapStatus =
+      expectedGapIds.length === 0 ? "none_observed" : "gaps_observed";
+    if (health.integrityStatus !== expectedIntegrityStatus) {
+      context.addIssue({
+        code: "custom",
+        message: `integrityStatus must be ${expectedIntegrityStatus}`,
+        path: ["integrityStatus"],
+      });
+    }
+    if (
+      health.canonicalizationExecutionStatus !==
+      expectedCanonicalizationExecutionStatus
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: `canonicalizationExecutionStatus must be ${expectedCanonicalizationExecutionStatus}`,
+        path: ["canonicalizationExecutionStatus"],
+      });
+    }
+    if (health.policyRelevantGapStatus !== expectedGapStatus) {
+      context.addIssue({
+        code: "custom",
+        message: `policyRelevantGapStatus must be ${expectedGapStatus}`,
+        path: ["policyRelevantGapStatus"],
+      });
+    }
+  });
 
 export const advertisedInterfaceSummaryV1Schema = z
   .object({
@@ -924,6 +1557,62 @@ const staticRuntimeComparisonV1Schema = z
     }
   });
 
+const fileOperationCountV1Schema = z
+  .object({
+    effectKind: z.enum(["file.read", "file.write"]),
+    operation: z.enum(["content", "directory_entries", "truncate"]),
+    count: z.number().int().positive(),
+  })
+  .strict()
+  .superRefine((row, context) => {
+    if (
+      (row.effectKind === "file.read" && row.operation === "truncate") ||
+      (row.effectKind === "file.write" &&
+        row.operation === "directory_entries")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "file operation count does not match the effect kind",
+        path: ["operation"],
+      });
+    }
+  });
+
+function fileOperationCountsAgree(
+  effectCounts: readonly {
+    readonly effectKind: z.infer<typeof observedEffectKindSchema>;
+    readonly count: number;
+  }[],
+  operationCounts:
+    | readonly z.infer<typeof fileOperationCountV1Schema>[]
+    | undefined,
+): boolean {
+  if (operationCounts === undefined) {
+    return true;
+  }
+  const keys = operationCounts.map(
+    (row) => `${row.effectKind}\0${row.operation}`,
+  );
+  if (
+    new Set(keys).size !== keys.length ||
+    keys.some((key, index) => index > 0 && (keys[index - 1] ?? "") >= key)
+  ) {
+    return false;
+  }
+  for (const effectKind of ["file.read", "file.write"] as const) {
+    const expected = effectCounts
+      .filter((row) => row.effectKind === effectKind)
+      .reduce((sum, row) => sum + row.count, 0);
+    const actual = operationCounts
+      .filter((row) => row.effectKind === effectKind)
+      .reduce((sum, row) => sum + row.count, 0);
+    if (actual !== expected) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export const reportV1Schema = z
   .object({
     schema: z.literal("forge.report/v1"),
@@ -931,6 +1620,36 @@ export const reportV1Schema = z
     targetId: identifierSchema,
     generatedAt: timestampSchema,
     summary: z.string().min(1),
+    observationHealth: z
+      .object({
+        scope: z.literal("selected_strace_surface"),
+        surfaceId: z.literal("forge-strace-selected-v1"),
+        integrityStatus: z.enum(["complete", "degraded"]),
+        canonicalizationExecutionStatus: z.enum([
+          "completed",
+          "incomplete",
+        ]),
+        policyRelevantGapStatus: z.enum([
+          "none_observed",
+          "gaps_observed",
+        ]),
+        experimentIds: z.array(identifierSchema).min(1),
+        degradedExperimentIds: z.array(identifierSchema),
+        policyRelevantGapExperimentIds: z.array(identifierSchema),
+        policyRelevantGapRecordCount: z.number().int().nonnegative(),
+        policyRelevantGapOutcomeCounts: z.array(
+          z
+            .object({
+              outcome: z.enum(["succeeded", "failed", "unknown"]),
+              recordCount: z.number().int().positive(),
+            })
+            .strict(),
+        ),
+        stringTruncationLineCount: z.number().int().nonnegative(),
+        artifact: z.literal("observation-health.json"),
+      })
+      .strict()
+      .optional(),
     artifactProvenance: targetProvenanceV1Schema,
     sandboxPolicy: z
       .object({
@@ -1073,6 +1792,7 @@ export const reportV1Schema = z
               })
               .strict(),
           ),
+          fileOperationCounts: z.array(fileOperationCountV1Schema).optional(),
           phaseBreakdown: z
             .array(
               z
@@ -1095,6 +1815,9 @@ export const reportV1Schema = z
                       })
                       .strict(),
                   ),
+                  fileOperationCounts: z
+                    .array(fileOperationCountV1Schema)
+                    .optional(),
                 })
                 .strict(),
             )
@@ -1235,12 +1958,112 @@ export const reportV1Schema = z
         installDelta: z.string().min(1).optional(),
         filesystemStateRoot: z.string().min(1).optional(),
         advertisedClaims: z.string().min(1),
+        observationHealth: z.literal("observation-health.json").optional(),
       })
       .strict(),
     limitations: z.array(z.string().min(1)),
   })
   .strict()
   .superRefine((report, context) => {
+    if (
+      (report.observationHealth === undefined) !==
+      (report.evidence.observationHealth === undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "observation-health summary and evidence reference must appear together",
+        path: ["observationHealth"],
+      });
+    }
+    if (report.observationHealth !== undefined) {
+      const health = report.observationHealth;
+      if (
+        health.artifact !== report.evidence.observationHealth ||
+        new Set(health.degradedExperimentIds).size !==
+          health.degradedExperimentIds.length ||
+        new Set(health.policyRelevantGapExperimentIds).size !==
+          health.policyRelevantGapExperimentIds.length
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "observation-health summary must bind one artifact and unique experiment IDs",
+          path: ["observationHealth"],
+        });
+      }
+      if (
+        (health.integrityStatus === "complete") !==
+        (health.degradedExperimentIds.length === 0)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "observation integrity status must reflect degraded experiment IDs",
+          path: ["observationHealth", "integrityStatus"],
+        });
+      }
+      if (
+        (health.policyRelevantGapStatus === "none_observed") !==
+          (health.policyRelevantGapRecordCount === 0) ||
+        (health.policyRelevantGapRecordCount === 0) !==
+          (health.policyRelevantGapExperimentIds.length === 0) ||
+        health.policyRelevantGapOutcomeCounts.reduce(
+          (sum, row) => sum + row.recordCount,
+          0,
+        ) !== health.policyRelevantGapRecordCount ||
+        new Set(
+          health.policyRelevantGapOutcomeCounts.map((row) => row.outcome),
+        ).size !== health.policyRelevantGapOutcomeCounts.length ||
+        health.policyRelevantGapOutcomeCounts.some(
+          (row, index) =>
+            index > 0 &&
+            ["succeeded", "failed", "unknown"].indexOf(
+              health.policyRelevantGapOutcomeCounts[index - 1]?.outcome ?? "",
+            ) >=
+              ["succeeded", "failed", "unknown"].indexOf(row.outcome),
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "policy-relevant gap summary status, count, and experiment IDs must agree",
+          path: ["observationHealth", "policyRelevantGapStatus"],
+        });
+      }
+      const reportExperimentIds = new Set(
+        report.experiments.map((experiment) => experiment.experimentId),
+      );
+      const orderedReportExperimentIds = report.experiments.map(
+        (experiment) => experiment.experimentId,
+      );
+      if (
+        health.experimentIds.length !== orderedReportExperimentIds.length ||
+        health.experimentIds.some(
+          (experimentId, index) =>
+            experimentId !== orderedReportExperimentIds[index],
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "observation-health summary must exactly cover report experiments in order",
+          path: ["observationHealth", "experimentIds"],
+        });
+      }
+      if (
+        [...health.degradedExperimentIds, ...health.policyRelevantGapExperimentIds].some(
+          (experimentId) => !reportExperimentIds.has(experimentId),
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "observation-health experiment IDs must belong to report experiments",
+          path: ["observationHealth"],
+        });
+      }
+    }
     const semanticFieldsPresent = [
       report.semanticAnalysis !== undefined,
       report.evidence.semanticInspection !== undefined,
@@ -1714,6 +2537,44 @@ export const reportV1Schema = z
         path: ["runtimeObservations"],
       });
     }
+    for (const [observationIndex, observation] of
+      report.runtimeObservations.entries()) {
+      if (
+        !fileOperationCountsAgree(
+          observation.effectCounts,
+          observation.fileOperationCounts,
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "file operation counts must be sorted, unique, and exactly partition file effect counts",
+          path: ["runtimeObservations", observationIndex, "fileOperationCounts"],
+        });
+      }
+      for (const [phaseIndex, phase] of
+        (observation.phaseBreakdown ?? []).entries()) {
+        if (
+          !fileOperationCountsAgree(
+            phase.effectCounts,
+            phase.fileOperationCounts,
+          )
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "phase file operation counts must be sorted, unique, and exactly partition file effect counts",
+            path: [
+              "runtimeObservations",
+              observationIndex,
+              "phaseBreakdown",
+              phaseIndex,
+              "fileOperationCounts",
+            ],
+          });
+        }
+      }
+    }
     if (
       [...comparedInterfaceIds].some(
         (experimentId) => !runtimeExperiments.has(experimentId),
@@ -1800,4 +2661,5 @@ export type ObservedEffectV1 = z.infer<typeof observedEffectV1Schema>;
 export type ObservedEventV1 = z.infer<typeof observedEventV1Schema>;
 export type AttributionV1 = z.infer<typeof attributionV1Schema>;
 export type FindingV1 = z.infer<typeof findingV1Schema>;
+export type ObservationHealthV1 = z.infer<typeof observationHealthV1Schema>;
 export type ReportV1 = z.infer<typeof reportV1Schema>;

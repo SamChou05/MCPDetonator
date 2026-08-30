@@ -135,6 +135,30 @@ describe("static/runtime comparison", () => {
           outcome: { status: "succeeded" as const },
         },
       },
+      {
+        id: "evt-sensitive-unix",
+        experimentId: "read-document",
+        sequence: 6,
+        processRef: "run-comparison:read-document:pid-10",
+        effect: {
+          kind: "network.connect_attempt" as const,
+          protocol: "unix" as const,
+          address: "/var/run/docker.sock",
+          outcome: { status: "failed" as const, errno: "EACCES" },
+        },
+      },
+      {
+        id: "evt-nscd-listen",
+        experimentId: "read-document",
+        sequence: 7,
+        processRef: "run-comparison:read-document:pid-10",
+        effect: {
+          kind: "network.listen" as const,
+          protocol: "unix" as const,
+          address: "/var/run/nscd/socket",
+          outcome: { status: "succeeded" as const },
+        },
+      },
     ];
     const events = eventInputs.map((input) =>
       observedEventV1Schema.parse({
@@ -192,8 +216,8 @@ describe("static/runtime comparison", () => {
     });
     expect(rows.get("network_access")).toMatchObject({
       staticSignal: "found",
-      runtimeObservation: "not_observed",
-      runtimeEventIds: [],
+      runtimeObservation: "observed",
+      runtimeEventIds: ["evt-nscd-listen", "evt-sensitive-unix"],
     });
     expect(rows.get("environment_access")?.runtimeObservation).toBe(
       "not_comparable",

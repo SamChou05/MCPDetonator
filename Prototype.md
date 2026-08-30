@@ -155,6 +155,7 @@ runs/<run-id>/
 |-- run.json
 |-- target.json
 |-- report.json
+|-- observation-health.json
 |-- events.jsonl
 |-- phases.jsonl
 |-- attributions.jsonl
@@ -194,7 +195,7 @@ runs/<run-id>/
 `-- sandboxes/<experiment>/profile.json
 ```
 
-Some target evidence files are conditional. The primary static summary is explicitly tied to the selected runtime snapshot; the earlier inspection is retained to show the package before lifecycle scripts ran. Each lexical inspection also feeds a separate semantic artifact derived only from its hash-bound captured source bytes. The report summarizes the selected semantic artifact and binds its SHA-256 without changing the meaning of existing lexical comparison rows. Every normalized event contains a raw evidence reference, findings cite normalized event IDs, and attribution is stored separately from observed facts. `report.json` also includes phase-scoped effect counts, compact expected-scope examples, and the bounded four-way behavior comparison so positive behavior is visible without hiding the complete event stream or implying intent.
+Some target evidence files are conditional. The primary static summary is explicitly tied to the selected runtime snapshot; the earlier inspection is retained to show the package before lifecycle scripts ran. Each lexical inspection also feeds a separate semantic artifact derived only from its hash-bound captured source bytes. The report summarizes the selected semantic artifact and binds its SHA-256 without changing the meaning of existing lexical comparison rows. Every normalized event contains a raw evidence reference, findings cite normalized event IDs, and attribution is stored separately from observed facts. `observation-health.json` keeps structural trace integrity separate from bounded policy-relevant operations that were parsed but not faithfully canonicalized. `report.json` includes that compact health summary, phase-scoped effect counts, an additive file-operation breakdown that distinguishes content, enumeration, and truncation, expected-scope examples, and the bounded four-way behavior comparison so positive behavior is visible without hiding incomplete coverage or implying intent. A failed analysis retains its failed manifest and partial artifacts and best-effort writes incomplete observation health; it does not emit an ordinary report whose later layers were never reconciled.
 
 The report's per-experiment behavior comparison keeps four questions separate:
 what the MCP advertised, what bounded package inspection found, what the
@@ -249,7 +250,18 @@ This is useful take-home containment, not proof that arbitrary hostile code is p
 - Static inspection combines the existing bounded lexical analysis with a separate TypeScript Compiler API sidecar for modeled direct and immutable-alias Node callsites. The sidecar uses a closed in-memory host and a worker with time plus V8 heap/stack limits; those are not total-RSS or OS-sandbox limits. Bindings affected by syntactically detected assignment/delete/update mutations are withheld and make evidence partial, while reflective mutation remains unresolved. The pass is not whole-program, entrypoint/MCP-handler reachability, or data-flow analysis, and dependency source under `node_modules` is not scanned.
 - Advertised-claim extraction is bounded lexical classification of tool names, titles, descriptions, and input schemas. Selected standard annotations are preserved separately and do not independently map to capabilities. The extractor handles nearby negation for its supported terms, but it is not general natural-language understanding; no detected claim is not a denial of capability or permission to perform it.
 - The complete `tools/list` result and every recorded JSON-RPC message are bounded before schema validation or persistence. The retained interface, advertised-claim evidence, and catalog fingerprints intentionally omit output schemas and other unretained MCP metadata, so those fields are not analyzed for claims or drift.
-- Runtime normalization covers a focused `strace` syscall subset for process, file, and socket behavior, including supported failed exec/file attempts and terminal signal exits. It does not reconstruct every kernel action, DNS meaning, or encrypted network payload.
+- Runtime normalization covers a focused `strace` syscall subset for process, file, and socket behavior, including supported failed exec/file attempts, explicitly labeled directory enumeration, `execveat`, correlated bind/listen endpoints, and terminal signal exits. Directory enumeration remains a simultaneous alternate-access gap and is not used as proof of file-content reads by deterministic policy/comparison consumers. Every nonempty selected-trace line is structurally accounted for, while a bounded policy-gap taxonomy makes selected unsupported mutations, transfers, endpoint semantics, alternate access, opaque I/O, definitively failed capability probes, interference attempts, unresolved paths, truncated arguments, and indeterminate outcomes explicit. Neither accounting layer covers every kernel action, syscall meaning, DNS meaning, or encrypted network payload.
+- Descriptor correlation covers common shared/copied `CLONE_FILES`, duplication,
+  close, and close-range cases, but it is best effort across equal timestamps,
+  standalone descriptor-table unsharing, exec/CLOEXEC transitions, and uncommon
+  descriptor-transfer mechanisms. Thread-local `exit` is structurally visible
+  but is not promoted to a process exit when doing so would guess about sibling
+  threads.
+- Observation health remains optional in report V1 so older reports stay
+  readable and publishable. The current analyzer always emits it, and bundle
+  verification hash-binds and cross-validates it whenever present; strict
+  mandatory health needs an explicit producer feature marker or report V2.
+- Selected trace logs are still batch-read for parsing and classification. The sandbox runtime is bounded, but raw trace bytes/lines do not yet have an independent aggregate ingestion quota; a production worker should stream them through explicit disk, byte, record, and processing-time ceilings.
 - Before/after filesystem evidence is bounded to the synthetic home and workspace, does not intentionally follow entries observed as symlinks, hashes only supported files within configured limits, and omits unsupported special-file contents. Pathname-replacement races remain a documented limitation even though after-state capture waits for verified container absence. Reported differences show that retained state differed across the isolated experiment window; an empty delta is not proof that no unrecorded state changed, and neither result identifies exact syscall or process causality.
 - Results cover only the configured initialization and isolated tool inputs. A clean report means no covered rule mismatch was observed, not that the target is safe for every input.
 - Workflow execution, HTML reporting, and LLM interpretation are not implemented in the core path. Automated Agent V1 rollouts are available separately through `forge agent-evaluate`; they do not modify this report or core analysis flow.
