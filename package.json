@@ -14,6 +14,7 @@
     "test": "vitest run",
     "verify:e2e": "npm run build && node scripts/verify-e2e.mjs",
     "verify:agent": "npm run build && node scripts/verify-agent-v1.mjs",
+    "verify:v2-outcome": "npm run build && node scripts/verify-v2-controlled-outcome.mjs",
     "experiment:v2-proposals": "tsx scripts/run-v2-agent-proposals.ts",
     "experiment:v2-proposal-study": "node --env-file-if-exists=.env --import tsx scripts/run-v2-agent-proposal-study.ts",
     "test:watch": "vitest",

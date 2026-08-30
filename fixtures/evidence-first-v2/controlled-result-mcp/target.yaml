@@ -1,0 +1,37 @@
+schema: forge.target/v1
+
+target:
+  id: controlled-result-mcp
+  source:
+    type: local
+    path: .
+    install: none
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/server.js
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 10000
+    cooldownMs: 0
+    memoryMb: 128
+    cpus: 1
+    pids: 32
+
+experiments:
+  initialization: false
+  tools:
+    - id: read-document
+      tool: read_document
+      input:
+        path: /forge/synthetic/controller-filled-at-compile-time
+      expected:
+        fileReads: []
+        fileWrites: []
+        networkConnections: []
+        childExecutables: []
+  workflows: []

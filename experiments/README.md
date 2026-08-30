@@ -6,11 +6,11 @@ implementation.
 
 ## Vocabulary
 
-| Term | Meaning |
-| --- | --- |
-| Target | The MCP server being analyzed and its base sandbox profile |
-| Experiment | A specific question, control, procedure, and success criterion |
-| Run | One execution of an implemented experiment and its evidence artifacts |
+| Term       | Meaning                                                               |
+| ---------- | --------------------------------------------------------------------- |
+| Target     | The MCP server being analyzed and its base sandbox profile            |
+| Experiment | A specific question, control, procedure, and success criterion        |
+| Run        | One execution of an implemented experiment and its evidence artifacts |
 
 Machine-readable target configuration currently lives under `fixtures/` for
 controlled targets and `case-studies/` for curated real targets. Generated
@@ -23,34 +23,43 @@ experiment is meant to teach us and the boundary of any implemented result.
   verification gates.
 - **Implemented-Agent-V1:** exercised by the separate opt-in agent harness and
   deterministic offline fixture; a live-provider study may still be unrun.
+- **Implemented-Controlled-V2:** exercised only through the pinned, one-step V2
+  fixture authority and quarantine path; arbitrary target dispatch remains
+  disabled.
 - **Future-Agent:** requires behavior outside the current Agent V1 contract.
 
 ## Baseline experiments
 
-| Experiment | Status | Main question |
-| --- | --- | --- |
-| [Initialization baseline](baseline/initialization-baseline.md) | Implemented | What happens before any tool is called? |
-| [Controlled deceptive behavior](baseline/deceptive-runtime-behavior.md) | Implemented | Can Forge detect and attribute known hidden behavior? |
-| [Benign filesystem scope](baseline/benign-filesystem-scope.md) | Implemented | Can Forge recognize expected file behavior without false positives? |
-| [Install lifecycle delta](baseline/install-lifecycle-delta.md) | Implemented | What behavior appears only when npm lifecycle scripts run? |
+| Experiment                                                              | Status      | Main question                                                       |
+| ----------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------- |
+| [Initialization baseline](baseline/initialization-baseline.md)          | Implemented | What happens before any tool is called?                             |
+| [Controlled deceptive behavior](baseline/deceptive-runtime-behavior.md) | Implemented | Can Forge detect and attribute known hidden behavior?               |
+| [Benign filesystem scope](baseline/benign-filesystem-scope.md)          | Implemented | Can Forge recognize expected file behavior without false positives? |
+| [Install lifecycle delta](baseline/install-lifecycle-delta.md)          | Implemented | What behavior appears only when npm lifecycle scripts run?          |
 
 ## Agent experiments
 
 These ask what an MCP can cause an agent to do through metadata or tool output,
 even when the MCP process does not directly perform the harmful action.
 
-| Experiment | Status | Main question |
-| --- | --- | --- |
+| Experiment                                                                | Status                                                           | Main question                                                                |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | [Cross-tool canary exfiltration](agent/cross-tool-canary-exfiltration.md) | Implemented-Agent-V1 harness trajectory; causal comparison unrun | Can one MCP's metadata induce an agent to move a canary through other tools? |
-| [Tool-description poisoning](agent/tool-description-poisoning.md) | Implemented-Agent-V1 | Can malicious tool metadata alter agent behavior before invocation? |
-| [Tool-result injection](agent/tool-result-injection.md) | Future-Agent | Can a tool result redirect the agent into unauthorized follow-up actions? |
-| [Persistent memory poisoning](agent/persistent-memory-poisoning.md) | Future-Agent | Can MCP output influence a later, unrelated task? |
+| [Tool-description poisoning](agent/tool-description-poisoning.md)         | Implemented-Agent-V1                                             | Can malicious tool metadata alter agent behavior before invocation?          |
+| [Tool-result injection](agent/tool-result-injection.md)                   | Future-Agent                                                     | Can a tool result redirect the agent into unauthorized follow-up actions?    |
+| [Persistent memory poisoning](agent/persistent-memory-poisoning.md)       | Future-Agent                                                     | Can MCP output influence a later, unrelated task?                            |
 
 ## Documented malicious and vulnerable MCP studies
 
-| Experiment | Status | Main question |
-| --- | --- | --- |
+| Experiment                                                                              | Status      | Main question                                                                                                                             |
+| --------------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | [Documented malicious-MCP study](security/documented-malicious-mcp-study-2026-08-30.md) | Implemented | Do real advisory packages and a contained campaign-shaped MCP reproduction reach Forge's evidence, finding, and agent-enforcement layers? |
+
+## Evidence-First V2 experiments
+
+| Experiment                                                                                     | Status                    | Main question                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Controlled outcome comparison](evidence-first-v2/controlled-outcome-experiment-2026-08-30.md) | Implemented-Controlled-V2 | Can deterministic authority execute one pinned result-channel experiment and compare predicted versus quarantined output without letting returned text authorize a follow-up? |
 
 ## Experiment discipline
 

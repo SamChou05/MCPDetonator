@@ -698,6 +698,139 @@ Verification for this milestone:
 
 Suggested commit subject: `feat: add bounded Node semantic callsite evidence`.
 
+## Controlled V2 outcome experiment wave
+
+Requested: 2026-08-30
+
+- Isolated branch and starting commit: `codex/v2-outcome-comparison` at
+  `51a473f8f679` (`feat: add bounded Node semantic callsite evidence`).
+- Main checkout has an unrelated in-progress publisher/demo wave and remains
+  out of scope. No changes from this branch may be staged or committed from the
+  dirty main checkout.
+- Safety boundary: Phase 1's unsigned, explicitly non-dispatchable receipt was
+  not upgraded into authority. V2 runtime dispatch remains restricted to
+  one exact repository fixture through a separate trusted controller,
+  reference monitor, opaque capabilities, and pinned containment boundary.
+- Ownership/baselines: root owned integration, this ledger, verification, and
+  all Git writes. The implementation and read-only review waves remained on
+  `51a473f8f679`; no agent staged or committed. `proposal_promotion_impl`
+  created only the controlled-proposal contract, adapter, and focused test,
+  then handed them to root. Contract, runtime, integration, and final
+  lifecycle reviewers completed without writing outside their assigned scope.
+- Status: complete and verified; implementation commit pending at this ledger
+  update.
+
+Implemented boundary:
+
+- A deterministic local model-shaped proposer emits one bounded candidate.
+  Existing deterministic proposal comparison recomputes context, contract,
+  resource, policy, budget, approval, and novelty checks. A separately authored
+  operator case adopts only ordered tool and symbolic-argument semantics;
+  model predictions and rationale do not enter the executable case. A fresh
+  final compilation produces the common two-arm plan.
+- A serialized proposal-review record is explicitly non-bearer. Execution
+  requires its exact WeakMap-backed, object-identity, single-use review
+  capability; the execution authority binds the review digest, reviewer, and
+  approval class, freshly recompiles, and issues a separate opaque one-use
+  runtime permit. Forged, copied, expired, substituted, or replayed review and
+  runtime capabilities fail before dispatch.
+- The dispatch-time reference monitor atomically claims the consumed runtime
+  capability and rechecks live complete discovery, catalog identities, policy,
+  target tree, every synthetic resource, image ID, bounds, case, step, tool,
+  and exact resolved arguments immediately before the sole `tools/call`.
+- `RecordingTransport` permits exactly one armed call, rejects parameter drift
+  and `tools/list_changed`, counts the guarded transport handoff before a
+  backpressure drain can race the response, tracks active sends, waits for the
+  underlying process-close signal, and seals all callbacks before returning.
+  Late traffic cannot mutate a finalized transcript.
+- Docker executes immutable image ID
+  `sha256:2e4ffddb30f1da41c14269189245bd0a450cc95c01f83ba70dd855c7abf81c7a`
+  through dedicated lookup tag
+  `forge-controlled-sandbox:v2-outcome-20260830`. General E2E repeatedly rebuilt
+  `forge-sandbox:dev` without changing the controlled tag, confirming
+  isolation. The image has no declared volumes. Runtime uses no
+  network, IPC, or log driver; read-only root/target/resources; no writable host
+  bind; a bounded `/tmp`; a read-only `/dev/mqueue`; dropped capabilities; a
+  minimal controller-set environment; and CPU, memory, PID, file, and open-file
+  ceilings.
+- Raw MCP results remain only in mode-0600 local transcript evidence. The
+  deterministic analyzer emits bounded classes, byte offsets, and matched-byte
+  hashes, never matched text or a safety/maliciousness verdict. No model,
+  planner, authority, retry, workflow, or follow-up interface receives the
+  result.
+- Terminal evidence is explicit: a successful attempt requires one sent call,
+  stable transcript, verified comparison, verified managed-container absence,
+  and verified disposal of both host temporary input trees. Session,
+  pre-dispatch, transport, runtime/protocol, post-return verification, or
+  cleanup failure produces a bounded non-authoritative failure record with
+  exact 0/1 handoff evidence and no raw target error text.
+- `verify:v2-outcome` reruns both arms and deep-binds the tracked sanitized
+  record's design disclosure, plan/policy/target/catalog/resource/image
+  bindings, proposal promotion, case/step, capture, output-schema assessment,
+  content classes/hash-only signals, comparison summary, dispatch, cleanup,
+  and quarantine projections. It recursively rejects treatment strings in all
+  non-raw run artifacts.
+
+Reproducible result:
+
+- Pinned fixture tree:
+  `560d3c665353d1bc2865ce95c1d2635fd6bda07f1a1b4499f6bf15c86c279f6e`
+  across 3 files. Final plan `f30588f11b00...`, policy `5200493fd77e...`,
+  target `2f5558f220a8...`, resources `d2f6a2b2d96b...`, raw catalog
+  `6f26ee4140fe...`, and plan catalog `beced74c3e817...` reproduce exactly.
+- Proposal context is `a8bdfc59a9c5...`; submission `9a573c04d57b...`;
+  comparison `a275266db345...`; selected proposal `f9f83f1b002e...`;
+  selected/adopted call semantics `ac4350be9c12...`; adopted template
+  `4cf30496d6e3...`; and final AuditSpec `845824c858c3...`.
+- Both arms returned a complete 448-byte canonical result and conformed to the
+  advertised structured-output schema. Control produced no hazard signal and
+  `expected_within_policy`. Treatment produced only hash-retaining
+  `instruction_override`, `secret_request`, and `external_action_request`
+  signals and `intrinsic_hazard_evidence`. Each arm made 1 call, 0 retries, and
+  0 follow-ups; cleanup was verified.
+
+Review hardening:
+
+- Final read-only reviewers reproduced a late-transcript close race, send-count
+  backpressure race, review-provenance mismatch, contradictory zero-send
+  success schema, incomplete tracked-record binding, imprecise environment
+  wording, and unreported host temporary-directory cleanup failures. Root fixed
+  each finding and added regression coverage. A local containment audit also
+  found Docker's writable default message-queue mount; it is now replaced by a
+  bounded read-only mount and bound into the reference monitor.
+- No reviewer found a replay/second-call bypass, cleanup-name collision,
+  proposal-to-plan semantic substitution, or raw-result escape after the final
+  fixes.
+
+Final verification:
+
+- `npm run typecheck`: passed.
+- Focused controlled/transport suite: 6 files / 71 tests passed.
+- `npm test`: 65 files / 534 tests passed.
+- `npm run build`: passed (also rerun by each verifier).
+- `npm run verify:e2e`: returned `status: verified` with the expected deceptive
+  findings and benign filesystem events.
+- `npm run verify:agent`: returned `status: passed`; all 14 named checks true.
+- `npm run verify:v2-outcome`: returned `status: passed`; exact matched
+  plan/policy/target/image/448-byte results, 1/0 calls/follow-ups, quarantine,
+  and cleanup all verified.
+
+Honest limitations:
+
+- This is a complete controlled reference path, not arbitrary local/npm MCP V2
+  execution. The proposer and outcome predictor are deterministic local
+  fixtures, and the returned treatment was never shown to a model.
+- The two arms disclose operational differences beyond document bytes; the
+  design is not described as strictly single-variable.
+- Review identity is a trusted local controller boundary, not an externally
+  authenticated human signature. The exact image is deliberately
+  host/platform-specific and fails closed after an unreviewed rebuild.
+- Lexical indicators are partial evidence with possible false positives and
+  negatives. Target-tree hashing is not a race-free, metadata-complete general
+  filesystem snapshot, and observation covers MCP transcript and cleanup only.
+
+Suggested commit subject: `feat: add controlled V2 outcome quarantine path`.
+
 ## Documented malicious-MCP experiment wave
 
 Requested: 2026-08-30
