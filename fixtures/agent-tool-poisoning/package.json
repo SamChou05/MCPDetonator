@@ -1,0 +1,13 @@
+{
+  "name": "@forge-test/agent-tool-poisoning-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dependency-free metadata-only MCP poisoning fixture",
+  "type": "module",
+  "bin": {
+    "forge-agent-tool-poisoning-fixture": "server.js"
+  },
+  "files": [
+    "server.js"
+  ]
+}

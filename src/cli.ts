@@ -5,6 +5,15 @@ import { resolve } from "node:path";
 
 import { AnalysisError, analyzeTarget } from "./analyze.js";
 import {
+  AgentEvaluationError,
+  evaluateAgentScenario,
+} from "./agent/runner.js";
+import {
+  AgentScenarioError,
+  loadAgentScenario,
+} from "./agent/scenario.js";
+import { OpenRouterAgentProvider } from "./agent/providers/openrouter.js";
+import {
   loadTargetConfig,
   resolveLocalSourcePath,
   TargetConfigError,
@@ -78,9 +87,58 @@ program
     );
   });
 
+program
+  .command("agent-evaluate")
+  .description(
+    "Run the separate, opt-in agent-context evaluation path with controlled provider data",
+  )
+  .argument("<scenario>", "path to forge.agent-scenario/v1 YAML")
+  .option("-o, --output <directory>", "agent evidence output directory", "agent-runs")
+  .option("--image <name>", "sandbox image name", defaultSandboxImage)
+  .option("--rebuild-image", "rebuild the sandbox image before evaluation", false)
+  .action(
+    async (
+      scenarioPath: string,
+      options: { output: string; image: string; rebuildImage: boolean },
+    ) => {
+      const apiKey = process.env["OPENROUTER_API_KEY"];
+      if (apiKey === undefined || apiKey.length === 0) {
+        throw new AgentEvaluationError(
+          "OPENROUTER_API_KEY is required for agent-evaluate and is never mounted into a target sandbox",
+        );
+      }
+      const loaded = await loadAgentScenario(scenarioPath);
+      const result = await evaluateAgentScenario(loaded, {
+        outputRoot: resolve(options.output),
+        projectRoot: process.cwd(),
+        image: options.image,
+        rebuildImage: options.rebuildImage,
+        provider: new OpenRouterAgentProvider({ apiKey }),
+        providerCredentials: [apiKey],
+      });
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            status: "completed",
+            runId: result.runId,
+            runDirectory: result.runDirectory,
+            report: result.reportPath,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    },
+  );
+
 program.parseAsync().catch((error: unknown) => {
   if (error instanceof TargetConfigError) {
     process.stderr.write(`forge: ${error.message}\n`);
+  } else if (error instanceof AgentScenarioError) {
+    process.stderr.write(`forge: ${error.message}\n`);
+  } else if (error instanceof AgentEvaluationError) {
+    const cause = error.cause instanceof Error ? `: ${error.cause.message}` : "";
+    process.stderr.write(`forge: ${error.message}${cause}\n`);
   } else if (error instanceof AnalysisError) {
     const cause = error.cause instanceof Error ? `: ${error.cause.message}` : "";
     process.stderr.write(`forge: ${error.message}${cause}\n`);

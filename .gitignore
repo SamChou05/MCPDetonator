@@ -2,7 +2,8 @@ node_modules/
 dist/
 coverage/
 runs/
+agent-runs/
+agent-runs-verification/
 *.tgz
 .DS_Store
 keys.md
-
