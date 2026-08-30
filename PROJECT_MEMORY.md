@@ -409,8 +409,8 @@ Requested: 2026-08-30
 - Root owns the proposal contracts, comparison adapter, example fixtures,
   tests, documentation, verification, and Git coordination. No parallel agents
   were used for this wave.
-- Status: implemented, locally reviewed, and focused verification complete;
-  ready for the primary-agent commit.
+- Status: implemented, locally reviewed, verified, and committed in `bc24583`
+  (`feat: add experimental V2 agent proposal comparator`).
 
 Goals and completed behavior:
 
@@ -470,3 +470,11 @@ Verification:
 
 Suggested commit subject:
 `feat: add experimental V2 agent proposal comparator`.
+
+Completed experimental V2 agent proposal milestone:
+
+- Commit `bc24583` contains the reviewed 16-path proposal contracts,
+  comparator, offline/live command, fixtures, tests, and documentation.
+- Final staged review passed `git diff --cached --check`; the only remaining
+  dirty paths are the preserved out-of-scope `.gitignore`,
+  `src/static/node-package.ts`, and untracked `agent-runs/`.
