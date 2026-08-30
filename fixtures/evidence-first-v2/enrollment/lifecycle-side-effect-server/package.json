@@ -1,0 +1,10 @@
+{
+  "name": "@forge-test/unfamiliar-lifecycle-side-effect-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enrollment fixture with bounded initialization lifecycle effects",
+  "type": "module",
+  "files": [
+    "lib"
+  ]
+}

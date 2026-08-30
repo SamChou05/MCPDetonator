@@ -1,0 +1,39 @@
+schema: forge.target/v1
+
+target:
+  id: unseen-wrtn-calculator
+  source:
+    type: npm
+    package: "@wrtnlabs/calculator-mcp"
+    version: "0.2.1"
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/node_modules/@wrtnlabs/calculator-mcp/bin/index.js
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 10000
+    installTimeoutMs: 120000
+    cooldownMs: 0
+    memoryMb: 192
+    cpus: 1
+    pids: 32
+
+experiments:
+  initialization: false
+  tools:
+    - id: add-synthetic-values
+      tool: add
+      input:
+        a: 7
+        b: 5
+      expected:
+        fileReads: []
+        fileWrites: []
+        networkConnections: []
+        childExecutables: []
+  workflows: []

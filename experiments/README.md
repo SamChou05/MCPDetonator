@@ -23,6 +23,12 @@ experiment is meant to teach us and the boundary of any implemented result.
   verification gates.
 - **Implemented-Agent-V1:** exercised by the separate opt-in agent harness and
   deterministic offline fixture; a live-provider study may still be unrun.
+- **Implemented-Controlled-V2:** exercised only through the pinned, one-step V2
+  fixture authority and quarantine path; arbitrary target dispatch remains
+  disabled.
+- **Implemented-Enrolled-V2:** exercised through the reviewed, one-call V2 path
+  for eligible exact npm or local Node.js STDIO targets; result-channel evidence
+  does not establish package safety.
 - **Future-Agent:** requires behavior outside the current Agent V1 contract.
 
 ## Baseline experiments
@@ -52,6 +58,14 @@ even when the MCP process does not directly perform the harmful action.
 | Experiment | Status | Main question |
 | --- | --- | --- |
 | [Documented malicious-MCP study](security/documented-malicious-mcp-study-2026-08-30.md) | Implemented | Do real advisory packages and a contained campaign-shaped MCP reproduction reach Forge's evidence, finding, and agent-enforcement layers? |
+
+
+## Evidence-First V2 experiments
+
+| Experiment                                                                                     | Status                    | Main question                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Controlled outcome comparison](evidence-first-v2/controlled-outcome-experiment-2026-08-30.md) | Implemented-Controlled-V2 | Can deterministic authority execute one pinned result-channel experiment and compare predicted versus quarantined output without letting returned text authorize a follow-up? |
+| [Reviewed unseen-MCP enrollment](evidence-first-v2/unseen-enrollment-study-2026-08-30.md)       | Implemented-Enrolled-V2   | Can eligible unfamiliar exact npm or local Node.js STDIO MCPs use the same reviewed one-call path while incompatible candidates fail closed?                                  |
 
 ## Experiment discipline
 

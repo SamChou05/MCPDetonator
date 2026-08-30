@@ -124,4 +124,19 @@ describe("enrolled single-call experiment compiler", () => {
       }),
     ).toThrow(/catalog/u);
   });
+
+  it("enforces the recorded 1,000-tool enrollment ceiling", () => {
+    const template = catalog().tools[0]!;
+    expect(() =>
+      build({
+        catalog: {
+          ...catalog(),
+          tools: Array.from({ length: 1_001 }, (_value, index) => ({
+            ...template,
+            name: `bounded_tool_${index}`,
+          })),
+        },
+      }),
+    ).toThrow(/tool_limit.*1000/u);
+  });
 });

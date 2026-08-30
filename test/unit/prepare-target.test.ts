@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { loadTargetConfig } from "../../src/config.js";
 import { EvidenceStore } from "../../src/evidence-store.js";
 import {
+  acquisitionContainerDoesNotExist,
   prepareTarget,
   runNpmInstall,
   type NpmAcquisitionChildProcess,
@@ -81,6 +82,27 @@ function controlledAcquisitionProcess(
 }
 
 describe("sandboxed npm acquisition", () => {
+  it("treats only an explicit Docker no-such-object diagnostic as absence", () => {
+    expect(
+      acquisitionContainerDoesNotExist({
+        code: 1,
+        stderr: "Error response from daemon: No such container: gone",
+      }),
+    ).toBe(true);
+    expect(
+      acquisitionContainerDoesNotExist({
+        code: 1,
+        stderr: "permission denied while connecting to the Docker daemon",
+      }),
+    ).toBe(false);
+    expect(
+      acquisitionContainerDoesNotExist({
+        code: "ETIMEDOUT",
+        message: "Docker inspect timed out",
+      }),
+    ).toBe(false);
+  });
+
   it("uses label-checked cleanup and preserves a bounded success log", async () => {
     const root = await mkdtemp(join(tmpdir(), "forge-acquisition-success-"));
     const store = await EvidenceStore.create(join(root, "runs"), "run-acquire-ok");
@@ -161,7 +183,10 @@ describe("sandboxed npm acquisition", () => {
       },
     );
 
-    await expect(acquisition).rejects.toThrow("sandboxed npm ci exited with 42");
+    await expect(acquisition).rejects.toMatchObject({
+      cleanupVerified: true,
+      message: expect.stringContaining("sandboxed npm ci exited with 42"),
+    });
     expect(cleanupCalls).toEqual([
       ["forge-run-acquire-fail-acquisition", "run-acquire-fail"],
     ]);
@@ -297,9 +322,12 @@ describe("sandboxed npm acquisition", () => {
       },
     );
 
-    await expect(acquisition).rejects.toThrow(
-      "sandboxed npm install timed out after 5 ms",
-    );
+    await expect(acquisition).rejects.toMatchObject({
+      cleanupVerified: false,
+      message: expect.stringContaining(
+        "sandboxed npm install timed out after 5 ms",
+      ),
+    });
     expect(Date.now() - startedAt).toBeLessThan(500);
     expect(process.terminationSignals()).toEqual(["SIGTERM", "SIGKILL"]);
     expect(process.stdout.destroyed).toBe(true);

@@ -2,7 +2,7 @@
 
 **Status:** Current product/design record
 
-**Updated:** 2026-08-29
+**Updated:** 2026-08-30
 
 This document records what Forge is intended to accomplish, what is implemented
 today, what the supplementary agent-context path adds, and which conclusions
@@ -59,6 +59,7 @@ of a capability profile.
 | Stage | Status | Core question | Source of ground truth |
 | --- | --- | --- | --- |
 | Static and direct software detonation | Implemented and hardening | What does the selected artifact contain and directly do? | Operator-authored calls, scope, and sandbox policy |
+| Reviewed unfamiliar-target result comparison | Implemented alpha | Does one exact reviewed call on a retained Node STDIO target return the predicted bounded result? | Operator-authored call, deterministic compiler, and explicit exact-call review |
 | Agent-context detonation | Implemented as a separate opt-in V1 | What does a covered agent propose or do in the presence of exact MCP metadata? | Operator-authored agent task, authorization, and utility oracle |
 | Registry admission | Future | Under what restrictions may an enterprise deploy this exact artifact? | Enterprise policy plus reviewed capability profile and audit evidence |
 | Runtime gateway | Future | Is this particular live action authorized now? | Approved deployment policy and user/task context |

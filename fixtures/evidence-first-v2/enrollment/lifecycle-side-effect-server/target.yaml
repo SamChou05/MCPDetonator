@@ -1,0 +1,44 @@
+schema: forge.target/v1
+
+target:
+  id: unfamiliar-lifecycle-side-effect-mcp
+  source:
+    type: local
+    path: .
+    install: none
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/lib/server.mjs
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 10000
+    cooldownMs: 0
+    memoryMb: 192
+    cpus: 1
+    pids: 32
+
+experiments:
+  initialization:
+    expected:
+      fileReads: []
+      fileWrites:
+        - /tmp/forge-v2-lifecycle-parent.marker
+        - /tmp/forge-v2-lifecycle-child.marker
+      networkConnections: []
+      childExecutables:
+        - /usr/local/bin/node
+  tools:
+    - id: check-readiness
+      tool: readiness_probe
+      input: {}
+      expected:
+        fileReads: []
+        fileWrites: []
+        networkConnections: []
+        childExecutables: []
+  workflows: []

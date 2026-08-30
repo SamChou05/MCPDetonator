@@ -1,7 +1,10 @@
 # Evidence-First V2 Phase 1A implementation
 
-**Status:** provider-free contracts and compiler implemented; V2 execution is
-disabled.
+**Status:** historical Phase 1A compiler milestone. Later work added a pinned
+controlled execution path and the separately reviewed, one-call unfamiliar
+target alpha described in
+[EvidenceFirstV2Enrollment.md](EvidenceFirstV2Enrollment.md). The contracts and
+compiler described below still grant no execution authority by themselves.
 
 This milestone proves deterministic artifact separation and binding. It does
 not add a CLI, contact a model/provider, launch an MCP server, discover a live

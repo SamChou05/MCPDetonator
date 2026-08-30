@@ -28,7 +28,9 @@ import {
   CONTROLLED_SANDBOX_IMAGE_REFERENCE,
 } from "../../src/audit/v2/controlled-fixture.js";
 import { compileAgentOutcomeHypothesis } from "../../src/audit/v2/outcome-comparison.js";
+import { buildOutcomeObservation } from "../../src/audit/v2/runtime-observation.js";
 import type { PreparedTarget } from "../../src/target/prepare.js";
+import { sha256 } from "../../src/evidence-store.js";
 
 const catalog = {
   protocolVersion: "2025-06-18",
@@ -65,7 +67,22 @@ async function fixture() {
     hostRoot: root,
     packageRoot: root,
     containerRoot: "/opt/target",
-    provenance: {},
+    provenance: {
+      schema: "forge.target-provenance/v1",
+      runId: "authority-run",
+      targetId: "authority-target",
+      preparedAt: "2026-08-30T20:00:00.000Z",
+      containerRoot: "/opt/target",
+      containerPackageRoot: "/opt/target",
+      source: {
+        type: "local",
+        configuredPath: root,
+        sourceTreeSha256: "a".repeat(64),
+        sourceFileCount: 1,
+      },
+      install: { strategy: "none", lifecycleScripts: "disabled" },
+      limitations: ["Synthetic authority-test provenance."],
+    },
     dispose: async () => undefined,
   } as unknown as PreparedTarget;
   const snapshot = await snapshotPreparedRuntimeTree(root);
@@ -95,7 +112,7 @@ async function fixture() {
     toolName: "echo_value",
     arguments: { value: "synthetic" },
     createdAt: "2026-08-30T20:00:00.000Z",
-    reviewedAt: "2026-08-30T20:07:00.000Z",
+    reviewedAt: "2026-08-30T20:05:30.000Z",
     expiresAt: "2026-08-30T20:20:00.000Z",
   });
   expect(resources.manifestDigest).toBe(
@@ -108,7 +125,7 @@ async function fixture() {
   };
   const invocation = createEnrolledNodeStdioDockerInvocation({
     runId: "authority-run",
-    experimentId: "authority-discovery",
+    experimentId: "enrollment-discovery",
     preparedTarget,
     resources,
     runtime,
@@ -135,7 +152,7 @@ async function fixture() {
         sourceRegularFileBytes: snapshot.summary.fileBytesHashed,
         sourceArtifactSha256: experiment.target.sourceArtifact.sha256,
         lifecycleScripts: "disabled",
-        configuredPathSha256: "a".repeat(64),
+        configuredPathSha256: sha256(root),
         installMode: "none",
         acquisitionNetwork: "none",
       },
@@ -191,6 +208,7 @@ async function fixture() {
         byteLength: 512,
         toolsListRequests: 1,
         toolsCallRequests: 0,
+        toolsListChangedNotifications: 0,
       },
       limits: { maxPages: 1, maxTools: 1_000, maxTranscriptBytes: 2_000_000 },
       cleanup: {
@@ -259,6 +277,31 @@ async function fixture() {
     experiment,
     image,
     backendProfileDigest: invocation.backendProfileDigest,
+    discoveryInvocation: invocation,
+    discoveryEvidence: {
+      startedAt: record.discovery.startedAt,
+      completedAt: record.discovery.completedAt,
+      transcript: {
+        sha256: record.discovery.transcript.sha256,
+        byteLength: record.discovery.transcript.byteLength,
+        messageCount: 4,
+        toolsListRequests: 1 as const,
+        toolsCallRequests: 0 as const,
+        toolsListChangedNotifications: 0 as const,
+        followupCalls: 0 as const,
+        initializeRequests: 1 as const,
+        initializedNotifications: 1 as const,
+        unexpectedServerRequests: 0 as const,
+        unexpectedClientMethods: 0 as const,
+        sequenceContiguous: true as const,
+      },
+      cleanup: {
+        containerName: invocation.containerName,
+        containerAbsent: true as const,
+        ephemeralDiscoveryInputsAbsent: true as const,
+        verifiedAt: record.discovery.cleanup.verifiedAt,
+      },
+    },
   };
   return { record, context, experiment, hypothesis, invocation };
 }
@@ -266,7 +309,10 @@ async function fixture() {
 describe("enrolled target authority", () => {
   it("requires live enrollment/review capabilities and binds one exact call", async () => {
     const setup = await fixture();
-    const authority = createEnrolledTargetAuthority({ controllerId: "authority-test" });
+    const authority = createEnrolledTargetAuthority({
+      controllerId: "authority-test-enroller",
+      clock: () => "2026-08-30T20:09:00.000Z",
+    });
     const registered = authority.registerVerifiedEnrollment({
       record: setup.record,
       context: setup.context,
@@ -280,8 +326,6 @@ describe("enrolled target authority", () => {
         hypothesis: setup.hypothesis,
         reviewId: "authority-review-copy",
         reviewerId: "authority-reviewer",
-        reviewedAt: "2026-08-30T20:09:00.000Z",
-        capabilityExpiresAt: "2026-08-30T20:14:00.000Z",
         approvalClass: "operator_review",
       }),
     ).toThrow(EnrolledAuthorityError);
@@ -293,8 +337,6 @@ describe("enrolled target authority", () => {
       hypothesis: setup.hypothesis,
       reviewId: "authority-review",
       reviewerId: "authority-reviewer",
-      reviewedAt: "2026-08-30T20:09:00.000Z",
-      capabilityExpiresAt: "2026-08-30T20:14:00.000Z",
       approvalClass: "operator_review",
     });
     expect(reviewed.record.exactCall).toMatchObject({
@@ -310,15 +352,19 @@ describe("enrolled target authority", () => {
         capability: forged,
         reviewRecord: reviewed.record,
         reviewDigest: reviewed.recordDigest,
-        now: "2026-08-30T20:10:00.000Z",
       }),
     ).toThrow(EnrolledAuthorityError);
     const consumed = authority.consumeExactCallReview({
       capability: reviewed.capability,
       reviewRecord: reviewed.record,
       reviewDigest: reviewed.recordDigest,
-      now: "2026-08-30T20:10:00.000Z",
     });
+    expect(Object.isFrozen(consumed.authorization)).toBe(true);
+    expect(Object.isFrozen(consumed.authorization.experiment)).toBe(true);
+    expect(() => {
+      (consumed.authorization.experiment as { toolName: string }).toolName =
+        "substituted_tool";
+    }).toThrow();
     const executionInvocation = createEnrolledNodeStdioDockerInvocation({
       runId: "authority-run",
       experimentId: "authority-execution",
@@ -335,13 +381,35 @@ describe("enrolled target authority", () => {
       liveCatalog: catalog,
       toolName: step.toolName,
       arguments: step.arguments,
-      now: "2026-08-30T20:11:00.000Z",
     });
     expect(dispatch).toMatchObject({
       toolName: "echo_value",
       arguments: { value: "synthetic" },
       sequence: 0,
     });
+    expect(authority.verifyDispatchReceipt(dispatch)).toBe(dispatch);
+    const copiedDispatch = { ...dispatch };
+    expect(() =>
+      authority.verifyDispatchReceipt(copiedDispatch),
+    ).toThrowError(expect.objectContaining({ code: "invalid_capability" }));
+    const lateObservation = buildOutcomeObservation({
+      observationId: "authority-late-observation",
+      recordedAt: "2026-08-30T20:15:00.000Z",
+      envelope: setup.experiment.compiled,
+      catalog,
+      policy: setup.experiment.policy,
+      hypothesis: setup.hypothesis,
+      consumed: dispatch,
+      result: { content: [{ type: "text", text: "synthetic" }] },
+      protocolOutcome: "success",
+      runtimeMs: 1,
+      transcriptEvidenceReference: "authority-transcript",
+      cleanup: {
+        status: "verified",
+        evidenceReference: "authority-cleanup",
+      },
+    });
+    expect(lateObservation.format).toBe("forge.outcome-observation/v1alpha1");
     await expect(
       authority.revalidateDispatch({
         consumed,
@@ -349,14 +417,16 @@ describe("enrolled target authority", () => {
         liveCatalog: catalog,
         toolName: step.toolName,
         arguments: step.arguments,
-        now: "2026-08-30T20:12:00.000Z",
       }),
     ).rejects.toMatchObject({ code: "replay" });
   });
 
   it("burns a capability when the serialized enrollment is substituted", async () => {
     const setup = await fixture();
-    const authority = createEnrolledTargetAuthority({ controllerId: "authority-test" });
+    const authority = createEnrolledTargetAuthority({
+      controllerId: "authority-test-enroller",
+      clock: () => "2026-08-30T20:09:00.000Z",
+    });
     const registered = authority.registerVerifiedEnrollment({
       record: setup.record,
       context: setup.context,
@@ -371,8 +441,6 @@ describe("enrolled target authority", () => {
         hypothesis: setup.hypothesis,
         reviewId: "substituted-review",
         reviewerId: "authority-reviewer",
-        reviewedAt: "2026-08-30T20:09:00.000Z",
-        capabilityExpiresAt: "2026-08-30T20:14:00.000Z",
         approvalClass: "operator_review",
       }),
     ).toThrow();
@@ -384,10 +452,62 @@ describe("enrolled target authority", () => {
         hypothesis: setup.hypothesis,
         reviewId: "replayed-review",
         reviewerId: "authority-reviewer",
-        reviewedAt: "2026-08-30T20:09:00.000Z",
-        capabilityExpiresAt: "2026-08-30T20:14:00.000Z",
         approvalClass: "operator_review",
       }),
     ).toThrowError(expect.objectContaining({ code: "replay" }));
+  });
+
+  it("rejects false source, tree, or normalized-invocation projections", async () => {
+    const setup = await fixture();
+    const mutations = [
+      (record: Record<string, any>) => {
+        record.source.provenance.configuredPathSha256 = "f".repeat(64);
+      },
+      (record: Record<string, any>) => {
+        record.preparedTree.limits.maxPathBytes -= 1;
+      },
+      (record: Record<string, any>) => {
+        record.runtime.invocation.entrypoint = "/opt/target/other.js";
+      },
+    ];
+    for (const mutate of mutations) {
+      const authority = createEnrolledTargetAuthority({
+        controllerId: "authority-test-enroller",
+        clock: () => "2026-08-30T20:09:00.000Z",
+      });
+      const forged = structuredClone(setup.record) as Record<string, any>;
+      mutate(forged);
+      expect(() =>
+        authority.registerVerifiedEnrollment({
+          record: forged,
+          context: setup.context,
+        }),
+      ).toThrow(EnrolledAuthorityError);
+    }
+  });
+
+  it("honors a stricter enrollment approval requirement", async () => {
+    const setup = await fixture();
+    const authority = createEnrolledTargetAuthority({
+      controllerId: "authority-test-enroller",
+      clock: () => "2026-08-30T20:09:00.000Z",
+    });
+    const stricter = structuredClone(setup.record);
+    stricter.eligibility.requiredApprovalClass = "security_review";
+    const registered = authority.registerVerifiedEnrollment({
+      record: stricter,
+      context: setup.context,
+    });
+    expect(() =>
+      authority.approveExactCall({
+        capability: registered.capability,
+        enrollmentRecord: registered.record,
+        enrollmentDigest: registered.recordDigest,
+        hypothesis: setup.hypothesis,
+        reviewId: "authority-review-too-weak",
+        reviewerId: "authority-reviewer",
+        approvalClass: "operator_review",
+      }),
+    ).toThrow(EnrolledAuthorityError);
   });
 });

@@ -1,0 +1,38 @@
+schema: forge.target/v1
+
+target:
+  id: unfamiliar-math-mcp
+  source:
+    type: local
+    path: .
+    install: none
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/lib/main.mjs
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 10000
+    cooldownMs: 0
+    memoryMb: 192
+    cpus: 1
+    pids: 32
+
+experiments:
+  initialization: false
+  tools:
+    - id: add-synthetic-values
+      tool: add_numbers
+      input:
+        left: 7
+        right: 5
+      expected:
+        fileReads: []
+        fileWrites: []
+        networkConnections: []
+        childExecutables: []
+  workflows: []

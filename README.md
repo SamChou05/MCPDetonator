@@ -69,6 +69,11 @@ while [EvidenceFirstV2AgentProposals.md](EvidenceFirstV2AgentProposals.md)
 tests whether an untrusted model can add useful audit-plan candidates beyond a
 deterministic baseline without receiving execution authority.
 
+[EvidenceFirstV2Enrollment.md](EvidenceFirstV2Enrollment.md) documents the
+separate reviewed alpha for one operator-authored call against an unfamiliar
+exact npm or local Node STDIO target. Its result-channel comparison remains
+inconclusive whenever process, filesystem, or network sensors are unavailable.
+
 ---
 
 # What "done" looks like
