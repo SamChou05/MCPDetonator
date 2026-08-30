@@ -1,18 +1,34 @@
 import { readFile, readdir } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 
-export interface ParsedStraceRecord {
+interface ParsedStraceRecordBase {
   readonly experimentId: string;
   readonly pid: number;
   readonly timestampSeconds: number;
-  readonly syscall: string;
-  readonly argumentsText: string;
-  readonly resultText: string;
   readonly rawRef: string;
   readonly rawLine: string;
 }
 
+export interface ParsedStraceSyscallRecord extends ParsedStraceRecordBase {
+  readonly kind: "syscall";
+  readonly syscall: string;
+  readonly argumentsText: string;
+  readonly resultText: string;
+}
+
+export interface ParsedStraceSignalTerminationRecord
+  extends ParsedStraceRecordBase {
+  readonly kind: "signal-termination";
+  readonly signal: string;
+}
+
+export type ParsedStraceRecord =
+  | ParsedStraceSyscallRecord
+  | ParsedStraceSignalTerminationRecord;
+
 const syscallPattern = /^(\d+\.\d+)\s+([a-zA-Z0-9_]+)\((.*)\)\s+=\s+(.+)$/;
+const signalTerminationPattern =
+  /^(\d+\.\d+)\s+\+\+\+\s+killed by\s+(SIG[A-Z0-9_+-]+)(?:\s+\(core dumped\))?\s+\+\+\+$/;
 
 export function parseStraceLine(options: {
   readonly experimentId: string;
@@ -21,22 +37,40 @@ export function parseStraceLine(options: {
   readonly line: string;
 }): ParsedStraceRecord | undefined {
   const match = syscallPattern.exec(options.line);
-  if (!match) {
-    return undefined;
+  if (match !== null) {
+    const timestampSeconds = Number(match[1]);
+    if (!Number.isFinite(timestampSeconds)) {
+      return undefined;
+    }
+
+    return {
+      kind: "syscall",
+      experimentId: options.experimentId,
+      pid: options.pid,
+      timestampSeconds,
+      syscall: match[2] ?? "",
+      argumentsText: match[3] ?? "",
+      resultText: match[4] ?? "",
+      rawRef: options.rawRef,
+      rawLine: options.line,
+    };
   }
 
-  const timestampSeconds = Number(match[1]);
-  if (!Number.isFinite(timestampSeconds)) {
+  const terminationMatch = signalTerminationPattern.exec(options.line);
+  if (terminationMatch === null) {
     return undefined;
   }
-
+  const timestampSeconds = Number(terminationMatch[1]);
+  const signal = terminationMatch[2];
+  if (!Number.isFinite(timestampSeconds) || signal === undefined) {
+    return undefined;
+  }
   return {
+    kind: "signal-termination",
     experimentId: options.experimentId,
     pid: options.pid,
     timestampSeconds,
-    syscall: match[2] ?? "",
-    argumentsText: match[3] ?? "",
-    resultText: match[4] ?? "",
+    signal,
     rawRef: options.rawRef,
     rawLine: options.line,
   };
@@ -80,4 +114,3 @@ export async function readExperimentStrace(
       left.rawRef.localeCompare(right.rawRef),
   );
 }
-

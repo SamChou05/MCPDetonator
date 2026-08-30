@@ -158,7 +158,10 @@ export async function runMcpExperiment(options: {
     kind: PhaseV1["kind"],
     name: string,
     task: () => Promise<T>,
-    toolName?: string,
+    details: {
+      readonly stage?: PhaseV1["stage"];
+      readonly toolName?: string;
+    } = {},
   ): Promise<T> {
     const startedAt = timestamp();
     try {
@@ -170,7 +173,8 @@ export async function runMcpExperiment(options: {
         experimentId,
         kind,
         name,
-        ...(toolName === undefined ? {} : { toolName }),
+        ...(details.stage === undefined ? {} : { stage: details.stage }),
+        ...(details.toolName === undefined ? {} : { toolName: details.toolName }),
         startedAt,
         endedAt: timestamp(),
         status: "completed",
@@ -186,7 +190,8 @@ export async function runMcpExperiment(options: {
         experimentId,
         kind,
         name,
-        ...(toolName === undefined ? {} : { toolName }),
+        ...(details.stage === undefined ? {} : { stage: details.stage }),
+        ...(details.toolName === undefined ? {} : { toolName: details.toolName }),
         startedAt,
         endedAt: timestamp(),
         status: "failed",
@@ -202,11 +207,21 @@ export async function runMcpExperiment(options: {
   let toolResult: unknown;
 
   try {
-    const listedTools = await inPhase("initialization", "initialize and list tools", async () => {
-      await client.connect(recording, { timeout: timeoutMs });
-      connected = true;
-      return client.listTools(undefined, { timeout: timeoutMs });
-    });
+    await inPhase(
+      "initialization",
+      "initialize MCP session",
+      async () => {
+        await client.connect(recording, { timeout: timeoutMs });
+        connected = true;
+      },
+      { stage: "handshake" },
+    );
+    const listedTools = await inPhase(
+      "initialization",
+      "list advertised tools",
+      () => client.listTools(undefined, { timeout: timeoutMs }),
+      { stage: "tool_discovery" },
+    );
 
     const serverVersion = client.getServerVersion();
     mcpInterface = {
@@ -277,15 +292,20 @@ export async function runMcpExperiment(options: {
             undefined,
             { timeout: timeoutMs },
           ),
-        toolExperiment.tool,
+        { stage: "tool_invocation", toolName: toolExperiment.tool },
       );
     }
 
-    await inPhase("cooldown", "observe background activity", async () => {
-      if (cooldownMs > 0) {
-        await delay(cooldownMs);
-      }
-    });
+    await inPhase(
+      "cooldown",
+      "observe background activity",
+      async () => {
+        if (cooldownMs > 0) {
+          await delay(cooldownMs);
+        }
+      },
+      { stage: "observation_window" },
+    );
   } finally {
     if (connected) {
       await client.close().catch(() => undefined);

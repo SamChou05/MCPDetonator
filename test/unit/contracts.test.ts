@@ -63,6 +63,26 @@ describe("persisted v1 contracts", () => {
     ).toThrow("endedAt must not precede startedAt");
   });
 
+  it("records a bounded lifecycle stage without replacing the phase kind", () => {
+    const phase = phaseV1Schema.parse({
+      schema: "forge.phase/v1",
+      phaseId: "phase-discovery-1",
+      runId: "run-7",
+      experimentId: "initialization",
+      kind: "initialization",
+      stage: "tool_discovery",
+      name: "list advertised tools",
+      startedAt: "2026-08-29T18:20:00.000Z",
+      endedAt: "2026-08-29T18:20:01.000Z",
+      status: "completed",
+    });
+
+    expect(phase).toMatchObject({
+      kind: "initialization",
+      stage: "tool_discovery",
+    });
+  });
+
   it("does not treat a failed exec probe as successful execution", () => {
     const event = observedEventV1Schema.parse({
       schema: "forge.event/v1",

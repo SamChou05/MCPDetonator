@@ -14,6 +14,7 @@ import {
 } from "./agent/scenario.js";
 import { OpenRouterAgentProvider } from "./agent/providers/openrouter.js";
 import {
+  initializationEnabled,
   loadTargetConfig,
   resolveLocalSourcePath,
   TargetConfigError,
@@ -78,7 +79,9 @@ program
           experiments:
             loaded.config.experiments.tools.length +
             loaded.config.experiments.workflows.length +
-            (loaded.config.experiments.initialization ? 1 : 0),
+            (initializationEnabled(loaded.config.experiments.initialization)
+              ? 1
+              : 0),
           ...(localSourcePath === undefined ? {} : { localSourcePath }),
         },
         null,

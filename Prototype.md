@@ -5,9 +5,11 @@ MCP servers over STDIO. It accepts either an exact-version npm package or a
 local package directory, prepares it without running lifecycle scripts, and
 performs focused static inspection. When preparation produces a reusable npm
 cache, it compares scripts-disabled and scripts-enabled installation in fresh
-sandboxes; local `install:none` targets skip that pair. It then observes
-initialization, isolated tool calls, and their cooldown periods. The result is
-an evidence-linked `report.json`.
+sandboxes; local `install:none` targets skip that pair. It then observes the MCP
+handshake, tool discovery, isolated tool calls, and their observation windows
+as separate stages. The dedicated initialization experiment includes its final
+observation window as activity before any tool call. The result is an
+evidence-linked `report.json`.
 
 The same core pipeline is verified against two different targets:
 
@@ -178,7 +180,7 @@ This is useful take-home containment, not proof that arbitrary hostile code is p
 
 - Support is currently Node.js packages on Linux, local execution over MCP STDIO, and npm or local-directory sources.
 - Static inspection is bounded lexical analysis of selected Node source plus manifest, script, dependency, lockfile, and provenance metadata. It is not whole-program reachability or data-flow analysis, and dependency source under `node_modules` is not scanned.
-- Runtime normalization covers a focused `strace` syscall subset for process, file, and socket behavior. It does not reconstruct every kernel action, DNS meaning, or encrypted network payload.
+- Runtime normalization covers a focused `strace` syscall subset for process, file, and socket behavior, including supported failed exec/file attempts and terminal signal exits. It does not reconstruct every kernel action, DNS meaning, or encrypted network payload.
 - Results cover only the configured initialization and isolated tool inputs. A clean report means no covered rule mismatch was observed, not that the target is safe for every input.
 - Workflow execution, HTML reporting, and LLM interpretation are not implemented in the core path. Automated Agent V1 rollouts are available separately through `forge agent-evaluate`; they do not modify this report or core analysis flow.
 - This is not yet a production VM/microVM or out-of-container eBPF observer.

@@ -1,4 +1,7 @@
-import type { TargetConfigV1 } from "./config.js";
+import {
+  initializationExpectedScope,
+  type TargetConfigV1,
+} from "./config.js";
 import {
   findingV1Schema,
   type AttributionV1,
@@ -17,6 +20,10 @@ function attributionFor(
   attributions: ReadonlyMap<string, AttributionV1>,
 ): AttributionV1 | undefined {
   return attributions.get(event.eventId);
+}
+
+function pathIsInside(path: string, root: string): boolean {
+  return path === root || path.startsWith(root.endsWith("/") ? root : `${root}/`);
 }
 
 function finding(options: {
@@ -76,25 +83,50 @@ export async function evaluateRuntimeRules(options: {
   );
   const findings: FindingV1[] = [];
 
-  const initializationPhase = options.phases.find(
-    (phase) =>
-      phase.experimentId === "baseline-initialization" &&
-      phase.kind === "initialization",
+  const initializationPhaseIds = new Set(
+    options.phases
+      .filter(
+        (phase) =>
+          phase.experimentId === "baseline-initialization" &&
+          phase.kind === "initialization",
+      )
+      .map((phase) => phase.phaseId),
+  );
+  const initializationCooldownPhaseIds = new Set(
+    options.phases
+      .filter(
+        (phase) =>
+          phase.experimentId === "baseline-initialization" &&
+          phase.kind === "cooldown",
+      )
+      .map((phase) => phase.phaseId),
+  );
+  const initializationEvents = options.events.filter(
+    (event) => {
+      if (event.experimentId !== "baseline-initialization") {
+        return false;
+      }
+      const attribution = attributionFor(event, attributionMap);
+      const activePhaseId = attribution?.activePhaseId ?? "";
+      return (
+        initializationPhaseIds.has(activePhaseId) ||
+        initializationCooldownPhaseIds.has(activePhaseId)
+      );
+    },
   );
   const initializationSensitivePaths =
     options.sensitivePathsByExperiment.get("baseline-initialization") ?? new Set();
-  if (initializationPhase !== undefined) {
+  const sensitiveInitializationEventIds = new Set<string>();
+  if (initializationPhaseIds.size > 0) {
     const accessesByPath = new Map<string, ObservedEventV1[]>();
-    for (const event of options.events) {
+    for (const event of initializationEvents) {
       if (
-        event.experimentId !== "baseline-initialization" ||
-        attributionFor(event, attributionMap)?.activePhaseId !==
-          initializationPhase.phaseId ||
         event.effect.kind !== "file.read" ||
         !initializationSensitivePaths.has(event.effect.path)
       ) {
         continue;
       }
+      sensitiveInitializationEventIds.add(event.eventId);
       const existing = accessesByPath.get(event.effect.path) ?? [];
       existing.push(event);
       accessesByPath.set(event.effect.path, existing);
@@ -103,15 +135,183 @@ export async function evaluateRuntimeRules(options: {
     let sensitiveIndex = 0;
     for (const [path, events] of accessesByPath) {
       sensitiveIndex += 1;
+      const succeeded = events.some(
+        (event) =>
+          event.effect.kind === "file.read" &&
+          event.effect.outcome.status === "succeeded",
+      );
       findings.push(
         finding({
           id: `finding-initialization-sensitive-access-${sensitiveIndex}`,
           runId: options.runId,
           ruleId: "runtime.initialization_sensitive_access",
-          title: "Initialization read a synthetic credential",
-          summary: `The MCP read ${path} during initialization, before any tool was called.`,
+          title: succeeded
+            ? "Initialization read a synthetic credential"
+            : "Initialization attempted to read a synthetic credential",
+          summary: succeeded
+            ? `The MCP read ${path} during initialization or its baseline cooldown, before any tool was called.`
+            : `The MCP attempted to read ${path} during initialization or its baseline cooldown, before any tool was called, but the recorded read syscall failed.`,
           severity: "high",
           events,
+          attributions: attributionMap,
+        }),
+      );
+    }
+  }
+
+  const initializationScope = initializationExpectedScope(
+    options.config.experiments.initialization,
+  );
+  if (initializationScope !== undefined && initializationPhaseIds.size > 0) {
+    const profileRoots = options.profileRootsByExperiment.get(
+      "baseline-initialization",
+    );
+    if (profileRoots === undefined) {
+      throw new Error(
+        "missing sandbox profile roots for experiment 'baseline-initialization'",
+      );
+    }
+    const syntheticRoots = [profileRoots.home, profileRoots.workspace];
+    const unexpectedPaths = new Map<
+      string,
+      {
+        readonly kind: "file.read" | "file.write";
+        readonly path: string;
+        readonly events: ObservedEventV1[];
+      }
+    >();
+
+    for (const event of initializationEvents) {
+      if (
+        event.effect.kind !== "file.read" &&
+        event.effect.kind !== "file.write"
+      ) {
+        continue;
+      }
+      const effect = event.effect;
+      if (sensitiveInitializationEventIds.has(event.eventId)) {
+        continue;
+      }
+      const kind: "file.read" | "file.write" =
+        effect.kind === "file.read" ? "file.read" : "file.write";
+      const allowed =
+        kind === "file.read"
+          ? initializationScope.fileReads
+          : initializationScope.fileWrites;
+      const allowedPrefixes =
+        kind === "file.read"
+          ? initializationScope.fileReadPrefixes
+          : initializationScope.fileWritePrefixes;
+      if (
+        !syntheticRoots.some((root) => pathIsInside(effect.path, root)) ||
+        pathMatchesExpectedScope(effect.path, allowed, allowedPrefixes)
+      ) {
+        continue;
+      }
+      const key = `${kind}:${effect.path}`;
+      const existing = unexpectedPaths.get(key);
+      if (existing === undefined) {
+        unexpectedPaths.set(key, {
+          kind,
+          path: effect.path,
+          events: [event],
+        });
+      } else {
+        existing.events.push(event);
+      }
+    }
+
+    let pathIndex = 0;
+    for (const unexpected of unexpectedPaths.values()) {
+      pathIndex += 1;
+      const succeeded = unexpected.events.some(
+        (event) =>
+          (event.effect.kind === "file.read" ||
+            event.effect.kind === "file.write") &&
+          event.effect.outcome.status === "succeeded",
+      );
+      findings.push(
+        finding({
+          id: `finding-initialization-file-scope-${pathIndex}`,
+          runId: options.runId,
+          ruleId: "runtime.initialization_file_scope_exceeded",
+          title: "Initialization exceeded its analyst-expected filesystem scope",
+          summary: `Initialization ${succeeded ? "performed" : "attempted"} ${unexpected.kind} on ${unexpected.path}, which was not included in the configured expected scope.${succeeded ? "" : " The recorded syscall failed."}`,
+          severity: "medium",
+          events: unexpected.events,
+          attributions: attributionMap,
+        }),
+      );
+    }
+
+    const childProcessRefs = new Set(
+      options.events
+        .filter(
+          (event) =>
+            event.experimentId === "baseline-initialization" &&
+            event.effect.kind === "process.start" &&
+            event.effect.parentProcessRef !== undefined,
+        )
+        .map((event) => event.processRef),
+    );
+    const unexpectedExecs = initializationEvents.filter(
+      (event) =>
+        event.effect.kind === "process.exec" &&
+        event.effect.outcome.status === "succeeded" &&
+        childProcessRefs.has(event.processRef) &&
+        !pathMatchesExpectedScope(
+          event.effect.executable,
+          initializationScope.childExecutables,
+          initializationScope.childExecutablePrefixes,
+        ),
+    );
+    for (let index = 0; index < unexpectedExecs.length; index += 1) {
+      const event = unexpectedExecs[index];
+      if (event?.effect.kind !== "process.exec") {
+        continue;
+      }
+      findings.push(
+        finding({
+          id: `finding-initialization-unexpected-exec-${index + 1}`,
+          runId: options.runId,
+          ruleId: "runtime.initialization_unexpected_process_exec",
+          title: "Initialization launched an unexpected executable",
+          summary: `Initialization executed ${event.effect.executable}, which was not included in the configured expected scope.`,
+          severity: "medium",
+          events: [event],
+          attributions: attributionMap,
+        }),
+      );
+    }
+
+    const unexpectedConnections = initializationEvents.filter(
+      (event) =>
+        event.effect.kind === "network.connect_attempt" &&
+        event.effect.protocol !== "unix" &&
+        !destinationMatchesExpectedScope(
+          event.effect.address,
+          event.effect.port,
+          initializationScope.networkConnections,
+        ),
+    );
+    for (let index = 0; index < unexpectedConnections.length; index += 1) {
+      const event = unexpectedConnections[index];
+      if (event?.effect.kind !== "network.connect_attempt") {
+        continue;
+      }
+      const outcome =
+        event.effect.outcome.status === "failed"
+          ? ` The sandbox blocked or failed the attempt with ${event.effect.outcome.errno}.`
+          : " The connection syscall succeeded.";
+      findings.push(
+        finding({
+          id: `finding-initialization-network-${index + 1}`,
+          runId: options.runId,
+          ruleId: "runtime.initialization_unexpected_network_attempt",
+          title: "Initialization attempted an unexpected network connection",
+          summary: `Initialization attempted ${event.effect.address}${event.effect.port === undefined ? "" : `:${event.effect.port}`}, which was not included in the configured expected scope.${outcome}`,
+          severity: "medium",
+          events: [event],
           attributions: attributionMap,
         }),
       );
@@ -136,9 +336,7 @@ export async function evaluateRuntimeRules(options: {
     if (profileRoots === undefined) {
       throw new Error(`missing sandbox profile roots for experiment '${experiment.id}'`);
     }
-    const syntheticRoots = [profileRoots.home, profileRoots.workspace].map((root) =>
-      root.endsWith("/") ? root : `${root}/`,
-    );
+    const syntheticRoots = [profileRoots.home, profileRoots.workspace];
 
     const unexpectedPaths = new Map<string, ObservedEventV1[]>();
     for (const event of activeEvents) {
@@ -155,7 +353,7 @@ export async function evaluateRuntimeRules(options: {
           : experiment.expected.fileWritePrefixes;
       const path = event.effect.path;
       if (
-        !syntheticRoots.some((root) => path.startsWith(root)) ||
+        !syntheticRoots.some((root) => pathIsInside(path, root)) ||
         pathMatchesExpectedScope(path, allowed, allowedPrefixes)
       ) {
         continue;
@@ -172,15 +370,29 @@ export async function evaluateRuntimeRules(options: {
       const [kind, ...pathParts] = key.split(":");
       const path = pathParts.join(":");
       const isSensitive = sensitivePaths.has(path);
+      const succeeded = events.some(
+        (event) =>
+          (event.effect.kind === "file.read" ||
+            event.effect.kind === "file.write") &&
+          event.effect.outcome.status === "succeeded",
+      );
+      const sensitiveTitle =
+        kind === "file.read"
+          ? succeeded
+            ? "Tool read an unrelated synthetic credential"
+            : "Tool attempted to read an unrelated synthetic credential"
+          : succeeded
+            ? "Tool modified an unrelated synthetic credential"
+            : "Tool attempted to modify an unrelated synthetic credential";
       findings.push(
         finding({
           id: `finding-${experiment.id}-file-scope-${pathIndex}`,
           runId: options.runId,
           ruleId: "runtime.file_scope_exceeded",
           title: isSensitive
-            ? "Tool read an unrelated synthetic credential"
+            ? sensitiveTitle
             : "Tool exceeded its analyst-expected filesystem scope",
-          summary: `${experiment.tool} performed ${kind} on ${path}, which was not included in the configured expected scope.`,
+          summary: `${experiment.tool} ${succeeded ? "performed" : "attempted"} ${kind} on ${path}, which was not included in the configured expected scope.${succeeded ? "" : " The recorded syscall failed."}`,
           severity: isSensitive ? "high" : "medium",
           events,
           attributions: attributionMap,
@@ -272,7 +484,7 @@ export async function evaluateRuntimeRules(options: {
         case "file.write":
         case "file.delete": {
           const path = event.effect.path;
-          return syntheticRoots.some((root) => path.startsWith(root));
+          return syntheticRoots.some((root) => pathIsInside(path, root));
         }
         case "network.connect_attempt":
         case "network.listen":

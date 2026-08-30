@@ -26,6 +26,8 @@ supporting evidence, not a safety grade.
 
 - The exact npm package and version, or a local Node.js project.
 - The command needed to start the MCP server.
+- Whether to run a dedicated initialization experiment and, optionally, the
+  file, process, and network scope allowed before any tool call.
 - The tools and example inputs Forge should test.
 - The file access, programs, and network connections you expect each tool to
   need. Forge treats this as the allowed behavior for the test.
@@ -134,8 +136,10 @@ test settings
    detailed and tied to Linux internals. Forge converts the supported lines into
    a smaller list of actions such as:
 
-   - A process started, ran a program, or exited.
-   - A process opened, read, wrote, or deleted a file.
+   - A process started, ran or attempted to run a program, or exited normally
+     or because of a recorded terminal signal.
+   - A process opened, read, wrote, or deleted a file, including supported
+     failed attempts whose target path is known.
    - A process tried to connect to or listen on a network address.
 
    Forge also changes temporary host file paths back into the stable paths seen
@@ -145,9 +149,11 @@ test settings
    some detail, which is why Forge keeps both forms.
 
 6. **Connect actions to the part of the test that was running.** Forge records
-   the start and end time of installation, MCP startup, each tool call, and the
-   short wait after a tool returns. It uses those times to say which step was
-   active when an action happened.
+   the start and end time of installation, the MCP handshake, tool discovery,
+   each tool call, and the short observation window after a tool returns. It
+   uses those times to say which step was active when an action happened. A
+   dedicated initialization run also treats its final observation window as
+   pre-tool activity, so delayed startup behavior is not silently discarded.
 
    Forge also notes when each process first appeared. This helps it distinguish
    a process created by a tool from the long-running MCP server. The connection
@@ -159,7 +165,10 @@ test settings
 7. **Check the actions and write the report.** Forge applies the same fixed
    checks to every target. The current checks look for:
 
-   - Reading a fake credential during MCP startup.
+   - Reading or attempting to read a fake credential during MCP startup or its
+     pre-tool observation window.
+   - Exceeding an optional operator-authored initialization scope for synthetic
+     files, child programs, or non-local network destinations.
    - Reading or writing a file outside the allowed list for a tool.
    - Starting a program outside the allowed list.
    - Trying an unexpected network connection.
@@ -211,6 +220,8 @@ The main code for these steps is in
 - The operating-system recorder watches a selected set of operations. It does
   not capture every possible effect or the readable contents of encrypted
   network traffic.
+- Supported failed syscall attempts are evidence of attempted behavior, not
+  proof that the requested access or execution succeeded.
 - Connecting an action to a tool uses timing and process history. This is useful
   evidence, but it is not perfect proof that one exact line of code caused the
   action.

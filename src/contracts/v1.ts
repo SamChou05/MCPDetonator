@@ -185,6 +185,14 @@ export const phaseV1Schema = z
       "workflow",
       "cooldown",
     ]),
+    stage: z
+      .enum([
+        "handshake",
+        "tool_discovery",
+        "tool_invocation",
+        "observation_window",
+      ])
+      .optional(),
     name: z.string().min(1),
     toolName: z.string().min(1).optional(),
     startedAt: timestampSchema,
@@ -488,6 +496,32 @@ export const reportV1Schema = z
               })
               .strict(),
           ),
+          phaseBreakdown: z
+            .array(
+              z
+                .object({
+                  phaseId: identifierSchema,
+                  name: z.string().min(1),
+                  stage: z
+                    .enum([
+                      "handshake",
+                      "tool_discovery",
+                      "tool_invocation",
+                      "observation_window",
+                    ])
+                    .optional(),
+                  effectCounts: z.array(
+                    z
+                      .object({
+                        effectKind: observedEffectKindSchema,
+                        count: z.number().int().positive(),
+                      })
+                      .strict(),
+                  ),
+                })
+                .strict(),
+            )
+            .optional(),
           expectedScopeMatches: z
             .object({
               eventCount: z.number().int().nonnegative(),

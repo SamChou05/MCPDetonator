@@ -3,7 +3,7 @@ import { lstat, readdir } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 
 import type { LoadedTargetConfig } from "./config.js";
-import { targetConfigV1Schema } from "./config.js";
+import { initializationEnabled, targetConfigV1Schema } from "./config.js";
 import {
   runManifestV1Schema,
   targetProvenanceV1Schema,
@@ -187,7 +187,7 @@ export async function analyzeTarget(
 
   const profileSeed = createDeveloperProfileSeed();
   const experiments = [
-    ...(loaded.config.experiments.initialization
+    ...(initializationEnabled(loaded.config.experiments.initialization)
       ? [{ id: "baseline-initialization", tool: undefined }]
       : []),
     ...loaded.config.experiments.tools.map((tool) => ({ id: tool.id, tool })),

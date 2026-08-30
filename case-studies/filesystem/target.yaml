@@ -24,7 +24,12 @@ sandbox:
     pids: 64
 
 experiments:
-  initialization: true
+  initialization:
+    expected:
+      fileReads: []
+      fileWrites: []
+      networkConnections: []
+      childExecutables: []
   tools:
     - id: read-synthetic-report
       tool: read_text_file

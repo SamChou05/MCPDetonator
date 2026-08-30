@@ -5,10 +5,15 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { attributeEvents } from "../../src/attribute.js";
-import { targetConfigV1Schema } from "../../src/config.js";
+import {
+  initializationEnabled,
+  initializationExpectedScope,
+  targetConfigV1Schema,
+} from "../../src/config.js";
 import {
   observedEventV1Schema,
   phaseV1Schema,
+  type ObservedEffectV1,
 } from "../../src/contracts/v1.js";
 import { EvidenceStore } from "../../src/evidence-store.js";
 import { evaluateRuntimeRules } from "../../src/rules.js";
@@ -411,5 +416,374 @@ describe("attribution and runtime rules", () => {
     expect(
       findings.find((value) => value.ruleId === "runtime.post_return_activity"),
     ).toMatchObject({ confidence: "medium", eventIds: [delayedRead.eventId] });
+  });
+
+  it("applies an operator-authored scope across every initialization phase", async () => {
+    const runId = "run-initialization-scope";
+    const root = await mkdtemp(join(tmpdir(), "forge-initialization-scope-"));
+    const store = await EvidenceStore.create(root, runId);
+    const profileHome = "/initialization/home";
+    const profileWorkspace = "/initialization/workspace";
+    const credentialPath = `${profileHome}/.config/private-token`;
+    const allowedReadPath = `${profileWorkspace}/allowed.txt`;
+    const unexpectedWritePath = `${profileHome}/created.txt`;
+    const config = targetConfigV1Schema.parse({
+      schema: "forge.target/v1",
+      target: {
+        id: "initialization-scope-fixture",
+        source: { type: "fixture", path: "." },
+        runtime: { transport: "stdio", command: "node", args: ["server.js"] },
+      },
+      sandbox: {
+        profile: "developer-v1",
+        network: "blocked",
+        limits: {
+          timeoutMs: 1_000,
+          cooldownMs: 0,
+          memoryMb: 128,
+          cpus: 1,
+          pids: 32,
+        },
+      },
+      experiments: {
+        initialization: {
+          expected: {
+            fileReads: [allowedReadPath],
+            fileWrites: [],
+            networkConnections: [{ address: "203.0.113.7", port: 443 }],
+            childExecutables: ["/usr/bin/git"],
+          },
+        },
+        tools: [
+          {
+            id: "configured-tool",
+            tool: "configured_tool",
+            input: {},
+            expected: {
+              fileReads: [],
+              fileWrites: [],
+              networkConnections: [],
+              childExecutables: [],
+            },
+          },
+        ],
+        workflows: [],
+      },
+    });
+
+    expect(initializationEnabled(false)).toBe(false);
+    expect(initializationEnabled(true)).toBe(true);
+    expect(initializationEnabled(config.experiments.initialization)).toBe(true);
+    expect(initializationExpectedScope(true)).toBeUndefined();
+    expect(
+      initializationExpectedScope(config.experiments.initialization),
+    ).toMatchObject({
+      fileReadPrefixes: [],
+      fileWritePrefixes: [],
+      childExecutablePrefixes: [],
+    });
+
+    const phases = [
+      phaseV1Schema.parse({
+        schema: "forge.phase/v1",
+        phaseId: "baseline-initialization-startup-1",
+        runId,
+        experimentId: "baseline-initialization",
+        kind: "initialization",
+        name: "start server",
+        startedAt: "2026-08-29T21:00:00.000Z",
+        endedAt: "2026-08-29T21:00:01.000Z",
+        status: "completed",
+      }),
+      phaseV1Schema.parse({
+        schema: "forge.phase/v1",
+        phaseId: "baseline-initialization-discovery-2",
+        runId,
+        experimentId: "baseline-initialization",
+        kind: "initialization",
+        name: "discover tools",
+        startedAt: "2026-08-29T21:00:01.100Z",
+        endedAt: "2026-08-29T21:00:02.000Z",
+        status: "completed",
+      }),
+      phaseV1Schema.parse({
+        schema: "forge.phase/v1",
+        phaseId: "baseline-initialization-cooldown-3",
+        runId,
+        experimentId: "baseline-initialization",
+        kind: "cooldown",
+        name: "observe initialization background activity",
+        startedAt: "2026-08-29T21:00:02.100Z",
+        endedAt: "2026-08-29T21:00:02.900Z",
+        status: "completed",
+      }),
+    ];
+    let sequence = 0;
+    const event = (
+      eventId: string,
+      timestamp: string,
+      processRef: string,
+      effect: ObservedEffectV1,
+    ) =>
+      observedEventV1Schema.parse({
+        schema: "forge.event/v1",
+        eventId,
+        runId,
+        experimentId: "baseline-initialization",
+        sequence: sequence++,
+        timestamp,
+        processRef,
+        effect,
+        source: {
+          collector: "strace",
+          rawRef: `raw/baseline-initialization/${eventId}`,
+        },
+      });
+    const rootProcessRef = `${runId}:baseline-initialization:pid-10`;
+    const childProcessRef = `${runId}:baseline-initialization:pid-20`;
+    const rootStart = event(
+      "evt-initialization-root-start",
+      "2026-08-29T21:00:00.100Z",
+      rootProcessRef,
+      { kind: "process.start", pid: 10 },
+    );
+    const rootShimExec = event(
+      "evt-initialization-root-shim-exec",
+      "2026-08-29T21:00:00.200Z",
+      rootProcessRef,
+      {
+        kind: "process.exec",
+        executable: "/usr/bin/node",
+        args: ["node", "server.js"],
+        outcome: { status: "succeeded" },
+      },
+    );
+    const allowedRead = event(
+      "evt-initialization-allowed-read",
+      "2026-08-29T21:00:00.300Z",
+      rootProcessRef,
+      {
+        kind: "file.read",
+        path: allowedReadPath,
+        bytes: 10,
+        outcome: { status: "succeeded" },
+      },
+    );
+    const unexpectedRead = event(
+      "evt-initialization-unexpected-read",
+      "2026-08-29T21:00:00.400Z",
+      rootProcessRef,
+      {
+        kind: "file.read",
+        path: profileWorkspace,
+        bytes: 10,
+        outcome: { status: "succeeded" },
+      },
+    );
+    const credentialRead = event(
+      "evt-initialization-credential-read",
+      "2026-08-29T21:00:00.500Z",
+      rootProcessRef,
+      {
+        kind: "file.read",
+        path: credentialPath,
+        bytes: 20,
+        outcome: { status: "succeeded" },
+      },
+    );
+    const childStart = event(
+      "evt-initialization-child-start",
+      "2026-08-29T21:00:00.600Z",
+      childProcessRef,
+      {
+        kind: "process.start",
+        pid: 20,
+        parentProcessRef: rootProcessRef,
+      },
+    );
+    const allowedChildExec = event(
+      "evt-initialization-allowed-child-exec",
+      "2026-08-29T21:00:01.200Z",
+      childProcessRef,
+      {
+        kind: "process.exec",
+        executable: "/usr/bin/git",
+        args: ["git", "--version"],
+        outcome: { status: "succeeded" },
+      },
+    );
+    const unexpectedChildExec = event(
+      "evt-initialization-unexpected-child-exec",
+      "2026-08-29T21:00:01.300Z",
+      childProcessRef,
+      {
+        kind: "process.exec",
+        executable: "/usr/bin/curl",
+        args: ["curl", "https://example.invalid"],
+        outcome: { status: "succeeded" },
+      },
+    );
+    const failedChildExec = event(
+      "evt-initialization-failed-child-exec",
+      "2026-08-29T21:00:01.400Z",
+      childProcessRef,
+      {
+        kind: "process.exec",
+        executable: "/usr/bin/wget",
+        args: ["wget", "https://example.invalid"],
+        outcome: { status: "failed", errno: "ENOENT" },
+      },
+    );
+    const unexpectedWrite = event(
+      "evt-initialization-unexpected-write",
+      "2026-08-29T21:00:01.500Z",
+      rootProcessRef,
+      {
+        kind: "file.write",
+        path: unexpectedWritePath,
+        bytes: 8,
+        outcome: { status: "succeeded" },
+      },
+    );
+    const allowedConnection = event(
+      "evt-initialization-allowed-network",
+      "2026-08-29T21:00:01.600Z",
+      rootProcessRef,
+      {
+        kind: "network.connect_attempt",
+        protocol: "tcp",
+        address: "203.0.113.7",
+        port: 443,
+        outcome: { status: "failed", errno: "ENETUNREACH" },
+      },
+    );
+    const unexpectedConnection = event(
+      "evt-initialization-unexpected-network",
+      "2026-08-29T21:00:01.700Z",
+      rootProcessRef,
+      {
+        kind: "network.connect_attempt",
+        protocol: "tcp",
+        address: "198.51.100.9",
+        port: 8443,
+        outcome: { status: "failed", errno: "ENETUNREACH" },
+      },
+    );
+    const unixConnection = event(
+      "evt-initialization-unix-network",
+      "2026-08-29T21:00:01.800Z",
+      rootProcessRef,
+      {
+        kind: "network.connect_attempt",
+        protocol: "unix",
+        address: "/tmp/server.sock",
+        outcome: { status: "succeeded" },
+      },
+    );
+    const cooldownCredentialRead = event(
+      "evt-initialization-cooldown-credential-read",
+      "2026-08-29T21:00:02.200Z",
+      rootProcessRef,
+      {
+        kind: "file.read",
+        path: credentialPath,
+        bytes: 20,
+        outcome: { status: "succeeded" },
+      },
+    );
+    const cooldownUnexpectedWrite = event(
+      "evt-initialization-cooldown-unexpected-write",
+      "2026-08-29T21:00:02.300Z",
+      rootProcessRef,
+      {
+        kind: "file.write",
+        path: `${profileWorkspace}/cooldown.txt`,
+        bytes: 8,
+        outcome: { status: "succeeded" },
+      },
+    );
+    const events = [
+      rootStart,
+      rootShimExec,
+      allowedRead,
+      unexpectedRead,
+      credentialRead,
+      childStart,
+      allowedChildExec,
+      unexpectedChildExec,
+      failedChildExec,
+      unexpectedWrite,
+      allowedConnection,
+      unexpectedConnection,
+      unixConnection,
+      cooldownCredentialRead,
+      cooldownUnexpectedWrite,
+    ];
+    const attributions = await attributeEvents({
+      store,
+      events,
+      phases,
+      isolatedToolExperimentIds: new Set(),
+    });
+    const findings = await evaluateRuntimeRules({
+      store,
+      runId,
+      config,
+      events,
+      phases,
+      attributions,
+      sensitivePathsByExperiment: new Map([
+        ["baseline-initialization", new Set([credentialPath])],
+      ]),
+      profileRootsByExperiment: new Map([
+        [
+          "baseline-initialization",
+          { home: profileHome, workspace: profileWorkspace },
+        ],
+      ]),
+    });
+
+    expect(findings).toHaveLength(6);
+    expect(
+      findings.find(
+        (value) => value.ruleId === "runtime.initialization_sensitive_access",
+      ),
+    ).toMatchObject({
+      confidence: "medium",
+      eventIds: [credentialRead.eventId, cooldownCredentialRead.eventId],
+    });
+    expect(
+      findings
+        .filter(
+          (value) =>
+            value.ruleId === "runtime.initialization_file_scope_exceeded",
+        )
+        .flatMap((value) => value.eventIds)
+        .sort(),
+    ).toEqual(
+      [
+        unexpectedRead.eventId,
+        unexpectedWrite.eventId,
+        cooldownUnexpectedWrite.eventId,
+      ].sort(),
+    );
+    expect(
+      findings.find(
+        (value) =>
+          value.ruleId === "runtime.initialization_unexpected_process_exec",
+      ),
+    ).toMatchObject({
+      confidence: "medium",
+      eventIds: [unexpectedChildExec.eventId],
+    });
+    expect(
+      findings.find(
+        (value) =>
+          value.ruleId === "runtime.initialization_unexpected_network_attempt",
+      ),
+    ).toMatchObject({ eventIds: [unexpectedConnection.eventId] });
+    expect(
+      findings.flatMap((value) => value.eventIds),
+    ).not.toEqual(expect.arrayContaining([rootShimExec.eventId]));
   });
 });

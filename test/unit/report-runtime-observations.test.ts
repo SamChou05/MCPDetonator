@@ -67,6 +67,9 @@ describe("runtime observation report summary", () => {
       sequence: number;
       path: string;
       rawRef: string;
+      outcome?:
+        | { readonly status: "succeeded" }
+        | { readonly status: "failed"; readonly errno: string };
     }) =>
       observedEventV1Schema.parse({
         schema: "forge.event/v1",
@@ -79,7 +82,7 @@ describe("runtime observation report summary", () => {
         effect: {
           kind: "file.read",
           path: options.path,
-          outcome: { status: "succeeded" },
+          outcome: options.outcome ?? { status: "succeeded" },
         },
         source: { collector: "strace", rawRef: options.rawRef },
       });
@@ -101,6 +104,13 @@ describe("runtime observation report summary", () => {
       path: "/sandbox/workspace/report.txt",
       rawRef: "raw/read-document/strace.10:7",
     });
+    const failedExpected = makeEvent({
+      id: "evt-failed-expected-read",
+      sequence: 4,
+      path: "/sandbox/workspace/report.txt",
+      rawRef: "raw/read-document/strace.10:8",
+      outcome: { status: "failed", errno: "EACCES" },
+    });
     const activeAttribution = (eventId: string) =>
       attributionV1Schema.parse({
         schema: "forge.attribution/v1",
@@ -115,11 +125,12 @@ describe("runtime observation report summary", () => {
 
     const result = summarizeRuntimeObservations({
       config,
-      events: [expected, unrelated, outsideToolPhase],
+      events: [expected, unrelated, outsideToolPhase, failedExpected],
       phases: [phase],
       attributions: [
         activeAttribution(expected.eventId),
         activeAttribution(unrelated.eventId),
+        activeAttribution(failedExpected.eventId),
         attributionV1Schema.parse({
           schema: "forge.attribution/v1",
           attributionId: "attr-late-expected-read",
@@ -136,7 +147,7 @@ describe("runtime observation report summary", () => {
         experimentId: "read-document",
         kind: "tool",
         toolName: "read_document",
-        effectCounts: [{ effectKind: "file.read", count: 2 }],
+        effectCounts: [{ effectKind: "file.read", count: 3 }],
         expectedScopeMatches: {
           eventCount: 1,
           examples: [
@@ -153,7 +164,7 @@ describe("runtime observation report summary", () => {
     ]);
   });
 
-  it("counts initialization events only from the active initialization phase", () => {
+  it("counts initialization events across handshake and discovery phases", () => {
     const config = targetConfigV1Schema.parse({
       schema: "forge.target/v1",
       target: {
@@ -194,31 +205,45 @@ describe("runtime observation report summary", () => {
         workflows: [],
       },
     });
-    const initializationPhase = phaseV1Schema.parse({
+    const handshakePhase = phaseV1Schema.parse({
       schema: "forge.phase/v1",
       phaseId: "baseline-initialization-initialization-1",
       runId: "run-initialization-summary",
       experimentId: "baseline-initialization",
       kind: "initialization",
-      name: "initialize and list tools",
+      stage: "handshake",
+      name: "initialize MCP session",
       startedAt: "2026-08-29T20:00:00.000Z",
+      endedAt: "2026-08-29T20:00:00.600Z",
+      status: "completed",
+    });
+    const discoveryPhase = phaseV1Schema.parse({
+      schema: "forge.phase/v1",
+      phaseId: "baseline-initialization-initialization-2",
+      runId: "run-initialization-summary",
+      experimentId: "baseline-initialization",
+      kind: "initialization",
+      stage: "tool_discovery",
+      name: "list advertised tools",
+      startedAt: "2026-08-29T20:00:00.600Z",
       endedAt: "2026-08-29T20:00:01.000Z",
       status: "completed",
     });
     const cooldownPhase = phaseV1Schema.parse({
       schema: "forge.phase/v1",
-      phaseId: "baseline-initialization-cooldown-2",
+      phaseId: "baseline-initialization-cooldown-3",
       runId: "run-initialization-summary",
       experimentId: "baseline-initialization",
       kind: "cooldown",
+      stage: "observation_window",
       name: "observe background activity",
       startedAt: "2026-08-29T20:00:01.100Z",
       endedAt: "2026-08-29T20:00:01.600Z",
       status: "completed",
     });
-    const initializationRead = observedEventV1Schema.parse({
+    const handshakeRead = observedEventV1Schema.parse({
       schema: "forge.event/v1",
-      eventId: "evt-initialization-read",
+      eventId: "evt-handshake-read",
       runId: "run-initialization-summary",
       experimentId: "baseline-initialization",
       sequence: 0,
@@ -235,12 +260,30 @@ describe("runtime observation report summary", () => {
         rawRef: "raw/baseline-initialization/strace.10:5",
       },
     });
+    const discoveryOpen = observedEventV1Schema.parse({
+      schema: "forge.event/v1",
+      eventId: "evt-discovery-open",
+      runId: "run-initialization-summary",
+      experimentId: "baseline-initialization",
+      sequence: 1,
+      timestamp: "2026-08-29T20:00:00.800Z",
+      processRef: "run-initialization-summary:baseline-initialization:pid-10",
+      effect: {
+        kind: "file.open",
+        path: "/opt/target/tool-registry.json",
+        outcome: { status: "succeeded" },
+      },
+      source: {
+        collector: "strace",
+        rawRef: "raw/baseline-initialization/strace.10:6",
+      },
+    });
     const cooldownWrite = observedEventV1Schema.parse({
       schema: "forge.event/v1",
       eventId: "evt-cooldown-write",
       runId: "run-initialization-summary",
       experimentId: "baseline-initialization",
-      sequence: 1,
+      sequence: 2,
       timestamp: "2026-08-29T20:00:01.300Z",
       processRef: "run-initialization-summary:baseline-initialization:pid-10",
       effect: {
@@ -251,7 +294,7 @@ describe("runtime observation report summary", () => {
       },
       source: {
         collector: "strace",
-        rawRef: "raw/baseline-initialization/strace.10:6",
+        rawRef: "raw/baseline-initialization/strace.10:7",
       },
     });
     const attribution = (
@@ -264,18 +307,19 @@ describe("runtime observation report summary", () => {
         runId: "run-initialization-summary",
         eventId,
         activePhaseId,
-        processOriginPhaseId: initializationPhase.phaseId,
+        processOriginPhaseId: handshakePhase.phaseId,
         confidence:
-          activePhaseId === initializationPhase.phaseId ? "high" : "medium",
+          activePhaseId === handshakePhase.phaseId ? "high" : "medium",
         reasons: ["within_phase_bounds"],
       });
 
     const result = summarizeRuntimeObservations({
       config,
-      events: [initializationRead, cooldownWrite],
-      phases: [initializationPhase, cooldownPhase],
+      events: [handshakeRead, discoveryOpen, cooldownWrite],
+      phases: [handshakePhase, discoveryPhase, cooldownPhase],
       attributions: [
-        attribution(initializationRead.eventId, initializationPhase.phaseId),
+        attribution(handshakeRead.eventId, handshakePhase.phaseId),
+        attribution(discoveryOpen.eventId, discoveryPhase.phaseId),
         attribution(cooldownWrite.eventId, cooldownPhase.phaseId),
       ],
     });
@@ -287,7 +331,31 @@ describe("runtime observation report summary", () => {
     ).toEqual({
       experimentId: "baseline-initialization",
       kind: "initialization",
-      effectCounts: [{ effectKind: "file.read", count: 1 }],
+      effectCounts: [
+        { effectKind: "file.open", count: 1 },
+        { effectKind: "file.read", count: 1 },
+        { effectKind: "file.write", count: 1 },
+      ],
+      phaseBreakdown: [
+        {
+          phaseId: handshakePhase.phaseId,
+          name: "initialize MCP session",
+          stage: "handshake",
+          effectCounts: [{ effectKind: "file.read", count: 1 }],
+        },
+        {
+          phaseId: discoveryPhase.phaseId,
+          name: "list advertised tools",
+          stage: "tool_discovery",
+          effectCounts: [{ effectKind: "file.open", count: 1 }],
+        },
+        {
+          phaseId: cooldownPhase.phaseId,
+          name: "observe background activity",
+          stage: "observation_window",
+          effectCounts: [{ effectKind: "file.write", count: 1 }],
+        },
+      ],
     });
   });
 });

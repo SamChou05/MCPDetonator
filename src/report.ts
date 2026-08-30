@@ -1,4 +1,8 @@
-import type { TargetConfigV1 } from "./config.js";
+import {
+  initializationEnabled,
+  initializationExpectedScope,
+  type TargetConfigV1,
+} from "./config.js";
 import {
   reportV1Schema,
   type AttributionV1,
@@ -53,18 +57,27 @@ function eventMatchesExpectedScope(
 ): boolean {
   switch (event.effect.kind) {
     case "file.read":
+      if (event.effect.outcome.status !== "succeeded") {
+        return false;
+      }
       return pathMatchesExpectedScope(
         event.effect.path,
         expected.fileReads,
         expected.fileReadPrefixes,
       );
     case "file.write":
+      if (event.effect.outcome.status !== "succeeded") {
+        return false;
+      }
       return pathMatchesExpectedScope(
         event.effect.path,
         expected.fileWrites,
         expected.fileWritePrefixes,
       );
     case "process.exec":
+      if (event.effect.outcome.status !== "succeeded") {
+        return false;
+      }
       return pathMatchesExpectedScope(
         event.effect.executable,
         expected.childExecutables,
@@ -116,27 +129,44 @@ export function summarizeRuntimeObservations(options: {
   );
   const observations: ReportV1["runtimeObservations"] = [];
 
-  if (options.config.experiments.initialization) {
+  if (initializationEnabled(options.config.experiments.initialization)) {
     const experimentEvents = options.events.filter(
       (event) => event.experimentId === "baseline-initialization",
     );
-    const initializationPhase = options.phases.find(
+    const baselinePhases = options.phases.filter(
       (phase) =>
         phase.experimentId === "baseline-initialization" &&
-        phase.kind === "initialization",
+        (phase.kind === "initialization" || phase.kind === "cooldown"),
+    );
+    const baselinePhaseIds = new Set(
+      baselinePhases.map((phase) => phase.phaseId),
     );
     const initializationEvents =
-      initializationPhase === undefined
+      baselinePhases.length === 0
         ? []
         : experimentEvents.filter(
             (event) =>
-              attributionByEvent.get(event.eventId)?.activePhaseId ===
-              initializationPhase.phaseId,
+              attributionByEvent.get(event.eventId)?.activePhaseId !== undefined &&
+              baselinePhaseIds.has(
+                attributionByEvent.get(event.eventId)?.activePhaseId ?? "",
+              ),
           );
     observations.push({
       experimentId: "baseline-initialization",
       kind: "initialization",
       effectCounts: effectCounts(initializationEvents),
+      phaseBreakdown: baselinePhases.map((phase) => {
+        const phaseEvents = experimentEvents.filter(
+          (event) =>
+            attributionByEvent.get(event.eventId)?.activePhaseId === phase.phaseId,
+        );
+        return {
+          phaseId: phase.phaseId,
+          name: phase.name,
+          ...(phase.stage === undefined ? {} : { stage: phase.stage }),
+          effectCounts: effectCounts(phaseEvents),
+        };
+      }),
     });
   }
 
@@ -238,6 +268,9 @@ export function compareStaticAndRuntime(options: {
     if (activePhase?.kind !== "cooldown") {
       return false;
     }
+    if (event.experimentId === "baseline-initialization") {
+      return true;
+    }
     const originPhase =
       attribution?.processOriginPhaseId === undefined
         ? undefined
@@ -335,7 +368,7 @@ export function compareStaticAndRuntime(options: {
 
   return {
     scope:
-      "Package-authored source signals compared with analyst-relevant effects from selected initialization, tool, and tool-originated cooldown phases.",
+      "Package-authored source signals compared with analyst-relevant effects from selected initialization, the baseline pre-tool observation window, tool calls, and tool-originated cooldown phases.",
     rows,
     limitations: [
       "The static scan is bounded lexical analysis of package-authored source and excludes dependency source.",
@@ -461,6 +494,9 @@ export async function writeReport(options: {
     );
   }
   const canonicalInterface = options.interfaces[0];
+  const initializationScope = initializationExpectedScope(
+    options.config.experiments.initialization,
+  );
   const advertisedTools = (canonicalInterface?.tools ?? []).map((tool) => ({
     name: tool.name,
     ...(tool.description === undefined ? {} : { description: tool.description }),
@@ -479,11 +515,14 @@ export async function writeReport(options: {
           (event) => event.experimentId === experiment.experimentId,
         ).length,
       })) ?? []),
-    ...(options.config.experiments.initialization
+    ...(initializationEnabled(options.config.experiments.initialization)
       ? [
           {
             experimentId: "baseline-initialization",
             kind: "initialization" as const,
+            ...(initializationScope === undefined
+              ? {}
+              : { expected: initializationScope }),
             eventCount: options.events.filter(
               (event) => event.experimentId === "baseline-initialization",
             ).length,

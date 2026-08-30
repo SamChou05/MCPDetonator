@@ -23,7 +23,12 @@ sandbox:
     pids: 64
 
 experiments:
-  initialization: true
+  initialization:
+    expected:
+      fileReads: []
+      fileWrites: []
+      networkConnections: []
+      childExecutables: []
   tools:
     - id: summarize-file
       tool: summarize_file

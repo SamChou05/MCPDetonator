@@ -66,6 +66,15 @@ export const expectedScopeV1Schema = z
   })
   .strict();
 
+const initializationExperimentV1Schema = z.union([
+  z.boolean(),
+  z
+    .object({
+      expected: expectedScopeV1Schema,
+    })
+    .strict(),
+]);
+
 const toolExperimentV1Schema = z
   .object({
     id: z.string().regex(/^[a-z][a-z0-9-]*$/),
@@ -165,7 +174,7 @@ export const targetConfigV1Schema = z
       .strict(),
     experiments: z
       .object({
-        initialization: z.boolean(),
+        initialization: initializationExperimentV1Schema,
         tools: z.array(toolExperimentV1Schema).min(1),
         workflows: z
           .array(workflowExperimentV1Schema)
@@ -198,6 +207,22 @@ export const targetConfigV1Schema = z
 
 export type ExpectedScopeV1 = z.infer<typeof expectedScopeV1Schema>;
 export type TargetConfigV1 = z.infer<typeof targetConfigV1Schema>;
+export type InitializationExperimentV1 =
+  TargetConfigV1["experiments"]["initialization"];
+
+export function initializationEnabled(
+  initialization: InitializationExperimentV1,
+): boolean {
+  return initialization !== false;
+}
+
+export function initializationExpectedScope(
+  initialization: InitializationExperimentV1,
+): ExpectedScopeV1 | undefined {
+  return typeof initialization === "object"
+    ? initialization.expected
+    : undefined;
+}
 
 export interface LoadedTargetConfig {
   readonly config: TargetConfigV1;

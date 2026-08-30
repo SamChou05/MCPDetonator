@@ -9,7 +9,7 @@ import { parseStraceLine } from "../../src/observe/strace-parser.js";
 import { normalizeExperiment } from "../../src/observe/strace-normalizer.js";
 
 describe("strace parsing and normalization", () => {
-  it("ignores lines that are not complete syscalls", () => {
+  it("ignores lines that are neither complete syscalls nor terminal signals", () => {
     expect(
       parseStraceLine({
         experimentId: "random-tool",
@@ -18,6 +18,34 @@ describe("strace parsing and normalization", () => {
         line: "1700000000.000001 --- SIGCHLD ---",
       }),
     ).toBeUndefined();
+  });
+
+  it("parses signal termination records without treating delivery as termination", () => {
+    expect(
+      parseStraceLine({
+        experimentId: "signal-tool",
+        pid: 12,
+        rawRef: "raw/signal-tool/strace.12:1",
+        line: "1700000000.000001 --- SIGTERM {si_signo=SIGTERM, si_code=SI_USER} ---",
+      }),
+    ).toBeUndefined();
+
+    expect(
+      parseStraceLine({
+        experimentId: "signal-tool",
+        pid: 12,
+        rawRef: "raw/signal-tool/strace.12:2",
+        line: "1700000000.000002 +++ killed by SIGSEGV (core dumped) +++",
+      }),
+    ).toEqual({
+      kind: "signal-termination",
+      experimentId: "signal-tool",
+      pid: 12,
+      timestampSeconds: 1700000000.000002,
+      signal: "SIGSEGV",
+      rawRef: "raw/signal-tool/strace.12:2",
+      rawLine: "1700000000.000002 +++ killed by SIGSEGV (core dumped) +++",
+    });
   });
 
   it("distinguishes threads from child processes and links raw evidence", async () => {
@@ -72,8 +100,22 @@ describe("strace parsing and normalization", () => {
         parentProcessRef: "run-random:random-tool:pid-10",
       },
     ]);
-    expect(execs).toHaveLength(2);
-    expect(execs.some((event) => JSON.stringify(event).includes("/missing/node"))).toBe(false);
+    expect(execs).toHaveLength(3);
+    expect(
+      execs.find(
+        (event) =>
+          event.effect.kind === "process.exec" &&
+          event.effect.executable === "/missing/node",
+      ),
+    ).toMatchObject({
+      effect: {
+        kind: "process.exec",
+        executable: "/missing/node",
+        args: ["node"],
+        outcome: { status: "failed", errno: "ENOENT" },
+      },
+      source: { rawRef: "raw/random-tool/strace.10:1" },
+    });
     expect(read?.processRef).toBe("run-random:random-tool:pid-10");
     expect(read?.source.rawRef).toBe("raw/random-tool/strace.11:1");
     expect(connection?.effect).toMatchObject({
@@ -221,5 +263,133 @@ describe("strace parsing and normalization", () => {
       { kind: "file.write", path: "/sandbox/workspace/output.db", bytes: 1, outcome: { status: "succeeded" } },
       { kind: "file.write", path: "/sandbox/workspace/output.db", bytes: 2, outcome: { status: "succeeded" } },
     ]);
+  });
+
+  it("normalizes failed file attempts when their target path is known", async () => {
+    const root = await mkdtemp(join(tmpdir(), "forge-normalizer-failures-"));
+    const store = await EvidenceStore.create(root, "run-failures");
+    const raw = store.pathFor("raw/failure-tool");
+    await mkdir(raw, { recursive: true });
+    await writeFile(
+      join(raw, "strace.42"),
+      [
+        '1700000000.000001 open("/sandbox/workspace/direct.txt", O_RDONLY) = -1 ENOENT (No such file or directory)',
+        '1700000000.000002 openat(AT_FDCWD</run/host/workspace>, "relative.txt", O_RDONLY) = -1 EACCES (Permission denied)',
+        '1700000000.000003 openat2(9</run/host/workspace/config>, "../policy.json", {flags=O_RDONLY}, 24) = -1 EPERM (Operation not permitted)',
+        '1700000000.000004 read(17</run/host/workspace/input.db>, 0x0, 3) = -1 EIO (Input/output error)',
+        '1700000000.000005 pread64(17</run/host/workspace/input.db>, 0x0, 3, 0) = -1 EIO (Input/output error)',
+        '1700000000.000006 readv(17</run/host/workspace/input.db>, 0x0, 1) = -1 EIO (Input/output error)',
+        '1700000000.000007 preadv(17</run/host/workspace/input.db>, 0x0, 1, 0) = -1 EIO (Input/output error)',
+        '1700000000.000008 preadv2(17</run/host/workspace/input.db>, 0x0, 1, 0, 0) = -1 EIO (Input/output error)',
+        '1700000000.000009 write(18</run/host/workspace/output.db>, "x", 1) = -1 ENOSPC (No space left on device)',
+        '1700000000.000010 pwrite64(18</run/host/workspace/output.db>, "x", 1, 0) = -1 ENOSPC (No space left on device)',
+        '1700000000.000011 writev(18</run/host/workspace/output.db>, 0x0, 1) = -1 ENOSPC (No space left on device)',
+        '1700000000.000012 pwritev(18</run/host/workspace/output.db>, 0x0, 1, 0) = -1 ENOSPC (No space left on device)',
+        '1700000000.000013 pwritev2(18</run/host/workspace/output.db>, 0x0, 1, 0, 0) = -1 ENOSPC (No space left on device)',
+        '1700000000.000014 unlink("/sandbox/workspace/locked.txt") = -1 EBUSY (Device or resource busy)',
+        '1700000000.000015 unlinkat(9</run/host/workspace/archive>, "old.txt", 0) = -1 EPERM (Operation not permitted)',
+        '1700000000.000016 openat(AT_FDCWD, "unknown-relative.txt", O_RDONLY) = -1 ENOENT (No such file or directory)',
+        '1700000000.000017 read(99, 0x0, 1) = -1 EBADF (Bad file descriptor)',
+        '1700000000.000018 unlinkat(AT_FDCWD, "unknown-relative.txt", 0) = -1 ENOENT (No such file or directory)',
+      ].join("\n"),
+      "utf8",
+    );
+
+    const events = await normalizeExperiment({
+      store,
+      runId: "run-failures",
+      experimentId: "failure-tool",
+      pathMappings: [
+        {
+          observedPrefix: "/run/host/workspace",
+          containerPrefix: "/sandbox/workspace",
+        },
+      ],
+    });
+    const effects = events
+      .map((event) => event.effect)
+      .filter((effect) => effect.kind.startsWith("file."));
+
+    expect(effects).toEqual([
+      {
+        kind: "file.open",
+        path: "/sandbox/workspace/direct.txt",
+        outcome: { status: "failed", errno: "ENOENT" },
+      },
+      {
+        kind: "file.open",
+        path: "/sandbox/workspace/relative.txt",
+        outcome: { status: "failed", errno: "EACCES" },
+      },
+      {
+        kind: "file.open",
+        path: "/sandbox/workspace/policy.json",
+        outcome: { status: "failed", errno: "EPERM" },
+      },
+      ...Array.from({ length: 5 }, () => ({
+        kind: "file.read" as const,
+        path: "/sandbox/workspace/input.db",
+        outcome: { status: "failed" as const, errno: "EIO" },
+      })),
+      ...Array.from({ length: 5 }, () => ({
+        kind: "file.write" as const,
+        path: "/sandbox/workspace/output.db",
+        outcome: { status: "failed" as const, errno: "ENOSPC" },
+      })),
+      {
+        kind: "file.delete",
+        path: "/sandbox/workspace/locked.txt",
+        outcome: { status: "failed", errno: "EBUSY" },
+      },
+      {
+        kind: "file.delete",
+        path: "/sandbox/workspace/archive/old.txt",
+        outcome: { status: "failed", errno: "EPERM" },
+      },
+    ]);
+    expect(
+      events.find(
+        (event) =>
+          event.effect.kind === "file.open" &&
+          event.effect.path === "/sandbox/workspace/direct.txt",
+      )?.source.rawRef,
+    ).toBe("raw/failure-tool/strace.42:1");
+    expect(
+      events.some((event) =>
+        [
+          "raw/failure-tool/strace.42:16",
+          "raw/failure-tool/strace.42:17",
+          "raw/failure-tool/strace.42:18",
+        ].includes(event.source.rawRef),
+      ),
+    ).toBe(false);
+  });
+
+  it("normalizes termination by signal and preserves its raw reference", async () => {
+    const root = await mkdtemp(join(tmpdir(), "forge-normalizer-signal-"));
+    const store = await EvidenceStore.create(root, "run-signal");
+    const raw = store.pathFor("raw/signal-tool");
+    await mkdir(raw, { recursive: true });
+    await writeFile(
+      join(raw, "strace.42"),
+      [
+        "1700000000.000001 --- SIGTERM {si_signo=SIGTERM, si_code=SI_USER} ---",
+        "1700000000.000002 +++ killed by SIGTERM +++",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const events = await normalizeExperiment({
+      store,
+      runId: "run-signal",
+      experimentId: "signal-tool",
+    });
+    const exit = events.find((event) => event.effect.kind === "process.exit");
+
+    expect(exit).toMatchObject({
+      processRef: "run-signal:signal-tool:pid-42",
+      effect: { kind: "process.exit", signal: "SIGTERM" },
+      source: { rawRef: "raw/signal-tool/strace.42:2" },
+    });
   });
 });

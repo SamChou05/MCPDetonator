@@ -72,7 +72,7 @@ Dependency acquisition and install use `sandbox.limits.installTimeoutMs` (defaul
 
 ### 5. Isolated runtime observation
 
-Initialization and every configured tool input start from a fresh synthetic developer profile and fresh container. The Node target communicates over STDIO through the MCP SDK, and each tool experiment retains a bounded cooldown phase. `strace -ff` follows processes and records the selected process, file, network, read, and write syscalls. The target runs without capabilities while the protected supervisor owns raw traces.
+Initialization and every configured tool input start from a fresh synthetic developer profile and fresh container. The Node target communicates over STDIO through the MCP SDK. Handshake, tool discovery, invocation, and the bounded observation window are recorded as separate stages. The dedicated initialization run includes its observation window as pre-tool evidence. `strace -ff` follows processes and records the selected process, file, network, read, and write syscalls. The normalizer retains supported failed exec/file attempts and terminal signal exits when the raw trace identifies them reliably. The target runs without capabilities while the protected supervisor owns raw traces.
 
 ### 6. Normalization, attribution, and deterministic rules
 
@@ -83,7 +83,7 @@ records the active lifecycle/tool phase per event and infers process origin from
 that process's first observed event. Matching isolated phases raise confidence;
 they do not prove unique causality.
 
-Current policy rules compare tool effects with operator-owned expected scope for file reads/writes, child executables, and network destinations. Separate rules surface sensitive reads during initialization and meaningful effects from tool-originated processes after a response. They do not trust MCP-authored descriptions as policy.
+Current policy rules compare tool effects with operator-owned expected scope for file reads/writes, child executables, and network destinations. Initialization remains backwards compatible as a boolean, but may instead carry its own expected scope; that enables deterministic checks for synthetic file access, child executables, and non-Unix network attempts before any tool call. Separate rules surface sensitive initialization access and meaningful effects from tool-originated processes after a response. Failed access attempts are described as attempts rather than completed access. The rules do not trust MCP-authored descriptions as policy.
 
 ### 7. Evidence-linked report
 
@@ -152,7 +152,7 @@ a live OpenRouter request.
 ## Remaining work, in priority order
 
 1. **Challenge generalization with an unseen third target.** Select another independently authored Node/STDIO MCP and require a configuration-only integration. Any failure should improve a generic adapter or contract, never add package/tool-name branches.
-2. **Harden evidence fidelity.** Add more adversarial trace fixtures and integration cases for exec failure, symlinks/path changes, concurrent children, timeouts, signals, sockets, and partial-run preservation. Expand the syscall model only where a concrete blind spot justifies it.
+2. **Harden evidence fidelity.** Failed exec/file attempts and terminal signal exits now have adversarial coverage. Continue with symlinks/path changes, create/rename/truncate semantics, concurrent children, timeouts, sockets, filesystem state deltas, and partial-run preservation. Expand the syscall model only where a concrete blind spot justifies it.
 3. **Deepen capability correlation.** Add entrypoint-aware reachability context and carefully scoped dependency-source signals to the existing bounded static/runtime table, without treating either side as proof of safety or intent.
 4. **Improve isolation before hostile production use.** Move execution to disposable Linux workers or microVMs and put observation outside the target boundary, potentially with eBPF or another host-side sensor.
 5. **Add breadth only after the core is stronger.** Multi-tool core workflows, HTML, LLM explanation, and integration of the standalone Agent V1 results remain lower priority than target generalization and evidence correctness.

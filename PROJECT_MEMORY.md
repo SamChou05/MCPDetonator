@@ -63,13 +63,21 @@ and are not durable source artifacts.
 
 Requested: 2026-08-29
 
+- Starting commit: `d5c8920` (`chore: add repository collaboration ledger`)
+- Starting worktree: clean immediately before recording this wave; this ledger
+  update is the only planned pre-delegation dirty path.
+- Ownership: root owns shared contracts, report integration, sample targets,
+  this ledger, Git coordination, and final verification. Parallel agents receive
+  disjoint observer, lifecycle/attribution, and initialization-policy scopes.
+- Status: **reconciled and verified; ready for the primary-agent commit**.
+
 Goal: improve the deterministic core before expanding agent behavior work.
 
-Planned first milestone:
+Completed first milestone:
 
 1. Challenge and harden process/filesystem trace normalization, including
-   failed exec/access evidence and additional mutation semantics where the raw
-   observer already provides reliable facts.
+   failed exec, access, and mutation-attempt evidence where the raw observer
+   already provides reliable facts.
 2. Separate and improve lifecycle attribution around startup, handshake/tool
    discovery, tool execution, and cooldown without claiming unique causality.
 3. Add operator-authored initialization scope and deterministic checks while
@@ -77,6 +85,42 @@ Planned first milestone:
 4. Keep contracts, reports, sample targets, and adversarial tests synchronized.
 5. Run focused checks, then `npm run typecheck`, `npm test`, `npm run build`, and
    `npm run verify:e2e` because this wave changes core observation and reports.
+
+Handoffs reconciled:
+
+- Trace fidelity: failed `execve`, supported file access/mutation attempts, and
+  terminal signal exits now normalize with raw evidence references. Conventional
+  errno syntax is required; `execveat`, unfinished/resumed syscalls, and unknown
+  relative paths remain future coverage.
+- Lifecycle/attribution: handshake, tool discovery, invocation, and observation
+  window are separate staged phases. Earliest process evidence is selected by
+  timestamp/sequence, boundary phases prefer the later stage, and
+  initialization-origin activity during a tool call is explicitly labeled as
+  temporal overlap rather than causal proof.
+- Initialization policy: boolean configurations remain compatible; object form
+  supplies expected scope. Deterministic initialization findings cover
+  synthetic file reads/writes, successful child execs, non-Unix connections,
+  credentials, and the full baseline pre-tool observation window without
+  duplicating credential findings.
+- Root integration: initialization observations aggregate all staged phases and
+  the baseline observation window, expose a per-phase breakdown, persist the
+  optional expected scope in the report, distinguish failed attempts from
+  successful expected-scope examples, and exercise object-form scope in both
+  core targets.
+
+Verification for this milestone:
+
+- `npm run typecheck`: passed.
+- `npm test`: 35 files / 177 tests passed.
+- `npm run build`: passed.
+- `npm run verify:e2e`: passed.
+  - Observer image:
+    `sha256:e6f3b8b050d710b101a43e1f94dea88705821ad1ee2d1ac80a2a06bf4f24aac8`
+  - Deceptive run: `runs/run-20260830042121-1cf74127`
+  - Filesystem run: `runs/run-20260830042154-f10c24fd`
+- `git diff --check`: passed; rerun at the staging gate.
+
+Suggested commit subject: `feat: harden deterministic lifecycle evidence`.
 
 Later deterministic-core milestones remain: pre/post filesystem state evidence,
 claimed/static/observed/approved comparison, controlled network request

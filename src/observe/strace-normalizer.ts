@@ -9,6 +9,7 @@ import type { EvidenceStore } from "../evidence-store.js";
 import {
   readExperimentStrace,
   type ParsedStraceRecord,
+  type ParsedStraceSyscallRecord,
 } from "./strace-parser.js";
 
 interface CandidateEvent {
@@ -79,10 +80,6 @@ function failureErrno(result: string): string | undefined {
   return /^-1\s+([A-Z0-9_]+)/.exec(result)?.[1];
 }
 
-function successful(result: string): boolean {
-  return failureErrno(result) === undefined;
-}
-
 function decodeQuoted(value: string): string {
   try {
     return JSON.parse(`"${value}"`) as string;
@@ -103,7 +100,7 @@ function quotedStrings(value: string): string[] {
 
 function annotatedDescriptorPath(value: string): string | undefined {
   const trimmed = value.trim();
-  const descriptorNumber = /^\d+/.exec(trimmed)?.[0];
+  const descriptorNumber = /^(?:\d+|AT_FDCWD)/.exec(trimmed)?.[0];
   if (
     descriptorNumber === undefined ||
     trimmed[descriptorNumber.length] !== "<"
@@ -144,8 +141,10 @@ function resolveArgumentPath(argumentsText: string): string | undefined {
   if (requested.startsWith("/")) {
     return posix.normalize(requested);
   }
-  const cwd = /AT_FDCWD<([^>]+)>/.exec(argumentsText)?.[1];
-  return cwd?.startsWith("/") ? posix.resolve(cwd, requested) : undefined;
+  const directory = annotatedDescriptorPath(argumentsText);
+  return directory?.startsWith("/")
+    ? posix.resolve(directory, requested)
+    : undefined;
 }
 
 function processRef(runId: string, experimentId: string, pid: number): string {
@@ -164,7 +163,10 @@ function mapProcesses(records: readonly ParsedStraceRecord[]): {
   }
 
   for (const record of records) {
-    if (!["clone", "clone3", "fork", "vfork"].includes(record.syscall)) {
+    if (
+      record.kind !== "syscall" ||
+      !["clone", "clone3", "fork", "vfork"].includes(record.syscall)
+    ) {
       continue;
     }
     const childPid = integerResult(record.resultText);
@@ -189,7 +191,7 @@ function mapProcesses(records: readonly ParsedStraceRecord[]): {
 }
 
 function normalizeExec(record: ParsedStraceRecord): ObservedEffectV1 | undefined {
-  if (record.syscall !== "execve" || !successful(record.resultText)) {
+  if (record.kind !== "syscall" || record.syscall !== "execve") {
     return undefined;
   }
   const strings = quotedStrings(record.argumentsText);
@@ -197,27 +199,38 @@ function normalizeExec(record: ParsedStraceRecord): ObservedEffectV1 | undefined
   if (executable === undefined) {
     return undefined;
   }
+  const errno = failureErrno(record.resultText);
   return {
     kind: "process.exec",
     executable,
     args: strings.slice(1),
-    outcome: { status: "succeeded" },
+    outcome:
+      errno === undefined
+        ? { status: "succeeded" }
+        : { status: "failed", errno },
   };
 }
 
 function normalizeFile(
-  record: ParsedStraceRecord,
+  record: ParsedStraceSyscallRecord,
   pathMappings: readonly ObservedPathMapping[],
 ): ObservedEffectV1 | undefined {
   if (["open", "openat", "openat2"].includes(record.syscall)) {
-    const path = annotatedDescriptorPath(record.resultText);
+    const errno = failureErrno(record.resultText);
+    const path =
+      errno === undefined
+        ? annotatedDescriptorPath(record.resultText)
+        : resolveArgumentPath(record.argumentsText);
     if (path === undefined) {
       return undefined;
     }
     return {
       kind: "file.open",
       path: canonicalPath(path, pathMappings),
-      outcome: { status: "succeeded" },
+      outcome:
+        errno === undefined
+          ? { status: "succeeded" }
+          : { status: "failed", errno },
     };
   }
 
@@ -225,9 +238,20 @@ function normalizeFile(
     fileReadSyscalls.has(record.syscall) ||
     fileWriteSyscalls.has(record.syscall)
   ) {
-    const bytes = integerResult(record.resultText);
     const path = annotatedDescriptorPath(record.argumentsText);
-    if (path === undefined || bytes === undefined || bytes <= 0) {
+    if (path === undefined) {
+      return undefined;
+    }
+    const errno = failureErrno(record.resultText);
+    if (errno !== undefined) {
+      return {
+        kind: fileReadSyscalls.has(record.syscall) ? "file.read" : "file.write",
+        path: canonicalPath(path, pathMappings),
+        outcome: { status: "failed", errno },
+      };
+    }
+    const bytes = integerResult(record.resultText);
+    if (bytes === undefined || bytes <= 0) {
       return undefined;
     }
     return {
@@ -238,22 +262,28 @@ function normalizeFile(
     };
   }
 
-  if (["unlink", "unlinkat"].includes(record.syscall) && successful(record.resultText)) {
+  if (["unlink", "unlinkat"].includes(record.syscall)) {
     const path = resolveArgumentPath(record.argumentsText);
     if (path === undefined) {
       return undefined;
     }
+    const errno = failureErrno(record.resultText);
     return {
       kind: "file.delete",
       path: canonicalPath(path, pathMappings),
-      outcome: { status: "succeeded" },
+      outcome:
+        errno === undefined
+          ? { status: "succeeded" }
+          : { status: "failed", errno },
     };
   }
 
   return undefined;
 }
 
-function normalizeNetwork(record: ParsedStraceRecord): ObservedEffectV1 | undefined {
+function normalizeNetwork(
+  record: ParsedStraceSyscallRecord,
+): ObservedEffectV1 | undefined {
   if (record.syscall !== "connect" && record.syscall !== "listen") {
     return undefined;
   }
@@ -283,6 +313,9 @@ function normalizeNetwork(record: ParsedStraceRecord): ObservedEffectV1 | undefi
 }
 
 function normalizeExit(record: ParsedStraceRecord): ObservedEffectV1 | undefined {
+  if (record.kind === "signal-termination") {
+    return { kind: "process.exit", signal: record.signal };
+  }
   if (record.syscall !== "exit_group") {
     return undefined;
   }
@@ -347,8 +380,9 @@ export async function normalizeExperiment(options: {
     const ownerPid = ownerByPid.get(record.pid) ?? record.pid;
     const effect =
       normalizeExec(record) ??
-      normalizeFile(record, pathMappings) ??
-      normalizeNetwork(record) ??
+      (record.kind === "syscall"
+        ? normalizeFile(record, pathMappings) ?? normalizeNetwork(record)
+        : undefined) ??
       (record.pid === ownerPid ? normalizeExit(record) : undefined);
     if (effect !== undefined) {
       candidates.push({
