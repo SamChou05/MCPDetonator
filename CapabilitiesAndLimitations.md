@@ -1,6 +1,6 @@
 # What Forge can and cannot do
 
-**Status:** This describes the current code as of 2026-08-29.
+**Status:** This describes the current code as of 2026-08-30.
 
 Forge has two separate ways to test an MCP server:
 
@@ -75,18 +75,36 @@ test settings
    dependency versions, often called lockfiles. This tells Forge things such as
    the package name, version, start files, dependencies, and install commands.
 
-   The Node.js code scan is intentionally simple. Forge does **not** fully
-   understand the program, build a syntax tree, follow function calls, or track
-   how data moves through the code. It searches JavaScript and TypeScript files
-   for a small set of recognizable patterns. Before searching, it makes two
-   cleaned copies of the text: one hides comments, and the other hides comments
-   and quoted text. This lets Forge read imported module names while reducing
-   the chance that an example inside documentation is mistaken for real code.
+   Forge now keeps two deliberately separate static views. The original
+   lexical scan searches JavaScript and TypeScript for a small set of broad
+   capability clues; it remains the input to the existing four-way comparison.
+   A new semantic sidecar parses the exact captured source bytes with a pinned
+   TypeScript Compiler API and identifies actual calls to a versioned catalog
+   of sensitive Node APIs. It resolves direct ESM/CommonJS bindings and bounded
+   immutable aliases, while suppressing unused imports and locally shadowed
+   globals such as `fetch`, `eval`, `process`, and `require`.
 
-   The scan has safety limits. By default, it reads at most 250 source files,
+   The semantic sidecar is structural analysis, not full program
+   understanding. It does not yet prove entrypoint or MCP-handler reachability,
+   follow mutable or higher-order values, or track data from tool input to a
+   sink. Bindings affected by syntactically detected assignment, delete, or
+   update mutations are withheld regardless of source order and make the result
+   partial rather than silently looking clean. Reflective mutation remains an
+   explicit blind spot. Every
+   retained callsite is therefore evidence that a modeled API is invoked in
+   source, not evidence that the call executes for any selected input.
+
+   The shared capture has safety limits. By default, it reads at most 250 source files,
    about half a megabyte from one file, about 10 megabytes across all source
    files, and 20,000 files or folders while searching. It does not follow
-   source-file links or inspect dependency code under `node_modules`.
+   source-file links or inspect dependency code under `node_modules`. The
+   semantic compiler runs in a time-limited worker with V8 heap-generation and
+   stack limits plus additional
+   AST-node, callsite, diagnostic, alias-pass, and module-resolution ceilings.
+   Those worker limits do not bound total process RSS or provide an OS
+   permission sandbox.
+   Its closed in-memory host cannot read target `tsconfig` files, plugins,
+   dependency declarations, or other host files.
 
    These are the code clues it currently recognizes:
 
@@ -101,10 +119,12 @@ test settings
    | Loads a module from a variable | Choose and load code while running |
    | Loads a `.node` file or calls `process.dlopen` | Load compiled native code |
 
-   For every clue, Forge saves the file name, file fingerprint, line, column,
-   short code excerpt, and the exact captured source file. Finding a clue only
-   means that the matching text exists. It does not prove the code ever runs,
-   belongs to a particular tool, is needed, or is harmful.
+   For every lexical clue or semantic callsite, Forge saves the file name, file
+   fingerprint, line, column, short code excerpt, and the exact captured source
+   file. Semantic callsite IDs also bind the source hash, span, catalog sink,
+   operation, and capability. Parsing, resolution, truncation, timeout, and
+   worker failures are represented explicitly; absence after incomplete
+   analysis is never presented as proof that a sink is absent.
 
 3. **Ask the running MCP which tools it offers.** Forge starts the MCP over
    STDIO, meaning the server talks through its standard input and output, and
@@ -250,6 +270,7 @@ The main code for these steps is in
 - The exact target settings and information about where the package came from.
 - The package and source-file fingerprints used to identify the tested code.
 - Package scans from before installation and from the copy actually tested.
+- Separate bounded semantic-callsite artifacts for both of those snapshots.
 - MCP tool information and message logs.
 - Bounded advertised-claim evidence and standard MCP annotation evidence.
 - Raw `strace` logs and the smaller list of readable actions created from them.
@@ -265,9 +286,11 @@ The main code for these steps is in
   operating system.
 - It runs only the tool calls and inputs supplied in the settings. It does not
   automatically explore every tool, workflow, input, or unusual edge case.
-- The code scan is a simple text-pattern search. It can miss indirect,
-  hidden, unfamiliar, dependency-provided, or deliberately disguised behavior.
-  It can also find code that never runs.
+- The lexical scan can find broad clues that never run. The semantic sidecar is
+  more precise for its modeled direct and immutable-alias callsites, but can
+  still miss mutable, higher-order, reflective, dependency-provided, or
+  deliberately disguised behavior. It does not yet assess handler reachability
+  or source-to-sink data flow.
 - The operating-system recorder watches a selected set of operations. It does
   not capture every possible effect or the readable contents of encrypted
   network traffic.

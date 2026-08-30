@@ -1,8 +1,9 @@
 import { execFile, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { isDeepStrictEqual, promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -55,6 +56,142 @@ async function readJsonl(path) {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line));
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+async function assertSemanticEvidence(runDirectory, report, manifest, label) {
+  const selectedPath = report.evidence.semanticInspection;
+  const preInstallPath = report.evidence.preInstallSemanticInspection;
+  invariant(
+    report.semanticAnalysis !== undefined &&
+      typeof selectedPath === "string" &&
+      typeof preInstallPath === "string",
+    `${label} is missing the semantic summary or retained artifacts`,
+  );
+  const selectedBytes = await readFile(join(runDirectory, selectedPath));
+  const selected = JSON.parse(selectedBytes.toString("utf8"));
+  const preInstallBytes = await readFile(join(runDirectory, preInstallPath));
+  const preInstall = JSON.parse(preInstallBytes.toString("utf8"));
+  const lexicalBytes = await readFile(
+    join(runDirectory, report.evidence.staticInspection),
+  );
+  const lexical = JSON.parse(lexicalBytes.toString("utf8"));
+  const preInstallLexicalBytes = await readFile(
+    join(runDirectory, report.evidence.preInstallStaticInspection),
+  );
+  const retainedArtifact = manifest.artifacts.find(
+    (artifact) => artifact.path === selectedPath,
+  );
+  const retainedPreInstallArtifact = manifest.artifacts.find(
+    (artifact) => artifact.path === preInstallPath,
+  );
+  invariant(
+    selected.schema === "forge.node-semantic-static/v1" &&
+      preInstall.schema === "forge.node-semantic-static/v1" &&
+      selected.runId === report.runId &&
+      selected.targetId === report.targetId &&
+      preInstall.runId === report.runId &&
+      preInstall.targetId === report.targetId &&
+      selected.input.lexicalInspectionArtifact ===
+        report.evidence.staticInspection &&
+      preInstall.input.lexicalInspectionArtifact ===
+        report.evidence.preInstallStaticInspection &&
+      selected.input.lexicalInspectionSha256 === sha256(lexicalBytes) &&
+      preInstall.input.lexicalInspectionSha256 ===
+        sha256(preInstallLexicalBytes) &&
+      report.semanticAnalysis.artifactPath === selectedPath &&
+      report.semanticAnalysis.artifactSha256 === sha256(selectedBytes) &&
+      retainedArtifact?.mediaType === "application/json" &&
+      retainedArtifact.sha256 === sha256(selectedBytes) &&
+      retainedPreInstallArtifact?.mediaType === "application/json" &&
+      retainedPreInstallArtifact.sha256 === sha256(preInstallBytes),
+    `${label} semantic identity or artifact digest is inconsistent`,
+  );
+
+  invariant(
+    report.semanticAnalysis.status === selected.status &&
+      isDeepStrictEqual(report.semanticAnalysis.analyzer, selected.analyzer) &&
+      report.semanticAnalysis.sourceSetSha256 ===
+        selected.input.sourceSetSha256 &&
+      isDeepStrictEqual(report.semanticAnalysis.coverage, selected.coverage) &&
+      isDeepStrictEqual(
+        report.semanticAnalysis.truncations,
+        selected.truncations,
+      ) &&
+      isDeepStrictEqual(report.semanticAnalysis.failure, selected.failure) &&
+      isDeepStrictEqual(
+        report.semanticAnalysis.limitations,
+        selected.limitations,
+      ),
+    `${label} semantic report summary diverges from the retained artifact`,
+  );
+
+  const lexicalSources = new Map(
+    lexical.source.scannedFiles.map((source) => [source.path, source]),
+  );
+  invariant(
+    selected.files.length === lexicalSources.size &&
+      selected.coverage.inputFiles === selected.files.length &&
+      selected.coverage.inputBytes ===
+        selected.files.reduce((total, file) => total + file.sizeBytes, 0),
+    `${label} semantic file coverage does not match its lexical source set`,
+  );
+  for (const file of selected.files) {
+    const lexicalSource = lexicalSources.get(file.targetPath);
+    invariant(
+      lexicalSource?.sha256 === file.sha256 &&
+        lexicalSource.sizeBytes === file.sizeBytes &&
+        lexicalSource.evidence.artifactPath === file.evidence.artifactPath,
+      `${label} semantic coverage contains an unbound source file`,
+    );
+  }
+
+  const callsiteIds = selected.callsites.map((callsite) => callsite.callsiteId);
+  invariant(
+    selected.callsites.length === report.semanticAnalysis.callsiteCount &&
+      sortedUnique(callsiteIds).length === callsiteIds.length,
+    `${label} semantic callsite counts or identifiers are inconsistent`,
+  );
+  const expectedCapabilities = new Map();
+  const expectedReachability = {
+    directHandler: 0,
+    boundedCallPath: 0,
+    notIdentified: 0,
+    notAssessed: 0,
+  };
+  const reachabilityField = {
+    direct_handler: "directHandler",
+    bounded_call_path: "boundedCallPath",
+    not_identified: "notIdentified",
+    not_assessed: "notAssessed",
+  };
+  for (const callsite of selected.callsites) {
+    const file = lexicalSources.get(callsite.evidence.targetPath);
+    invariant(
+      callsite.callsiteId.startsWith("semantic-callsite-") &&
+        callsite.sinkId.startsWith("node.") &&
+        file?.sha256 === callsite.evidence.sha256,
+      `${label} semantic callsite is not bound to admitted source evidence`,
+    );
+    expectedCapabilities.set(
+      callsite.capability,
+      (expectedCapabilities.get(callsite.capability) ?? 0) + 1,
+    );
+    expectedReachability[reachabilityField[callsite.handlerReachability]] += 1;
+  }
+  invariant(
+    JSON.stringify(
+      [...expectedCapabilities.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([capability, count]) => ({ capability, count })),
+    ) === JSON.stringify(report.semanticAnalysis.capabilityCallsites) &&
+      JSON.stringify(expectedReachability) ===
+        JSON.stringify(report.semanticAnalysis.handlerReachability),
+    `${label} semantic report partitions diverge from the retained artifact`,
+  );
 }
 
 function claimReferenceKeys(claims) {
@@ -294,6 +431,12 @@ invariant(
 
 const deceptiveReport = await readJson(join(deceptive.runDirectory, "report.json"));
 const deceptiveRunManifest = await readJson(join(deceptive.runDirectory, "run.json"));
+await assertSemanticEvidence(
+  deceptive.runDirectory,
+  deceptiveReport,
+  deceptiveRunManifest,
+  "deceptive control",
+);
 assertBehaviorComparisonCompleteness(deceptiveReport, "deceptive control");
 await readAllFilesystemStateEvidence(deceptive.runDirectory, deceptiveReport);
 invariant(
@@ -462,6 +605,12 @@ invariant(
 
 const filesystemReport = await readJson(join(filesystem.runDirectory, "report.json"));
 const filesystemRunManifest = await readJson(join(filesystem.runDirectory, "run.json"));
+await assertSemanticEvidence(
+  filesystem.runDirectory,
+  filesystemReport,
+  filesystemRunManifest,
+  "Filesystem",
+);
 assertBehaviorComparisonCompleteness(filesystemReport, "Filesystem case study");
 const filesystemStateEvidence = await readAllFilesystemStateEvidence(
   filesystem.runDirectory,

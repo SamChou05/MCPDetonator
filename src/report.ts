@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
+
 import {
   initializationEnabled,
   initializationExpectedScope,
@@ -18,15 +21,24 @@ import {
   type ReportV1,
   type TargetProvenanceV1,
 } from "./contracts/v1.js";
-import type { EvidenceStore } from "./evidence-store.js";
+import { sha256, type EvidenceStore } from "./evidence-store.js";
 import {
   destinationMatchesExpectedScope,
   pathMatchesExpectedScope,
 } from "./expected-scope.js";
-import type {
-  NodePackageStaticInspectionV1,
-  StaticCapability,
+import {
+  nodePackageStaticInspectionV1Schema,
+  type NodePackageStaticInspectionV1,
+  type StaticCapability,
 } from "./static/contracts.js";
+import {
+  verifyNodeSemanticAnalysis,
+  type NodeSemanticAnalysisResult,
+} from "./static/node-semantic.js";
+import {
+  nodeSemanticStaticV1Schema,
+  type NodeSemanticReportSummaryV1,
+} from "./static/semantic-contracts.js";
 import type { InstallLifecycleObservation } from "./install/lifecycle.js";
 import type { InstallLifecycleDeltaV1 } from "./install/delta.js";
 import {
@@ -740,6 +752,118 @@ function summarizeStaticAnalysis(
   };
 }
 
+export function summarizeNodeSemanticAnalysis(
+  result: NodeSemanticAnalysisResult,
+): NodeSemanticReportSummaryV1 {
+  const capabilityCounts = new Map<StaticCapability, number>();
+  const handlerReachability: NodeSemanticReportSummaryV1["handlerReachability"] = {
+    directHandler: 0,
+    boundedCallPath: 0,
+    notIdentified: 0,
+    notAssessed: result.analysis.callsites.length,
+  };
+  for (const callsite of result.analysis.callsites) {
+    capabilityCounts.set(
+      callsite.capability,
+      (capabilityCounts.get(callsite.capability) ?? 0) + 1,
+    );
+  }
+  return {
+    status: result.analysis.status,
+    artifactPath: result.artifactPath,
+    artifactSha256: result.artifactSha256,
+    analyzer: result.analysis.analyzer,
+    sourceSetSha256: result.analysis.input.sourceSetSha256,
+    coverage: result.analysis.coverage,
+    callsiteCount: result.analysis.callsites.length,
+    capabilityCallsites: [...capabilityCounts.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([capability, count]) => ({ capability, count })),
+    handlerReachability,
+    truncations: result.analysis.truncations,
+    ...(result.analysis.failure === undefined
+      ? {}
+      : { failure: result.analysis.failure }),
+    limitations: result.analysis.limitations,
+  };
+}
+
+async function verifySemanticReportInput(options: {
+  readonly store: EvidenceStore;
+  readonly inspection: NodePackageStaticInspectionV1;
+  readonly result: NodeSemanticAnalysisResult;
+}): Promise<void> {
+  if (options.result.artifactPath !== "static/semantic-inspection.json") {
+    throw new Error("report semantic summary requires the selected snapshot artifact");
+  }
+  const artifactBytes = await readFile(
+    options.store.pathFor(options.result.artifactPath),
+  );
+  if (sha256(artifactBytes) !== options.result.artifactSha256) {
+    throw new Error("semantic artifact digest changed before report construction");
+  }
+  const retained = nodeSemanticStaticV1Schema.parse(
+    JSON.parse(artifactBytes.toString("utf8")),
+  );
+  if (!isDeepStrictEqual(retained, options.result.analysis)) {
+    throw new Error("semantic report input differs from the retained artifact");
+  }
+  const lexicalArtifact = retained.input.lexicalInspectionArtifact;
+  if (lexicalArtifact !== "static/inspection.json") {
+    throw new Error("selected semantic evidence names the wrong lexical snapshot");
+  }
+  const lexicalBytes = await readFile(options.store.pathFor(lexicalArtifact));
+  verifyNodeSemanticAnalysis({
+    analysis: retained,
+    inspection: options.inspection,
+    lexicalInspectionArtifact: lexicalArtifact,
+    lexicalInspectionSha256: sha256(lexicalBytes),
+  });
+  const preSemanticBytes = await readFile(
+    options.store.pathFor("static/pre-install-semantic-inspection.json"),
+  );
+  const preSemantic = nodeSemanticStaticV1Schema.parse(
+    JSON.parse(preSemanticBytes.toString("utf8")),
+  );
+  const preLexicalArtifact = preSemantic.input.lexicalInspectionArtifact;
+  if (preLexicalArtifact !== "static/pre-install-inspection.json") {
+    throw new Error("pre-install semantic evidence names the wrong lexical snapshot");
+  }
+  const preLexicalBytes = await readFile(
+    options.store.pathFor(preLexicalArtifact),
+  );
+  const preInspection = nodePackageStaticInspectionV1Schema.parse(
+    JSON.parse(preLexicalBytes.toString("utf8")),
+  );
+  verifyNodeSemanticAnalysis({
+    analysis: preSemantic,
+    inspection: preInspection,
+    lexicalInspectionArtifact: preLexicalArtifact,
+    lexicalInspectionSha256: sha256(preLexicalBytes),
+  });
+}
+
+export function assertReportStaticIdentity(options: {
+  readonly runId: string;
+  readonly targetId: string;
+  readonly inspection: NodePackageStaticInspectionV1;
+  readonly semanticAnalysis?: NodeSemanticAnalysisResult;
+}): void {
+  if (
+    options.inspection.runId !== options.runId ||
+    options.inspection.targetId !== options.targetId
+  ) {
+    throw new Error("static inspection does not belong to the report run and target");
+  }
+  if (
+    options.semanticAnalysis !== undefined &&
+    (options.semanticAnalysis.analysis.runId !== options.runId ||
+      options.semanticAnalysis.analysis.targetId !== options.targetId)
+  ) {
+    throw new Error("semantic inspection does not belong to the report run and target");
+  }
+}
+
 export async function writeReport(options: {
   readonly store: EvidenceStore;
   readonly runId: string;
@@ -751,6 +875,7 @@ export async function writeReport(options: {
   readonly interfaces: readonly McpInterfaceV1[];
   readonly provenance: TargetProvenanceV1;
   readonly staticInspection: NodePackageStaticInspectionV1;
+  readonly semanticAnalysis?: NodeSemanticAnalysisResult;
   readonly profileRootsByExperiment: ProfileRootsByExperiment;
   readonly filesystemStateDeltas?: readonly FilesystemStateDeltaV1[];
   readonly installObservation?: InstallLifecycleObservation;
@@ -762,6 +887,21 @@ export async function writeReport(options: {
     throw new Error(
       "report generation requires provenance for the selected runtime snapshot",
     );
+  }
+  assertReportStaticIdentity({
+    runId: options.runId,
+    targetId: options.config.target.id,
+    inspection: options.staticInspection,
+    ...(options.semanticAnalysis === undefined
+      ? {}
+      : { semanticAnalysis: options.semanticAnalysis }),
+  });
+  if (options.semanticAnalysis !== undefined) {
+    await verifySemanticReportInput({
+      store: options.store,
+      inspection: options.staticInspection,
+      result: options.semanticAnalysis,
+    });
   }
   const canonicalInterface = options.interfaces[0];
   const advertisedInterfaceSummary = summarizeAdvertisedInterfaces(
@@ -845,6 +985,13 @@ export async function writeReport(options: {
     advertisedInterfaceSummary,
     advertisedClaims,
     staticAnalysis: summarizeStaticAnalysis(options.staticInspection, runtimeSnapshot),
+    ...(options.semanticAnalysis === undefined
+      ? {}
+      : {
+          semanticAnalysis: summarizeNodeSemanticAnalysis(
+            options.semanticAnalysis,
+          ),
+        }),
     staticRuntimeComparison: compareStaticAndRuntime({
       staticInspection: options.staticInspection,
       events: options.events,
@@ -929,6 +1076,13 @@ export async function writeReport(options: {
       targetProvenance: "target/provenance.json",
       staticInspection: "static/inspection.json",
       preInstallStaticInspection: "static/pre-install-inspection.json",
+      ...(options.semanticAnalysis === undefined
+        ? {}
+        : {
+            semanticInspection: options.semanticAnalysis.artifactPath,
+            preInstallSemanticInspection:
+              "static/pre-install-semantic-inspection.json",
+          }),
       advertisedClaims: "mcp/advertised-claims.json",
       ...(options.installDelta === undefined
         ? {}

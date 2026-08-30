@@ -591,7 +591,8 @@ Requested: 2026-08-30
 - Root owns all code, contract, integration, documentation, ledger, Git, and
   verification changes. Parallel reviewers are read-only and must not modify
   the checkout.
-- Status: implementation in progress.
+- Status: **implemented, adversarially hardened, reconciled, and fully
+  verified; ready for the primary-agent commit**.
 
 Goals:
 
@@ -607,6 +608,95 @@ Goals:
 4. Integrate additive semantic summaries into the core report without silently
    changing V1 lexical-signal meaning, then run focused checks and every core
    verification gate required for static/report changes.
+
+Handoffs reconciled:
+
+- Dependency/API correction: the installed TypeScript 7 package does not expose
+  the stable classic Compiler API. Forge keeps TypeScript 7.0.2 as its build
+  compiler and adds the exact runtime alias
+  `typescript-semantic@npm:typescript@6.0.3`. Build/typecheck scripts name the
+  TypeScript 7 binary explicitly because both packages publish a `tsc` bin. A
+  production-only install smoke test confirmed TypeScript 6.0.3 and
+  `createProgram` are available with development dependencies omitted.
+- Analyzer boundary: `forge.node-semantic-static/v1` consumes only UTF-8 source
+  artifacts admitted by the lexical scan, revalidates run/target/path/size/hash
+  identity, and gives a closed deterministic virtual filesystem to a killable
+  worker. Target `tsconfig`, plugins, dependencies, host paths, emit, and
+  default module traversal are unavailable. File/byte/AST/callsite/diagnostic/
+  module/alias/time/memory limits and completed/partial/failed states are
+  explicit.
+- Semantic model: a checked-in `node-sensitive-sinks/1` catalog covers selected
+  filesystem, process, network, environment, dynamic-code/module, and native
+  Node APIs. Direct ESM/CommonJS bindings, namespace/destructured access, static
+  members, and bounded immutable aliases resolve; unused imports, locally
+  shadowed globals, mutable aliases, monkey-patched namespaces, lookalike
+  modules, and dynamic computed members do not fabricate positive callsites.
+  IDs bind the target-relative path, source hash, exact span, catalog sink,
+  operation, and capability without run/target/host identity.
+- Honest first-version scope: malformed syntax, missing relative modules,
+  admitted but unsupported cross-file binding flow, ceiling exhaustion,
+  timeout, and worker failure cannot silently mean “no sink.” MCP-handler and
+  entrypoint reachability plus source-to-sink data flow remain explicitly
+  `not_assessed`; the current semantic sidecar inventories modeled callsites,
+  not execution or intent.
+- Integration: both pre-install and selected-runtime lexical snapshots receive
+  separate semantic artifacts. The report exposes an additive semantic summary
+  and SHA-256-bound evidence paths while every established lexical signal and
+  four-way comparison field retains its old meaning. Report construction and
+  the E2E verifier cross-check source coverage, artifact identity/digests, and
+  summary partitions. Backwards-compatible report parsing leaves semantic
+  fields optional for older records; newly completed analyses always emit them.
+- Final adversarial hardening: content-derived callsite IDs now bind exact
+  spans; handler reachability is contractually `not_assessed`; completed and
+  partial status exactly reflect coverage; alias depth is independently bounded;
+  literal built-in dynamic imports and TypeScript import-equals bindings are
+  modeled; per-file JavaScript scope, ambient declarations, wrapped globals,
+  static native imports, and `globalThis.process.env` have regressions. Mutable
+  bindings and bindings affected by syntactically detected assignment/delete/
+  update mutations are withheld and make evidence partial rather than yielding
+  a false completed/empty result; reflective mutation remains unresolved.
+  Timeout settlement waits
+  for worker termination, parent preload hooks are not inherited, and the
+  evidence discloses that V8 heap/stack limits are neither total-RSS limits nor
+  an OS sandbox.
+- Envelope/sample hardening: artifact and report contracts reject forged sink
+  identities, impossible counters/statuses, duplicate truncations, and wrong
+  run/target ownership. The E2E verifier compares every semantic summary field
+  to the retained selected artifact and verifies both semantic artifacts against
+  the manifest. The sample refresher likewise requires contained, JSON,
+  byte-and-manifest-bound selected and pre-install semantic evidence before it
+  publishes a report.
+- Documentation and representative reports now describe and demonstrate the
+  two-layer static design. The final real runs found 12 modeled callsites across
+  two deceptive-control files with complete coverage, and 25 filesystem
+  callsites across five official-package files. The official package is
+  correctly marked partial because six admitted cross-file binding flows are
+  not followed in this version; neither run truncated work.
+- Concurrent synchronization: the separate malicious-MCP experiment advanced
+  `main` from the recorded starting commit through `a2b0516` while this wave was
+  active and committed its own ledger/fixture paths. Those changes were
+  preserved. The out-of-scope `.gitignore`, generated `agent-runs/`, and later
+  untracked `HardenedEvidenceInfrastructurePlan.md` remain unowned and must not
+  be staged with this milestone.
+
+Verification for this milestone:
+
+- `npm run typecheck`: passed with TypeScript 7.0.2.
+- `npm test`: 60 files / 466 tests passed.
+- `npm run build`: passed, including inside the final E2E gate.
+- `npm run verify:e2e`: passed.
+  - Observer image:
+    `sha256:83916e1adb0551d5eca7a740bf4589259e38fc03a9ea3ae9ed1e504fc6f13fe6`
+  - Deceptive run: `runs/run-20260830181026-efaff1a4`
+  - Filesystem run: `runs/run-20260830181057-0a5ff552`
+- Sanitized sample reports were refreshed from those exact post-hardening runs;
+  a second refresh produced identical hashes and the full contract suite passed.
+- `npm audit --omit=dev`: passed with 0 vulnerabilities.
+- Production-only local install smoke test: passed; runtime TypeScript 6.0.3
+  exposed `createProgram` with development dependencies omitted.
+- `git diff --check`: passed; rerun at the staged review gate.
+
+Suggested commit subject: `feat: add bounded Node semantic callsite evidence`.
 
 ## Documented malicious-MCP experiment wave
 

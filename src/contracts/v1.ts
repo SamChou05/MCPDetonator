@@ -4,6 +4,7 @@ import {
   staticCapabilitySchema,
   staticEvidenceReferenceV1Schema,
 } from "../static/contracts.js";
+import { nodeSemanticReportSummaryV1Schema } from "../static/semantic-contracts.js";
 import { mcpAdvertisedClaimsV1Schema } from "../mcp/interface-claims.js";
 import {
   fingerprintMcpCatalog,
@@ -1023,6 +1024,7 @@ export const reportV1Schema = z
         limitations: z.array(z.string().min(1)),
       })
       .strict(),
+    semanticAnalysis: nodeSemanticReportSummaryV1Schema.optional(),
     staticRuntimeComparison: staticRuntimeComparisonV1Schema,
     behaviorComparison: behaviorComparisonV1Schema,
     experiments: z.array(
@@ -1228,6 +1230,8 @@ export const reportV1Schema = z
         targetProvenance: z.string().min(1),
         staticInspection: z.string().min(1),
         preInstallStaticInspection: z.string().min(1),
+        semanticInspection: z.string().min(1).optional(),
+        preInstallSemanticInspection: z.string().min(1).optional(),
         installDelta: z.string().min(1).optional(),
         filesystemStateRoot: z.string().min(1).optional(),
         advertisedClaims: z.string().min(1),
@@ -1237,6 +1241,34 @@ export const reportV1Schema = z
   })
   .strict()
   .superRefine((report, context) => {
+    const semanticFieldsPresent = [
+      report.semanticAnalysis !== undefined,
+      report.evidence.semanticInspection !== undefined,
+      report.evidence.preInstallSemanticInspection !== undefined,
+    ];
+    if (
+      semanticFieldsPresent.some(Boolean) &&
+      !semanticFieldsPresent.every(Boolean)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "semantic report summary and selected/pre-install evidence paths must appear together",
+        path: ["semanticAnalysis"],
+      });
+    }
+    if (
+      report.semanticAnalysis !== undefined &&
+      report.evidence.semanticInspection !==
+        report.semanticAnalysis.artifactPath
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "semantic report summary must identify the retained selected semantic artifact",
+        path: ["semanticAnalysis", "artifactPath"],
+      });
+    }
     if (
       report.artifactProvenance.runId !== report.runId ||
       report.artifactProvenance.targetId !== report.targetId

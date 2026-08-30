@@ -46,6 +46,7 @@ import {
   type PreparedTarget,
 } from "./target/prepare.js";
 import { inspectNodePackage } from "./static/node-package.js";
+import { runNodeSemanticAnalysis } from "./static/node-semantic.js";
 import {
   observeInstallLifecycle,
   type InstallLifecycleObservation,
@@ -227,6 +228,13 @@ export async function analyzeTarget(
       packageRoot: preparedTarget.packageRoot,
       artifactPath: "static/pre-install-inspection.json",
     });
+    await runNodeSemanticAnalysis({
+      store,
+      runId,
+      targetId: loaded.config.target.id,
+      lexicalInspectionArtifact: "static/pre-install-inspection.json",
+      artifactPath: "static/pre-install-semantic-inspection.json",
+    });
     let runtimeTarget = preparedTarget;
     let reportProvenance: TargetProvenanceV1 = preparedTarget.provenance;
     if (preparedTarget.hostNpmCache !== undefined) {
@@ -295,6 +303,11 @@ export async function analyzeTarget(
       runId,
       targetId: loaded.config.target.id,
       packageRoot: runtimeTarget.packageRoot,
+    });
+    const semanticAnalysis = await runNodeSemanticAnalysis({
+      store,
+      runId,
+      targetId: loaded.config.target.id,
     });
 
     for (const experiment of experiments) {
@@ -415,6 +428,7 @@ export async function analyzeTarget(
       interfaces,
       provenance: reportProvenance,
       staticInspection,
+      semanticAnalysis,
       profileRootsByExperiment,
       filesystemStateDeltas,
       ...(installObservation === undefined

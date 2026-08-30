@@ -55,9 +55,20 @@ Zod validates target YAML and persisted `forge.*/v1` artifacts. Targets supply t
 
 ### 3. Focused static Node inspection
 
-Forge records manifest claims, entrypoints, install lifecycle scripts, dependency inventory, supported lockfile metadata, source coverage, and bounded evidence-linked signals for filesystem, process, network, environment, dynamic-code/module, and native-code capabilities. It retains an inspection from before lifecycle execution, then inspects and labels the exact selected runtime snapshot so static and runtime evidence cannot silently refer to different trees.
+Forge records manifest claims, entrypoints, install lifecycle scripts, dependency inventory, supported lockfile metadata, source coverage, and bounded evidence-linked lexical signals for filesystem, process, network, environment, dynamic-code/module, and native-code capabilities. It retains an inspection from before lifecycle execution, then inspects and labels the exact selected runtime snapshot so static and runtime evidence cannot silently refer to different trees.
 
-These are indicators, not verdicts. Package-authored metadata is labeled as a claim, lexical matches do not prove reachability, and dependency source is not recursively analyzed.
+Each inspection now also feeds an additive `forge.node-semantic-static/v1`
+sidecar. A pinned TypeScript 6 Compiler API runs in a time-limited worker with
+V8 heap/stack limits over a closed virtual filesystem containing only the
+previously captured, hash-revalidated source bytes. Those worker limits are not
+a total-RSS bound or an OS sandbox. A checked-in sink catalog identifies actual
+modeled API calls, direct ESM/CommonJS bindings, and bounded immutable aliases;
+bindings affected by syntactically detected assignment/delete/update mutations
+are withheld, while reflective mutation remains unresolved and coverage,
+diagnostics, relative-module gaps, truncations, and worker failure remain explicit.
+Existing lexical comparison fields are unchanged.
+
+These are indicators, not verdicts. Package-authored metadata is labeled as a claim, neither lexical matches nor semantic callsites prove runtime reachability, and dependency source is not recursively analyzed. MCP-handler reachability and source-to-sink data flow remain future work.
 
 ### 4. Controlled install lifecycle comparison
 
@@ -154,7 +165,7 @@ a live OpenRouter request.
 
 1. **Challenge generalization with an unseen third target.** Select another independently authored Node/STDIO MCP and require a configuration-only integration. Any failure should improve a generic adapter or contract, never add package/tool-name branches.
 2. **Harden evidence fidelity.** Failed exec/file attempts, terminal signal exits, and bounded filesystem state deltas now have adversarial coverage. Continue with syscall-level create/rename/truncate semantics, concurrent children, timeouts, sockets, and partial-run preservation. Expand the syscall model only where a concrete blind spot justifies it.
-3. **Deepen capability correlation.** Add entrypoint-aware reachability context, carefully scoped dependency-source signals, environment-read evidence, and Node module-load evidence to the current four-way comparison without treating any evidence source as proof of safety or intent.
+3. **Deepen capability correlation.** The first semantic-callsite sidecar is now additive. Next, validate its catalog on an independent corpus, add entrypoint/MCP-handler reachability and carefully scoped dependency-source context, then decide from measured precision/recall whether semantic evidence should enter the four-way comparison. Add source-to-sink data flow only with explicit uncertainty and resource bounds.
 4. **Improve isolation before hostile production use.** Move execution to disposable Linux workers or microVMs and put observation outside the target boundary, potentially with eBPF or another host-side sensor.
 5. **Add breadth only after the core is stronger.** Multi-tool core workflows, HTML, LLM explanation, and integration of the standalone Agent V1 results remain lower priority than target generalization and evidence correctness.
 
@@ -162,7 +173,7 @@ a live OpenRouter request.
 
 - Node.js only; Linux/Docker only; MCP STDIO only; exact npm package or local-directory sources only.
 - Focused `strace` syscall coverage, not complete kernel telemetry or decrypted payload capture.
-- Bounded lexical Node source inspection, not whole-program reachability, dependency-source review, or taint/data-flow analysis.
+- Bounded lexical Node source inspection plus a separate modeled semantic-callsite sidecar, not whole-program reachability, dependency-source review, or taint/data-flow analysis.
 - Hand-authored initialization/tool experiments only; workflow execution is not wired into analysis.
 - No HTML report or LLM interpretation. Agent rollouts are implemented only as a separate supplementary V1 and are not part of core findings or admission decisions.
 - No production VM/microVM boundary, out-of-container observer, or eBPF implementation.

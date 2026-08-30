@@ -106,7 +106,8 @@ not discover complete user intent from the MCP.
 Forge automatically:
 
 1. Acquires or snapshots the target and records provenance.
-2. Performs bounded static inspection of the Node package.
+2. Performs bounded lexical inspection of the Node package and a separate,
+   resource-limited semantic callsite pass over the captured source bytes.
 3. When preparation produced a reusable npm cache, compares installation with
    lifecycle scripts disabled and enabled; local `install:none` targets skip
    this pair.
@@ -387,8 +388,13 @@ corresponding conclusion rather than silently presenting full confidence.
 
 - Dynamic testing observes only selected inputs and time windows.
 - Dormant, environment-gated, delayed, or trigger-specific behavior may not run.
-- Static Node inspection is bounded lexical analysis, not complete reachability
-  or information-flow proof.
+- Static Node inspection retains bounded lexical evidence and separately uses a
+  closed TypeScript Compiler API worker to identify modeled callsites. Neither
+  is complete entrypoint/MCP-handler reachability or information-flow proof.
+  The worker's V8 heap/stack limits are not a total-RSS bound or OS sandbox.
+  Bindings affected by syntactically detected assignment/delete/update
+  mutations are withheld and disclosed as partial; reflective mutation remains
+  unresolved.
 - The focused syscall model does not reconstruct every kernel effect or the
   meaning of encrypted traffic.
 - Local STDIO observation does not expose private internals of a remotely

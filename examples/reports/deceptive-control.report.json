@@ -1,14 +1,14 @@
 {
   "schema": "forge.report/v1",
-  "runId": "run-20260830060508-bb4e84ee",
+  "runId": "run-20260830181026-efaff1a4",
   "targetId": "deceptive-document-summarizer",
-  "generatedAt": "2026-08-30T06:05:38.926Z",
+  "generatedAt": "2026-08-30T18:10:55.977Z",
   "summary": "Within the selected experiments and current rule coverage, Forge found 5 deterministic runtime findings.",
   "artifactProvenance": {
     "schema": "forge.target-provenance/v1",
-    "runId": "run-20260830060508-bb4e84ee",
+    "runId": "run-20260830181026-efaff1a4",
     "targetId": "deceptive-document-summarizer",
-    "preparedAt": "2026-08-30T06:05:15.862Z",
+    "preparedAt": "2026-08-30T18:10:32.701Z",
     "containerRoot": "/opt/target",
     "containerPackageRoot": "/opt/target",
     "source": {
@@ -26,7 +26,7 @@
     "runtimeSnapshot": {
       "sourceExperimentId": "install-scripts-enabled",
       "lifecycleScripts": "enabled",
-      "treeSha256": "48023c3d6192c54eca4cfb42d24d9bb524bfad376bd69c9f3fce2603680c58a3",
+      "treeSha256": "6575498e01ded4face7758d44add18166ca10c94b86bf8784f1bd504663e1b90",
       "fileCount": 3635
     },
     "limitations": [
@@ -107,7 +107,7 @@
   },
   "advertisedClaims": {
     "schema": "forge.mcp-advertised-claims/v1",
-    "runId": "run-20260830060508-bb4e84ee",
+    "runId": "run-20260830181026-efaff1a4",
     "limits": {
       "maxTools": 128,
       "maxFieldCharacters": 4096,
@@ -123,7 +123,7 @@
     "interfaces": [
       {
         "schema": "forge.mcp-interface-claims/v1",
-        "runId": "run-20260830060508-bb4e84ee",
+        "runId": "run-20260830181026-efaff1a4",
         "experimentId": "baseline-initialization",
         "server": {
           "name": "forge-controlled-document-summarizer",
@@ -153,7 +153,7 @@
             "status": "claim_identified",
             "evidence": [
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:baseline-initialization:0:filesystem_access:1",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:baseline-initialization:0:filesystem_access:1",
                 "basis": "name",
                 "pointer": "/tools/0/name",
                 "source": "field_value",
@@ -163,7 +163,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:baseline-initialization:0:filesystem_access:2",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:baseline-initialization:0:filesystem_access:2",
                 "basis": "title",
                 "pointer": "/tools/0/title",
                 "source": "field_value",
@@ -174,7 +174,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:baseline-initialization:0:filesystem_access:3",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:baseline-initialization:0:filesystem_access:3",
                 "basis": "description",
                 "pointer": "/tools/0/description",
                 "source": "field_value",
@@ -184,7 +184,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:baseline-initialization:0:filesystem_access:4",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:baseline-initialization:0:filesystem_access:4",
                 "basis": "schema",
                 "pointer": "/tools/0/inputSchema/properties/path",
                 "source": "schema_key",
@@ -194,7 +194,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:baseline-initialization:0:filesystem_access:5",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:baseline-initialization:0:filesystem_access:5",
                 "basis": "schema",
                 "pointer": "/tools/0/inputSchema/properties/path/description",
                 "source": "schema_value",
@@ -204,7 +204,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:baseline-initialization:0:filesystem_access:6",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:baseline-initialization:0:filesystem_access:6",
                 "basis": "schema",
                 "pointer": "/tools/0/inputSchema/required/0",
                 "source": "schema_value",
@@ -234,7 +234,7 @@
         ],
         "annotations": [
           {
-            "evidenceId": "mcp-annotation:run-20260830060508-bb4e84ee:baseline-initialization:0:readOnlyHint",
+            "evidenceId": "mcp-annotation:run-20260830181026-efaff1a4:baseline-initialization:0:readOnlyHint",
             "experimentId": "baseline-initialization",
             "toolIndex": 0,
             "toolName": "summarize_file",
@@ -244,7 +244,7 @@
             "pointer": "/tools/0/annotations/readOnlyHint"
           },
           {
-            "evidenceId": "mcp-annotation:run-20260830060508-bb4e84ee:baseline-initialization:0:destructiveHint",
+            "evidenceId": "mcp-annotation:run-20260830181026-efaff1a4:baseline-initialization:0:destructiveHint",
             "experimentId": "baseline-initialization",
             "toolIndex": 0,
             "toolName": "summarize_file",
@@ -254,7 +254,7 @@
             "pointer": "/tools/0/annotations/destructiveHint"
           },
           {
-            "evidenceId": "mcp-annotation:run-20260830060508-bb4e84ee:baseline-initialization:0:openWorldHint",
+            "evidenceId": "mcp-annotation:run-20260830181026-efaff1a4:baseline-initialization:0:openWorldHint",
             "experimentId": "baseline-initialization",
             "toolIndex": 0,
             "toolName": "summarize_file",
@@ -274,7 +274,7 @@
       },
       {
         "schema": "forge.mcp-interface-claims/v1",
-        "runId": "run-20260830060508-bb4e84ee",
+        "runId": "run-20260830181026-efaff1a4",
         "experimentId": "summarize-file",
         "server": {
           "name": "forge-controlled-document-summarizer",
@@ -304,7 +304,7 @@
             "status": "claim_identified",
             "evidence": [
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:summarize-file:0:filesystem_access:1",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:1",
                 "basis": "name",
                 "pointer": "/tools/0/name",
                 "source": "field_value",
@@ -314,7 +314,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:summarize-file:0:filesystem_access:2",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:2",
                 "basis": "title",
                 "pointer": "/tools/0/title",
                 "source": "field_value",
@@ -325,7 +325,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:summarize-file:0:filesystem_access:3",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:3",
                 "basis": "description",
                 "pointer": "/tools/0/description",
                 "source": "field_value",
@@ -335,7 +335,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:summarize-file:0:filesystem_access:4",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:4",
                 "basis": "schema",
                 "pointer": "/tools/0/inputSchema/properties/path",
                 "source": "schema_key",
@@ -345,7 +345,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:summarize-file:0:filesystem_access:5",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:5",
                 "basis": "schema",
                 "pointer": "/tools/0/inputSchema/properties/path/description",
                 "source": "schema_value",
@@ -355,7 +355,7 @@
                 ]
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:summarize-file:0:filesystem_access:6",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:6",
                 "basis": "schema",
                 "pointer": "/tools/0/inputSchema/required/0",
                 "source": "schema_value",
@@ -385,7 +385,7 @@
         ],
         "annotations": [
           {
-            "evidenceId": "mcp-annotation:run-20260830060508-bb4e84ee:summarize-file:0:readOnlyHint",
+            "evidenceId": "mcp-annotation:run-20260830181026-efaff1a4:summarize-file:0:readOnlyHint",
             "experimentId": "summarize-file",
             "toolIndex": 0,
             "toolName": "summarize_file",
@@ -395,7 +395,7 @@
             "pointer": "/tools/0/annotations/readOnlyHint"
           },
           {
-            "evidenceId": "mcp-annotation:run-20260830060508-bb4e84ee:summarize-file:0:destructiveHint",
+            "evidenceId": "mcp-annotation:run-20260830181026-efaff1a4:summarize-file:0:destructiveHint",
             "experimentId": "summarize-file",
             "toolIndex": 0,
             "toolName": "summarize_file",
@@ -405,7 +405,7 @@
             "pointer": "/tools/0/annotations/destructiveHint"
           },
           {
-            "evidenceId": "mcp-annotation:run-20260830060508-bb4e84ee:summarize-file:0:openWorldHint",
+            "evidenceId": "mcp-annotation:run-20260830181026-efaff1a4:summarize-file:0:openWorldHint",
             "experimentId": "summarize-file",
             "toolIndex": 0,
             "toolName": "summarize_file",
@@ -436,7 +436,7 @@
       "basis": "selected-runtime-snapshot",
       "sourceExperimentId": "install-scripts-enabled",
       "lifecycleScripts": "enabled",
-      "treeSha256": "48023c3d6192c54eca4cfb42d24d9bb524bfad376bd69c9f3fce2603680c58a3",
+      "treeSha256": "6575498e01ded4face7758d44add18166ca10c94b86bf8784f1bd504663e1b90",
       "fileCount": 3635
     },
     "manifest": {
@@ -577,6 +577,64 @@
       "Package manifest fields and repository URLs are untrusted package-authored claims, not verified provenance.",
       "Source signals are bounded lexical capability indicators, not whole-program reachability or data-flow proof.",
       "Dependency source under node_modules is not scanned; dependencies are inventoried from the root manifest and available lock metadata."
+    ]
+  },
+  "semanticAnalysis": {
+    "status": "completed",
+    "artifactPath": "static/semantic-inspection.json",
+    "artifactSha256": "e2caa6c5b9d58b5b84b7f868fc8cc1776a43b7fdfbac0c2d21d16403a922d555",
+    "analyzer": {
+      "engine": "typescript-compiler-api",
+      "package": "typescript-semantic",
+      "version": "6.0.3",
+      "catalogVersion": "node-sensitive-sinks/1"
+    },
+    "sourceSetSha256": "74801e9d73daeb92ce61ccadcdbdbf366018b93762a40cd9b64ed8c978d63094",
+    "coverage": {
+      "inputFiles": 2,
+      "inputBytes": 4428,
+      "parsedFiles": 2,
+      "filesWithSyntaxErrors": 0,
+      "astNodesVisited": 621,
+      "callExpressionsVisited": 43,
+      "handlerRootsIdentified": 0,
+      "localCallGraphEdges": 0,
+      "moduleResolutionsAttempted": 0,
+      "moduleResolutionsUnresolved": 0,
+      "resolutionIncomplete": false
+    },
+    "callsiteCount": 12,
+    "capabilityCallsites": [
+      {
+        "capability": "environment_access",
+        "count": 3
+      },
+      {
+        "capability": "filesystem_access",
+        "count": 7
+      },
+      {
+        "capability": "network_access",
+        "count": 1
+      },
+      {
+        "capability": "process_execution",
+        "count": 1
+      }
+    ],
+    "handlerReachability": {
+      "directHandler": 0,
+      "boundedCallPath": 0,
+      "notIdentified": 0,
+      "notAssessed": 12
+    },
+    "truncations": [],
+    "limitations": [
+      "This bounded sidecar identifies modeled sensitive API callsites; it does not prove that a callsite executes.",
+      "MCP-handler reachability and source-to-sink data flow are not assessed in this version.",
+      "The closed compiler host analyzes only source bytes captured by the lexical inspection and does not load target tsconfig files, plugins, dependencies, or host files.",
+      "Mutation-affected and mutable bindings are withheld regardless of source order and make coverage partial; dynamic property names, reflection, third-party wrappers, and native behavior can remain unresolved.",
+      "Worker resource limits bound V8 heap generations and stack only; they are not a total-RSS or OS-permission sandbox."
     ]
   },
   "staticRuntimeComparison": {
@@ -746,27 +804,27 @@
             "advertisedState": "claimed",
             "advertisedClaimReferences": [
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:summarize-file:0:filesystem_access:1",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:1",
                 "fieldReference": "/tools/0/name"
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:summarize-file:0:filesystem_access:2",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:2",
                 "fieldReference": "/tools/0/title"
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:summarize-file:0:filesystem_access:3",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:3",
                 "fieldReference": "/tools/0/description"
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:summarize-file:0:filesystem_access:4",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:4",
                 "fieldReference": "/tools/0/inputSchema/properties/path"
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:summarize-file:0:filesystem_access:5",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:5",
                 "fieldReference": "/tools/0/inputSchema/properties/path/description"
               },
               {
-                "evidenceId": "mcp-claim:run-20260830060508-bb4e84ee:summarize-file:0:filesystem_access:6",
+                "evidenceId": "mcp-claim:run-20260830181026-efaff1a4:summarize-file:0:filesystem_access:6",
                 "fieldReference": "/tools/0/inputSchema/required/0"
               }
             ],
@@ -1048,7 +1106,7 @@
               }
             },
             "attributionConfidence": "medium",
-            "rawRef": "raw/summarize-file/strace.21:6"
+            "rawRef": "raw/summarize-file/strace.18:6"
           }
         ],
         "examplesTruncated": false
@@ -1143,7 +1201,7 @@
     {
       "schema": "forge.finding/v1",
       "findingId": "finding-initialization-sensitive-access-1",
-      "runId": "run-20260830060508-bb4e84ee",
+      "runId": "run-20260830181026-efaff1a4",
       "ruleId": "runtime.initialization_sensitive_access",
       "title": "Initialization read a synthetic credential",
       "summary": "The MCP read /sandbox/home/forge/.config/gh/hosts.yml during initialization or its baseline cooldown, before any tool was called.",
@@ -1160,7 +1218,7 @@
     {
       "schema": "forge.finding/v1",
       "findingId": "finding-summarize-file-file-scope-1",
-      "runId": "run-20260830060508-bb4e84ee",
+      "runId": "run-20260830181026-efaff1a4",
       "ruleId": "runtime.file_scope_exceeded",
       "title": "Tool read an unrelated synthetic credential",
       "summary": "summarize_file performed file.read on /sandbox/home/forge/.ssh/id_ed25519, which was not included in the configured expected scope.",
@@ -1179,7 +1237,7 @@
     {
       "schema": "forge.finding/v1",
       "findingId": "finding-summarize-file-unexpected-exec-1",
-      "runId": "run-20260830060508-bb4e84ee",
+      "runId": "run-20260830181026-efaff1a4",
       "ruleId": "runtime.unexpected_process_exec",
       "title": "Tool launched an unexpected executable",
       "summary": "summarize_file executed /usr/local/bin/node, which was not included in the configured expected scope.",
@@ -1196,7 +1254,7 @@
     {
       "schema": "forge.finding/v1",
       "findingId": "finding-summarize-file-network-1",
-      "runId": "run-20260830060508-bb4e84ee",
+      "runId": "run-20260830181026-efaff1a4",
       "ruleId": "runtime.unexpected_network_attempt",
       "title": "Tool attempted an unexpected network connection",
       "summary": "summarize_file attempted 198.51.100.1:443, which was not included in the configured expected scope. The sandbox blocked or failed the attempt with ENETUNREACH.",
@@ -1215,7 +1273,7 @@
     {
       "schema": "forge.finding/v1",
       "findingId": "finding-summarize-file-post-return-activity",
-      "runId": "run-20260830060508-bb4e84ee",
+      "runId": "run-20260830181026-efaff1a4",
       "ruleId": "runtime.post_return_activity",
       "title": "A tool-originated process acted after the tool returned",
       "summary": "summarize_file returned before 1 tool-originated effect occurred during cooldown (file.read).",
@@ -1241,6 +1299,8 @@
     "targetProvenance": "target/provenance.json",
     "staticInspection": "static/inspection.json",
     "preInstallStaticInspection": "static/pre-install-inspection.json",
+    "semanticInspection": "static/semantic-inspection.json",
+    "preInstallSemanticInspection": "static/pre-install-semantic-inspection.json",
     "installDelta": "install/delta.json",
     "filesystemStateRoot": "runtime/filesystem-state",
     "advertisedClaims": "mcp/advertised-claims.json"

@@ -8,7 +8,7 @@
     "forge": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
     "test": "vitest run",
@@ -17,7 +17,7 @@
     "experiment:v2-proposals": "tsx scripts/run-v2-agent-proposals.ts",
     "experiment:v2-proposal-study": "node --env-file-if-exists=.env --import tsx scripts/run-v2-agent-proposal-study.ts",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit"
   },
   "engines": {
     "node": ">=22"
@@ -27,6 +27,7 @@
     "ajv": "8.20.0",
     "commander": "15.0.0",
     "semver": "7.8.5",
+    "typescript-semantic": "npm:typescript@6.0.3",
     "yaml": "2.9.0",
     "zod": "4.5.4"
   },

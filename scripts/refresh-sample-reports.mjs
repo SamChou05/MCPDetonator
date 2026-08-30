@@ -178,6 +178,110 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function containedArtifactPath(runDirectory, artifactPath) {
+  const resolvedPath = resolve(runDirectory, artifactPath);
+  const runRelative = relative(runDirectory, resolvedPath);
+  if (
+    runRelative.length === 0 ||
+    runRelative === ".." ||
+    runRelative.startsWith(`..${sep}`)
+  ) {
+    throw new Error(
+      `semantic artifact path resolves outside its Forge run: ${artifactPath}`,
+    );
+  }
+  return resolvedPath;
+}
+
+async function loadSemanticArtifact(options) {
+  const matchingArtifacts = options.manifest.artifacts.filter(
+    (artifact) => artifact.path === options.artifactPath,
+  );
+  if (matchingArtifacts.length !== 1) {
+    throw new Error(
+      `run ${options.runId} must bind exactly one ${options.stage} semantic artifact`,
+    );
+  }
+  const [artifact] = matchingArtifacts;
+  if (artifact.mediaType !== "application/json") {
+    throw new Error(
+      `run ${options.runId} ${options.stage} semantic artifact is not JSON`,
+    );
+  }
+
+  const unresolvedPath = containedArtifactPath(
+    options.directory,
+    options.artifactPath,
+  );
+  const realArtifactPath = await realpath(unresolvedPath);
+  containedArtifactPath(options.directory, realArtifactPath);
+  const source = await readFile(realArtifactPath);
+  const digest = sha256(source);
+  if (artifact.sha256 !== digest) {
+    throw new Error(
+      `run ${options.runId} does not bind its ${options.stage} semantic artifact to the manifest`,
+    );
+  }
+  if (options.expectedReportSha256 !== undefined && digest !== options.expectedReportSha256) {
+    throw new Error(
+      `run ${options.runId} selected semantic artifact does not match the report summary`,
+    );
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(source.toString("utf8"));
+  } catch {
+    throw new Error(
+      `run ${options.runId} ${options.stage} semantic artifact is not valid JSON`,
+    );
+  }
+  if (
+    parsed === null ||
+    typeof parsed !== "object" ||
+    parsed.schema !== "forge.node-semantic-static/v1" ||
+    parsed.runId !== options.runId ||
+    parsed.targetId !== options.targetId ||
+    parsed.input === null ||
+    typeof parsed.input !== "object" ||
+    parsed.input.lexicalInspectionArtifact !== options.lexicalInspectionArtifact
+  ) {
+    throw new Error(
+      `run ${options.runId} ${options.stage} semantic artifact identity is inconsistent`,
+    );
+  }
+}
+
+async function verifySemanticArtifacts(options) {
+  if (options.report.semanticAnalysis === undefined) return;
+  const selectedPath = options.report.evidence.semanticInspection;
+  const preInstallPath = options.report.evidence.preInstallSemanticInspection;
+  if (
+    selectedPath === undefined ||
+    preInstallPath === undefined ||
+    selectedPath === preInstallPath
+  ) {
+    throw new Error(
+      `run ${options.runId} requires distinct selected and pre-install semantic artifacts`,
+    );
+  }
+  await Promise.all([
+    loadSemanticArtifact({
+      ...options,
+      artifactPath: selectedPath,
+      stage: "selected",
+      lexicalInspectionArtifact: "static/inspection.json",
+      expectedReportSha256: options.report.semanticAnalysis.artifactSha256,
+    }),
+    loadSemanticArtifact({
+      ...options,
+      artifactPath: preInstallPath,
+      stage: "pre-install",
+      lexicalInspectionArtifact: "static/pre-install-inspection.json",
+    }),
+  ]);
+}
+
 async function loadRun(
   projectRoot,
   argument,
@@ -216,6 +320,14 @@ async function loadRun(
   ) {
     throw new Error(`run ${runId} does not bind report.json to its manifest`);
   }
+
+  await verifySemanticArtifacts({
+    directory,
+    runId,
+    targetId: expectedTargetId,
+    manifest,
+    report,
+  });
 
   const realProjectRoot = await realpath(projectRoot);
   const sanitized = sanitize(report, [...new Set([projectRoot, realProjectRoot])]);

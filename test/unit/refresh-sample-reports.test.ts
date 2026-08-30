@@ -5,6 +5,7 @@ import {
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -33,6 +34,7 @@ function manifest(
   runId: string,
   targetId: string,
   reportSource: string,
+  semanticArtifacts: readonly { path: string; source: string }[],
   imageId = observerImageId,
 ) {
   return {
@@ -61,7 +63,64 @@ function manifest(
         sha256: sha256(reportSource),
         mediaType: "application/json",
       },
+      ...semanticArtifacts.map((artifact) => ({
+        path: artifact.path,
+        sha256: sha256(artifact.source),
+        mediaType: "application/json",
+      })),
     ],
+  };
+}
+
+function semanticArtifact(
+  runId: string,
+  targetId: string,
+  lexicalInspectionArtifact: string,
+): string {
+  return `${JSON.stringify(
+    {
+      schema: "forge.node-semantic-static/v1",
+      runId,
+      targetId,
+      input: { lexicalInspectionArtifact },
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+function prepareReport(reportSource: string) {
+  const report = reportV1Schema.parse(JSON.parse(reportSource));
+  if (
+    report.semanticAnalysis === undefined ||
+    report.evidence.semanticInspection === undefined ||
+    report.evidence.preInstallSemanticInspection === undefined
+  ) {
+    throw new Error("sample fixture requires semantic report evidence");
+  }
+  const semanticArtifacts = [
+    {
+      path: report.evidence.semanticInspection,
+      source: semanticArtifact(
+        report.runId,
+        report.targetId,
+        "static/inspection.json",
+      ),
+    },
+    {
+      path: report.evidence.preInstallSemanticInspection,
+      source: semanticArtifact(
+        report.runId,
+        report.targetId,
+        "static/pre-install-inspection.json",
+      ),
+    },
+  ];
+  report.semanticAnalysis.artifactSha256 = sha256(semanticArtifacts[0]!.source);
+  return {
+    reportSource: `${JSON.stringify(report, null, 2)}\n`,
+    semanticArtifacts,
+    runId: report.runId,
   };
 }
 
@@ -69,7 +128,7 @@ async function createFixture() {
   const root = await mkdtemp(join(tmpdir(), "forge-refresh-samples-"));
   temporaryRoots.push(root);
   const sampleRoot = join(root, "examples", "reports");
-  const [deceptiveReport, filesystemReport] = await Promise.all([
+  const [deceptiveReportSource, filesystemReportSource] = await Promise.all([
     readFile(
       join(
         repositoryRoot,
@@ -89,18 +148,20 @@ async function createFixture() {
       "utf8",
     ),
   ]);
-  const deceptiveRunId = reportV1Schema.parse(
-    JSON.parse(deceptiveReport),
-  ).runId;
-  const filesystemRunId = reportV1Schema.parse(
-    JSON.parse(filesystemReport),
-  ).runId;
+  const deceptive = prepareReport(deceptiveReportSource);
+  const filesystem = prepareReport(filesystemReportSource);
+  const deceptiveReport = deceptive.reportSource;
+  const filesystemReport = filesystem.reportSource;
+  const deceptiveRunId = deceptive.runId;
+  const filesystemRunId = filesystem.runId;
   const deceptiveDirectory = join(root, "runs", deceptiveRunId);
   const filesystemDirectory = join(root, "runs", filesystemRunId);
   await Promise.all([
     mkdir(sampleRoot, { recursive: true }),
     mkdir(deceptiveDirectory, { recursive: true }),
     mkdir(filesystemDirectory, { recursive: true }),
+    mkdir(join(deceptiveDirectory, "static"), { recursive: true }),
+    mkdir(join(filesystemDirectory, "static"), { recursive: true }),
   ]);
   const readme = [
     "# Sample reports",
@@ -119,6 +180,7 @@ async function createFixture() {
           deceptiveRunId,
           "deceptive-document-summarizer",
           deceptiveReport,
+          deceptive.semanticArtifacts,
         ),
         null,
         2,
@@ -129,7 +191,12 @@ async function createFixture() {
     writeFile(
       join(filesystemDirectory, "run.json"),
       `${JSON.stringify(
-        manifest(filesystemRunId, "official-filesystem", filesystemReport),
+        manifest(
+          filesystemRunId,
+          "official-filesystem",
+          filesystemReport,
+          filesystem.semanticArtifacts,
+        ),
         null,
         2,
       )}\n`,
@@ -141,6 +208,12 @@ async function createFixture() {
       "old filesystem\n",
     ),
     writeFile(join(sampleRoot, "README.md"), readme, "utf8"),
+    ...deceptive.semanticArtifacts.map((artifact) =>
+      writeFile(join(deceptiveDirectory, artifact.path), artifact.source, "utf8"),
+    ),
+    ...filesystem.semanticArtifacts.map((artifact) =>
+      writeFile(join(filesystemDirectory, artifact.path), artifact.source, "utf8"),
+    ),
   ]);
 
   return {
@@ -150,6 +223,8 @@ async function createFixture() {
     filesystemDirectory,
     deceptiveReport,
     filesystemReport,
+    deceptiveSemanticArtifacts: deceptive.semanticArtifacts,
+    filesystemSemanticArtifacts: filesystem.semanticArtifacts,
     readme,
     deceptiveRunId,
     filesystemRunId,
@@ -217,6 +292,7 @@ describe("sample report refresher", () => {
           fixture.filesystemRunId,
           "official-filesystem",
           fixture.filesystemReport,
+          fixture.filesystemSemanticArtifacts,
           `sha256:${"c".repeat(64)}`,
         ),
         null,
@@ -279,6 +355,178 @@ describe("sample report refresher", () => {
     ]);
   });
 
+  it("requires both semantic artifact rows with JSON media types", async () => {
+    const fixture = await createFixture();
+    const manifestPath = join(fixture.deceptiveDirectory, "run.json");
+    const runManifest = runManifestV1Schema.parse(
+      JSON.parse(await readFile(manifestPath, "utf8")),
+    );
+    const preInstallPath = fixture.deceptiveSemanticArtifacts[1]!.path;
+    runManifest.artifacts = runManifest.artifacts.filter(
+      (artifact) => artifact.path !== preInstallPath,
+    );
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify(runManifest, null, 2)}\n`,
+      "utf8",
+    );
+
+    await expect(
+      refreshSampleReports({
+        projectRoot: fixture.root,
+        sampleRoot: fixture.sampleRoot,
+        args: [
+          `runs/${fixture.deceptiveRunId}`,
+          `runs/${fixture.filesystemRunId}`,
+        ],
+        schemas,
+      }),
+    ).rejects.toThrow("exactly one pre-install semantic artifact");
+
+    const restoredManifest = manifest(
+      fixture.deceptiveRunId,
+      "deceptive-document-summarizer",
+      fixture.deceptiveReport,
+      fixture.deceptiveSemanticArtifacts,
+    );
+    const selectedPath = fixture.deceptiveSemanticArtifacts[0]!.path;
+    const selectedRow = restoredManifest.artifacts.find(
+      (artifact) => artifact.path === selectedPath,
+    );
+    if (selectedRow === undefined) throw new Error("missing selected artifact row");
+    selectedRow.mediaType = "text/plain";
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify(restoredManifest, null, 2)}\n`,
+      "utf8",
+    );
+
+    await expect(
+      refreshSampleReports({
+        projectRoot: fixture.root,
+        sampleRoot: fixture.sampleRoot,
+        args: [
+          `runs/${fixture.deceptiveRunId}`,
+          `runs/${fixture.filesystemRunId}`,
+        ],
+        schemas,
+      }),
+    ).rejects.toThrow("selected semantic artifact is not JSON");
+  });
+
+  it("binds selected semantic bytes to both the manifest and report summary", async () => {
+    const fixture = await createFixture();
+    const selected = fixture.deceptiveSemanticArtifacts[0]!;
+    const changedSource = `${selected.source}\n`;
+    await writeFile(
+      join(fixture.deceptiveDirectory, selected.path),
+      changedSource,
+      "utf8",
+    );
+
+    await expect(
+      refreshSampleReports({
+        projectRoot: fixture.root,
+        sampleRoot: fixture.sampleRoot,
+        args: [
+          `runs/${fixture.deceptiveRunId}`,
+          `runs/${fixture.filesystemRunId}`,
+        ],
+        schemas,
+      }),
+    ).rejects.toThrow(
+      "does not bind its selected semantic artifact to the manifest",
+    );
+
+    const manifestPath = join(fixture.deceptiveDirectory, "run.json");
+    const runManifest = runManifestV1Schema.parse(
+      JSON.parse(await readFile(manifestPath, "utf8")),
+    );
+    const selectedRow = runManifest.artifacts.find(
+      (artifact) => artifact.path === selected.path,
+    );
+    if (selectedRow === undefined) throw new Error("missing selected artifact row");
+    selectedRow.sha256 = sha256(changedSource);
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify(runManifest, null, 2)}\n`,
+      "utf8",
+    );
+
+    await expect(
+      refreshSampleReports({
+        projectRoot: fixture.root,
+        sampleRoot: fixture.sampleRoot,
+        args: [
+          `runs/${fixture.deceptiveRunId}`,
+          `runs/${fixture.filesystemRunId}`,
+        ],
+        schemas,
+      }),
+    ).rejects.toThrow("does not match the report summary");
+  });
+
+  it("rejects semantic identity drift and paths resolving outside the run", async () => {
+    const fixture = await createFixture();
+    const preInstall = fixture.deceptiveSemanticArtifacts[1]!;
+    const changed = JSON.parse(preInstall.source) as {
+      input: { lexicalInspectionArtifact: string };
+    };
+    changed.input.lexicalInspectionArtifact = "static/inspection.json";
+    const changedSource = `${JSON.stringify(changed, null, 2)}\n`;
+    await writeFile(
+      join(fixture.deceptiveDirectory, preInstall.path),
+      changedSource,
+      "utf8",
+    );
+    const manifestPath = join(fixture.deceptiveDirectory, "run.json");
+    const runManifest = runManifestV1Schema.parse(
+      JSON.parse(await readFile(manifestPath, "utf8")),
+    );
+    const preInstallRow = runManifest.artifacts.find(
+      (artifact) => artifact.path === preInstall.path,
+    );
+    if (preInstallRow === undefined) throw new Error("missing pre-install row");
+    preInstallRow.sha256 = sha256(changedSource);
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify(runManifest, null, 2)}\n`,
+      "utf8",
+    );
+
+    await expect(
+      refreshSampleReports({
+        projectRoot: fixture.root,
+        sampleRoot: fixture.sampleRoot,
+        args: [
+          `runs/${fixture.deceptiveRunId}`,
+          `runs/${fixture.filesystemRunId}`,
+        ],
+        schemas,
+      }),
+    ).rejects.toThrow("pre-install semantic artifact identity is inconsistent");
+
+    const escapeFixture = await createFixture();
+    const selected = escapeFixture.filesystemSemanticArtifacts[0]!;
+    const selectedPath = join(escapeFixture.filesystemDirectory, selected.path);
+    const outsidePath = join(escapeFixture.root, "outside-semantic.json");
+    await writeFile(outsidePath, selected.source, "utf8");
+    await rm(selectedPath);
+    await symlink(outsidePath, selectedPath);
+
+    await expect(
+      refreshSampleReports({
+        projectRoot: escapeFixture.root,
+        sampleRoot: escapeFixture.sampleRoot,
+        args: [
+          `runs/${escapeFixture.deceptiveRunId}`,
+          `runs/${escapeFixture.filesystemRunId}`,
+        ],
+        schemas,
+      }),
+    ).rejects.toThrow("semantic artifact path resolves outside its Forge run");
+  });
+
   it("rejects an incomplete run before changing destinations", async () => {
     const fixture = await createFixture();
     await writeFile(
@@ -289,6 +537,7 @@ describe("sample report refresher", () => {
             fixture.deceptiveRunId,
             "deceptive-document-summarizer",
             fixture.deceptiveReport,
+            fixture.deceptiveSemanticArtifacts,
           ),
           status: "failed",
         },

@@ -5,9 +5,14 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { targetConfigV1Schema } from "../../src/config.js";
-import type { TargetProvenanceV1 } from "../../src/contracts/v1.js";
+import {
+  reportV1Schema,
+  type TargetProvenanceV1,
+} from "../../src/contracts/v1.js";
 import { EvidenceStore, sha256 } from "../../src/evidence-store.js";
-import { writeReport } from "../../src/report.js";
+import { assertReportStaticIdentity, writeReport } from "../../src/report.js";
+import { analyzeNodeSemanticSources } from "../../src/static/node-semantic-engine.js";
+import { runNodeSemanticAnalysis } from "../../src/static/node-semantic.js";
 import { inspectNodePackage } from "../../src/static/node-package.js";
 
 describe("report static snapshot alignment", () => {
@@ -28,6 +33,14 @@ describe("report static snapshot alignment", () => {
       packageRoot,
       artifactPath: "static/pre-install-inspection.json",
     });
+    await runNodeSemanticAnalysis({
+      store,
+      runId: "run-static-alignment",
+      targetId: "snapshot-package",
+      lexicalInspectionArtifact: "static/pre-install-inspection.json",
+      artifactPath: "static/pre-install-semantic-inspection.json",
+      workerRunner: async (input) => analyzeNodeSemanticSources(input),
+    });
 
     await writeFile(
       packageJson,
@@ -38,6 +51,12 @@ describe("report static snapshot alignment", () => {
       runId: "run-static-alignment",
       targetId: "snapshot-package",
       packageRoot,
+    });
+    const semanticAnalysis = await runNodeSemanticAnalysis({
+      store,
+      runId: "run-static-alignment",
+      targetId: "snapshot-package",
+      workerRunner: async (input) => analyzeNodeSemanticSources(input),
     });
     const runtimeTreeSha256 = sha256("selected runtime tree");
     const provenance: TargetProvenanceV1 = {
@@ -141,6 +160,7 @@ describe("report static snapshot alignment", () => {
       ],
       provenance,
       staticInspection: runtimeInspection,
+      semanticAnalysis,
       profileRootsByExperiment: new Map([
         [
           "inspect-snapshot",
@@ -165,8 +185,71 @@ describe("report static snapshot alignment", () => {
     expect(report.evidence).toMatchObject({
       staticInspection: "static/inspection.json",
       preInstallStaticInspection: "static/pre-install-inspection.json",
+      semanticInspection: "static/semantic-inspection.json",
+      preInstallSemanticInspection:
+        "static/pre-install-semantic-inspection.json",
       advertisedClaims: "mcp/advertised-claims.json",
     });
+    expect(report.semanticAnalysis).toMatchObject({
+      status: "completed",
+      artifactPath: "static/semantic-inspection.json",
+      artifactSha256: semanticAnalysis.artifactSha256,
+      callsiteCount: 0,
+    });
+    const withoutSemanticEvidence = structuredClone(report);
+    delete withoutSemanticEvidence.evidence.semanticInspection;
+    expect(reportV1Schema.safeParse(withoutSemanticEvidence).success).toBe(false);
+    const wrongSemanticPath = structuredClone(report);
+    if (wrongSemanticPath.semanticAnalysis === undefined) {
+      throw new Error("semantic report summary was not retained");
+    }
+    wrongSemanticPath.semanticAnalysis.artifactPath =
+      "static/not-the-retained-semantic-artifact.json";
+    expect(reportV1Schema.safeParse(wrongSemanticPath).success).toBe(false);
+    const contradictorySemanticStatus = structuredClone(report);
+    if (contradictorySemanticStatus.semanticAnalysis === undefined) {
+      throw new Error("semantic report summary was not retained");
+    }
+    contradictorySemanticStatus.semanticAnalysis.coverage.resolutionIncomplete =
+      true;
+    expect(reportV1Schema.safeParse(contradictorySemanticStatus).success).toBe(
+      false,
+    );
+    const duplicateSemanticTruncations = structuredClone(report);
+    if (duplicateSemanticTruncations.semanticAnalysis === undefined) {
+      throw new Error("semantic report summary was not retained");
+    }
+    duplicateSemanticTruncations.semanticAnalysis.status = "partial";
+    duplicateSemanticTruncations.semanticAnalysis.coverage.resolutionIncomplete =
+      true;
+    duplicateSemanticTruncations.semanticAnalysis.truncations = [
+      "ast_nodes",
+      "ast_nodes",
+    ];
+    expect(reportV1Schema.safeParse(duplicateSemanticTruncations).success).toBe(
+      false,
+    );
+
+    const wrongSemanticRun = structuredClone(semanticAnalysis);
+    wrongSemanticRun.analysis.runId = "run-not-this-report";
+    expect(() =>
+      assertReportStaticIdentity({
+        runId: "run-static-alignment",
+        targetId: "snapshot-package",
+        inspection: runtimeInspection,
+        semanticAnalysis: wrongSemanticRun,
+      }),
+    ).toThrow("semantic inspection does not belong");
+    const wrongLexicalTarget = structuredClone(runtimeInspection);
+    wrongLexicalTarget.targetId = "another-package";
+    expect(() =>
+      assertReportStaticIdentity({
+        runId: "run-static-alignment",
+        targetId: "snapshot-package",
+        inspection: wrongLexicalTarget,
+        semanticAnalysis,
+      }),
+    ).toThrow("static inspection does not belong");
     expect(report.advertisedTools[0]).toMatchObject({
       name: "inspect_snapshot",
       title: "Inspect selected snapshot",

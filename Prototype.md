@@ -93,7 +93,10 @@ sandboxed preparation with scripts disabled + provenance hashes
                 |
                 v
 bounded Node package inspection
-manifest / dependencies / scripts / lockfile / source signals
+manifest / dependencies / scripts / lockfile / lexical source signals
+                |
+                v
+closed, bounded TypeScript sidecar -> modeled sensitive API callsites
                 |
                 v
 reusable npm cache? -- yes --> fresh scripts-off/on install A/B + delta
@@ -162,7 +165,9 @@ runs/<run-id>/
 |   `-- package-lock.json
 |-- static/
 |   |-- pre-install-inspection.json
-|   `-- inspection.json
+|   |-- pre-install-semantic-inspection.json
+|   |-- inspection.json
+|   `-- semantic-inspection.json
 |-- install/
 |   `-- delta.json
 |-- mcp/
@@ -189,7 +194,7 @@ runs/<run-id>/
 `-- sandboxes/<experiment>/profile.json
 ```
 
-Some target evidence files are conditional. The primary static summary is explicitly tied to the selected runtime snapshot; the earlier inspection is retained to show the package before lifecycle scripts ran. Every normalized event contains a raw evidence reference, findings cite normalized event IDs, and attribution is stored separately from observed facts. `report.json` also includes phase-scoped effect counts, compact expected-scope examples, and the bounded four-way behavior comparison so positive behavior is visible without hiding the complete event stream or implying intent.
+Some target evidence files are conditional. The primary static summary is explicitly tied to the selected runtime snapshot; the earlier inspection is retained to show the package before lifecycle scripts ran. Each lexical inspection also feeds a separate semantic artifact derived only from its hash-bound captured source bytes. The report summarizes the selected semantic artifact and binds its SHA-256 without changing the meaning of existing lexical comparison rows. Every normalized event contains a raw evidence reference, findings cite normalized event IDs, and attribution is stored separately from observed facts. `report.json` also includes phase-scoped effect counts, compact expected-scope examples, and the bounded four-way behavior comparison so positive behavior is visible without hiding the complete event stream or implying intent.
 
 The report's per-experiment behavior comparison keeps four questions separate:
 what the MCP advertised, what bounded package inspection found, what the
@@ -210,7 +215,7 @@ This is useful take-home containment, not proof that arbitrary hostile code is p
 ## Deliberate limits
 
 - Support is currently Node.js packages on Linux, local execution over MCP STDIO, and npm or local-directory sources.
-- Static inspection is bounded lexical analysis of selected Node source plus manifest, script, dependency, lockfile, and provenance metadata. It is not whole-program reachability or data-flow analysis, and dependency source under `node_modules` is not scanned.
+- Static inspection combines the existing bounded lexical analysis with a separate TypeScript Compiler API sidecar for modeled direct and immutable-alias Node callsites. The sidecar uses a closed in-memory host and a worker with time plus V8 heap/stack limits; those are not total-RSS or OS-sandbox limits. Bindings affected by syntactically detected assignment/delete/update mutations are withheld and make evidence partial, while reflective mutation remains unresolved. The pass is not whole-program, entrypoint/MCP-handler reachability, or data-flow analysis, and dependency source under `node_modules` is not scanned.
 - Advertised-claim extraction is bounded lexical classification of tool names, titles, descriptions, and input schemas. Selected standard annotations are preserved separately and do not independently map to capabilities. The extractor handles nearby negation for its supported terms, but it is not general natural-language understanding; no detected claim is not a denial of capability or permission to perform it.
 - The complete `tools/list` result and every recorded JSON-RPC message are bounded before schema validation or persistence. The retained interface, advertised-claim evidence, and catalog fingerprints intentionally omit output schemas and other unretained MCP metadata, so those fields are not analyzed for claims or drift.
 - Runtime normalization covers a focused `strace` syscall subset for process, file, and socket behavior, including supported failed exec/file attempts and terminal signal exits. It does not reconstruct every kernel action, DNS meaning, or encrypted network payload.
