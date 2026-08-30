@@ -111,11 +111,13 @@ node scripts/deploy-dashboard.mjs \
 
 ## Refresh published results without changing infrastructure
 
-After `publish-run --refresh-dashboard` reports `dashboard.status` as
-`refreshed`, inspect the local page. The newest eligible result becomes the
-current card and appears in the expandable `Recent published runs` section;
-older eligible results remain available up to the five-per-target bound. Then
-upload only the newly validated content to the existing exact stack:
+After `analyze --publish --refresh-dashboard` reports
+`publication.dashboard.status` as `refreshed` (or standalone
+`publish-run --refresh-dashboard` reports `dashboard.status` as `refreshed`),
+inspect the local page. The newest eligible result becomes the current card and
+appears in the expandable `Recent published runs` section; older eligible
+results remain available up to the five-per-target bound. Then upload only the
+newly validated content to the existing exact stack:
 
 The local publisher demo exports fake MinIO credentials under AWS's standard
 environment-variable names. Use a fresh shell, or remove those demo-only values
@@ -136,9 +138,10 @@ node scripts/deploy-dashboard.mjs \
   --yes
 ```
 
-This deployment is not automatic. `forge analyze` uploads nothing, and
-`publish-run --refresh-dashboard` regenerates the website only as a local
-snapshot; it does not deploy the website to AWS. This mode still validates the
+This deployment is not automatic. Plain `forge analyze` uploads nothing;
+`analyze --publish --refresh-dashboard` and
+`publish-run --refresh-dashboard` regenerate the website only as a local
+snapshot and do not deploy it to AWS. This mode still validates the
 caller/account, refuses root credentials,
 requires the exact tagged stack and two-key bucket inventory, verifies local
 builder receipts and remote S3 checksums, and waits for the CloudFront

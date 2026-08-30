@@ -1095,3 +1095,81 @@ Completed: 2026-08-30
 - The modified `.gitignore`, concurrent `ImplementationPlan.md`, generated
   `agent-runs/`, unseen-MCP holdout directory, and its untracked test remain
   out of scope and must remain unstaged and uncommitted.
+
+## Active analyze-and-publish convenience wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `main` at `e2f1729`
+  (`feat: add bounded dashboard run history`).
+- Out-of-scope working-tree state is the modified `.gitignore`, concurrently
+  modified `ImplementationPlan.md`, generated untracked `agent-runs/`, and the
+  untracked unseen-MCP holdout directory/test. This wave must not edit, stage,
+  or commit them.
+- User goal: offer one explicit analysis command that can continue into the
+  existing verified publisher and optional local dashboard refresh, without
+  collapsing the internal analysis/publication failure and retry boundaries.
+- Intended UX: `forge analyze <target> --publish [--refresh-dashboard]`.
+  `--refresh-dashboard` must require `--publish`. AWS site deployment remains
+  a separate authenticated operation and must not be implied or invoked.
+- Analysis failure must never attempt publication. A completed analysis must
+  remain valid if publication or presentation refresh later fails, and the
+  command must expose enough output and exit status to retry `publish-run`
+  against the printed run directory without rerunning analysis.
+- Root is the sole editor, verifier, Git coordinator, and ledger writer.
+  Parallel agents are read-only reviewers and must not edit files or mutate
+  Git, Docker, storage, databases, or AWS.
+- Status: completed and verified; the implementation commit follows this
+  ledger update.
+
+## Analyze-and-publish convenience wave completion
+
+Completed: 2026-08-30
+
+- `forge analyze <target> --publish [--refresh-dashboard]` now provides the
+  one-command demo path while calling the existing publisher directly against
+  the exact `AnalyzeResult.runDirectory`. It does not search for a newest run,
+  spawn a second CLI, or invoke AWS website deployment.
+- `--refresh-dashboard` is rejected before target loading unless `--publish`
+  is explicit. Target and publication configuration validation happen before
+  the expensive analysis; only a successfully completed analysis can reach the
+  publisher. Plain `analyze` retains its original three-field JSON output and
+  never loads publication configuration.
+- Successful chained output nests the unchanged publication summary under the
+  completed analysis and preserves standalone `publish-run` as the idempotent
+  retry seam. A thrown publisher outcome is reported as `not_confirmed`, exits
+  1, retains the completed run ID/directory and argv-style retry arguments, and
+  does not copy raw service errors into stdout. A canonical publication with a
+  failed local dashboard refresh remains `published` and exits 2.
+- CLI help and the publisher/AWS runbooks now explain required configuration
+  and credentials, allowlisted refresh selection, retry behavior, and the
+  separate authenticated content-only AWS deployment boundary.
+- Unit coverage exercises consent, configuration preflight, analysis failure,
+  exact run-directory handoff, refresh option routing, complete output mapping,
+  both retry-argument variants, dashboard partial failure, and sanitized
+  failure output. Source-CLI subprocess tests cover help, invalid flag use, and
+  missing-configuration fail-fast behavior without creating evidence.
+- The exact localhost demo command completed successfully as
+  `run-20260830215727-60ab3fae`: 111 artifacts and five findings were published
+  to the existing local MinIO/PostgreSQL demo and the dashboard refreshed. A
+  standalone retry reported `already_published` for both repository phases,
+  reused the manifest object, and converged to an unchanged snapshot. The local
+  page was restored to this persistent demo state after isolated verification;
+  no AWS resource or hosted site was changed.
+- Final verification passed: `npm run typecheck`; full `npm test` (72 files,
+  580 tests, including the concurrent out-of-scope holdout test); `npm run
+  build`; `npm run verify:publisher`; `npm run verify:e2e` with observer image
+  `sha256:547a1d7019fc292eb5cc5d8c73fb7c1e526f9be9f7d0e408cb815c4add53f48a`,
+  deceptive run `run-20260830215857-5c9fbd10`, and Filesystem run
+  `run-20260830215936-3e84b6c4`; focused orchestration/publisher/dashboard tests;
+  real wrapper and retry smoke tests; CLI subprocess smokes; and `git diff
+  --check`.
+- Three independent read-only reviews found no blocking or material issue.
+  Their minor findings were addressed by adding both retry variants and CLI
+  subprocess coverage, clarifying credential/selection help and command
+  wording, and replacing raw stdout error causes with a stable safe message.
+- The modified `.gitignore`, concurrent `ImplementationPlan.md`, generated
+  `agent-runs/`, unseen-MCP holdout directory, and its untracked test remained
+  out of scope and must remain unstaged and uncommitted.
+
+Suggested commit subject: `feat: add analyze-and-publish convenience flow`.

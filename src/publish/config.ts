@@ -20,7 +20,9 @@ function requiredEnvironmentValue(
 ): string {
   const value = environment[name];
   if (value === undefined || value.trim() === "") {
-    throw new PublishConfigurationError(`${name} is required for publish-run`);
+    throw new PublishConfigurationError(
+      `${name} is required for publication (publish-run or analyze --publish)`,
+    );
   }
 
   return value;

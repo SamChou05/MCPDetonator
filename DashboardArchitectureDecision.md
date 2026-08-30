@@ -7,10 +7,12 @@
 
 Publish a script-free snapshot of an explicitly allowlisted presentation
 contract. Pinned sanitized reports provide the initial/fallback pair. An
-explicit successful `publish-run --refresh-dashboard` stores a separate safe
-projection in PostgreSQL and regenerates `index.html` from up to five recent
-published projections per reviewed target. The first row becomes that target's
-latest summary; the remaining rows form a native expandable history. Store only
+explicit successful publisher invocation—either
+`analyze --publish --refresh-dashboard` or
+`publish-run --refresh-dashboard`—stores a separate safe projection in
+PostgreSQL and regenerates `index.html` from up to five recent published
+projections per reviewed target. The first row becomes that target's latest
+summary; the remaining rows form a native expandable history. Store only
 generated `index.html` and `styles.css` in a separate private S3 bucket and
 serve them through one CloudFront distribution using Origin Access Control
 (OAC).

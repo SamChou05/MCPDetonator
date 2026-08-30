@@ -1,12 +1,13 @@
 # Forge S3/Postgres publisher demo
 
-This demo keeps `forge analyze` unchanged. It verifies one completed local run,
-streams its manifest-listed artifacts to an S3-compatible object store, writes
+Plain `forge analyze` remains unchanged. With the explicit `--publish` flag,
+the same command can continue into the verified completed-run publisher: it
+streams manifest-listed artifacts to an S3-compatible object store, writes
 queryable metadata to PostgreSQL, and publishes the exact `run.json` last. For
-the two reviewed demo targets, it can also store a disclosure-safe projection
-and regenerate the script-free results page after publication succeeds. The
-page shows the latest selected result plus up to five eligible published runs
-per target, newest completed run first.
+the two reviewed demo targets, `--refresh-dashboard` can also store a
+disclosure-safe projection and regenerate the script-free results page after
+publication succeeds. The page shows the latest selected result plus up to
+five eligible published runs per target, newest completed run first.
 
 The bundled stack binds only to localhost and uses conspicuously non-production
 credentials. It is for demonstration and automated verification, not shared
@@ -45,28 +46,27 @@ export FORGE_PUBLISH_S3_PREFIX=demo
 export FORGE_PUBLISH_DATABASE_URL=postgresql://forge:forge-demo-only@127.0.0.1:55432/forge
 ```
 
-## 3. Publish a completed run
+## 3. Analyze, publish, and refresh
 
-Use an existing synthetic completed run directory or create one with the
-checked-in deceptive fixture. The following captures the exact `runDirectory`
-printed by `analyze`, even when other runs already exist:
+The convenience form runs the checked-in deceptive fixture, publishes only the
+exact completed run returned by that analysis, and refreshes the local page:
 
 ```bash
 npm run build:dashboard
-export FORGE_RUN_DIRECTORY="$(
-  node dist/cli.js analyze fixtures/deceptive-mcp/target.yaml --output runs |
-  node -e 'let s=""; process.stdin.on("data", c => s += c); process.stdin.on("end", () => process.stdout.write(JSON.parse(s).runDirectory));'
-)"
-node dist/cli.js publish-run "$FORGE_RUN_DIRECTORY" --refresh-dashboard
+node dist/cli.js analyze fixtures/deceptive-mcp/target.yaml \
+  --output runs \
+  --publish \
+  --refresh-dashboard
 ```
 
-Success prints a JSON object containing the run ID, manifest digest, artifact
-count, finding count, final S3 manifest location, and dashboard status. Reload
-the local page after the command completes: the controlled card should say
-`Published ...`; its row appears under `Recent published runs`; and the
-unrefreshed reference card remains clearly labeled `Pinned sample`. Open a
-history row to inspect its bounded counts, canonical findings, capability
-summary, and selected behavioral scopes.
+Success prints one JSON object containing the local `runDirectory` and a nested
+`publication` result with the manifest digest, artifact and finding counts,
+final S3 manifest location, and dashboard status. Reload the local page after
+the command completes: the controlled card should say `Published ...`; its row
+appears under `Recent published runs`; and the unrefreshed reference card
+remains clearly labeled `Pinned sample`. Open a history row to inspect its
+bounded counts, canonical findings, capability summary, and selected behavioral
+scopes.
 
 ```bash
 npm run serve:dashboard
@@ -75,23 +75,42 @@ npm run serve:dashboard
 Open `http://127.0.0.1:4173/`. The browser reads only generated HTML and CSS;
 it has no PostgreSQL or evidence-bucket credentials.
 
-The update boundaries are intentionally separate:
+The update boundaries remain explicit even though the happy path is one
+command:
 
-- `forge analyze` creates a local run and uploads nothing.
+- plain `forge analyze` creates a local run and uploads nothing.
+- `forge analyze --publish` first completes the local run, then invokes the
+  same verified publisher as `publish-run`.
+- adding `--refresh-dashboard` also regenerates the website as a local static
+  snapshot; the flag is rejected unless `--publish` is explicit.
 - `publish-run` writes canonical evidence and metadata but does not refresh the
-  page unless `--refresh-dashboard` is supplied.
-- `publish-run --refresh-dashboard` also regenerates the website as a local
-  static snapshot; it does not deploy the website to AWS.
+  page unless `--refresh-dashboard` is supplied, and remains the retry command
+  for an already-completed run.
 - the public AWS copy changes only after the explicit content-only deployment
   in [`DashboardAwsDemo.md`](DashboardAwsDemo.md).
 
-Nothing silently uploads the website after every analysis run. This preserves
-one review point before a synthetic result becomes public.
+Neither form deploys the website to AWS. Evidence publication requires either
+`analyze --publish` or the explicit `publish-run` command, and website upload
+still requires the separate deployment step.
 
-Run the same command again. It should succeed idempotently: immutable S3
-objects are verified rather than overwritten, and PostgreSQL retains one
-logical set of run, artifact, finding, and public-projection rows. The
-dashboard result should report `unchanged`.
+To test idempotency, copy the exact `runDirectory` from the JSON output and run:
+
+```bash
+node dist/cli.js publish-run "/absolute/path/from/runDirectory" --refresh-dashboard
+```
+
+That retry verifies immutable S3 objects rather than overwriting them, and
+PostgreSQL retains one logical set of run, artifact, finding, and
+public-projection rows. The dashboard result should report `unchanged`. Do not
+retry the full convenience command when publication is uncertain: it would
+perform a new analysis and create a new run.
+
+The command exits 1 if configuration validation or analysis fails, or if
+canonical publication is not confirmed. A post-analysis publication error
+still prints the completed run ID, directory, and structured `publish-run`
+retry arguments. It exits 2 if canonical publication succeeded but the local
+dashboard refresh failed; retry `publish-run` with `--refresh-dashboard`
+against that same directory.
 
 ## 4. Inspect the result
 

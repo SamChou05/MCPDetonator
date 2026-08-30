@@ -208,21 +208,27 @@ rather than matching process origin.
 
 ## Optional durable publisher demo
 
-`forge analyze` still completes into the self-contained local directory above.
-The separate `forge publish-run <run-directory>` command verifies a completed
-bundle, snapshots its manifest-listed bytes away from mutable run paths,
-uploads content-addressed objects to S3-compatible storage, and indexes bounded
-run/artifact/finding metadata in PostgreSQL. All deterministic S3 keys and
-PostgreSQL values are preflighted before remote writes; identical retries verify
-service checksums and exact published metadata sets.
+Plain `forge analyze` still completes into the self-contained local directory
+above and uploads nothing. The explicit `forge analyze <target> --publish`
+convenience form can continue from that exact completed directory into the
+verified publisher. The independently retryable
+`forge publish-run <run-directory>` command performs the same publication for
+an existing run. The publisher snapshots manifest-listed bytes away from
+mutable run paths, uploads content-addressed objects to S3-compatible storage,
+and indexes bounded run/artifact/finding metadata in PostgreSQL. All
+deterministic S3 keys and PostgreSQL values are preflighted before remote
+writes; identical retries verify service checksums and exact published metadata
+sets.
 
-For the two exact reviewed demo identities, `publish-run --refresh-dashboard`
-also stores a separate disclosure-safe projection after finalization and
-regenerates the local script-free results page from up to five recent published
-rows per target. The newest row drives the current summary and every retained
-row can be expanded in the published-run history. The browser never reaches
-PostgreSQL or the canonical evidence bucket; an explicit content-only deploy
-moves only validated HTML/CSS to the AWS site bucket.
+For the two exact reviewed demo identities, either
+`analyze --publish --refresh-dashboard` or
+`publish-run --refresh-dashboard` also stores a separate disclosure-safe
+projection after finalization and regenerates the local script-free results
+page from up to five recent published rows per target. The newest row drives
+the current summary and every retained row can be expanded in the published-run
+history. The browser never reaches PostgreSQL or the canonical evidence bucket;
+an explicit content-only deploy moves only validated HTML/CSS to the AWS site
+bucket.
 
 The S3 `run.json` is an artifact-completeness marker, not a cross-store atomic
 commit. PostgreSQL `status = 'published'` is query authority; hosted use still
