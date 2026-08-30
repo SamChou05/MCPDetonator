@@ -899,3 +899,67 @@ Milestones and verification:
   `npm run verify:e2e` returned `status: verified`; and
   `npm run verify:agent` returned `status: passed` with all 14 named checks
   true.
+
+## Active V2 unseen-MCP enrollment wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `codex/v2-unseen-enrollment` at
+  `d222c3d72ffec74fde8bf6719dddb646d785108e`
+  (`docs: record unseen MCP enrollment gap`).
+- Starting worktree was clean. The dirty main checkout remains out of scope;
+  this wave continues only in the isolated V2 worktree.
+- Root owns architecture, integration, this ledger, all Git writes, experiment
+  execution, and final verification. Initial parallel reviewers are read-only
+  and may not edit the checkout.
+- Safety boundary: keep the existing pinned fixture as a positive control.
+  General enrollment may acquire and inspect unfamiliar local or exact-version
+  npm Node.js STDIO MCPs, but execution must remain one-call, synthetic-input,
+  no-network, no-host-secret, no-lifecycle-script, manually reviewed, and
+  raw-result-quarantined. Unsupported targets fail closed with bounded reasons.
+- Success criterion: at least one previously unenrolled MCP reaches the generic
+  one-call path without target-specific source changes, while incompatible or
+  unsafe candidates are rejected before dispatch and the existing controlled
+  V2 verifier remains unchanged and green.
+- Initial read-only architecture and acquisition audits are complete. They made
+  no filesystem or Git changes. No unfamiliar target has been acquired or
+  executed yet.
+- The implementation will be additive. `controlled_fixture_only` stays intact;
+  the new execution class is `enrolled_node_stdio_single_call` and requires an
+  opaque reviewed-enrollment capability plus an exact-call review capability.
+- Enrollment must bind the retained prepared runtime (not a later reinstall),
+  complete post-copy tree snapshot, acquisition provenance/lock/SRI when
+  available, immutable image, normalized Node invocation, complete discovery
+  catalog, exact selected call, expiry, and cleanup evidence. Serialized
+  records are evidence only and never bearer authority.
+- Discovery is acknowledged as untrusted target execution. It runs in a
+  separate no-network/no-secret/zero-call container, and a fresh second session
+  rechecks tree, invocation, resources, catalog, plan, policy, tool, and exact
+  arguments immediately before the sole call.
+- Initial behavioral interpretation is deliberately result-channel-only. It
+  may compare the quarantined MCP result shape/classes against a hypothesis,
+  but filesystem/process/network behavior remains explicitly unassessed until
+  compatible sensors are required and consumed.
+- Audit-identified prerequisites include a bounded post-copy tree snapshot,
+  regular in-tree entrypoint validation, an actual normalized invocation
+  digest, burn-before-validation capability use, structural result quarantine,
+  and retained host inputs whenever container absence is uncertain.
+- Known alpha limitations to preserve honestly: npm acquisition uses registry
+  network; one-page catalogs with `nextCursor` fail closed; Docker is not a
+  malware-grade VM; target-tree inspection is bounded but not a race-free
+  filesystem snapshot; known-malicious packages remain out of scope for this
+  Docker enrollment path.
+
+Implementation wave baseline:
+
+- Starting branch/commit remains `codex/v2-unseen-enrollment` at `d222c3d`;
+  this ledger is the only dirty path before its coordination commit.
+- Contract task owns only `src/contracts/v2/enrollment.ts`, the matching V2
+  barrel export, and `test/unit/audit-v2-enrollment-contracts.test.ts`.
+- Runtime/sandbox task owns only `src/audit/v2/enrolled-runtime.ts`,
+  `src/audit/v2/enrolled-sandbox.ts`, and their focused unit tests.
+- Root owns enrollment/review/execution authority, target preparation and tree
+  integration, plan/hypothesis/observation wiring, lifecycle orchestration,
+  fixtures, verifier, experiments/results, documentation, this ledger, all Git
+  operations, and final verification.
+- Parallel agents must stop before editing any root-owned or overlapping path.
