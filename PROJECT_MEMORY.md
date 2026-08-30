@@ -899,4 +899,44 @@ Requested: 2026-08-30
   package/build integration, and generated presentation artifact.
 - No AWS resource should be created until the complete local artifact and
   infrastructure template pass review and verification.
-- Status: active.
+- Status: implementation complete; AWS publication is pending a non-root AWS
+  identity.
+
+## Static AWS dashboard wave completion
+
+Completed: 2026-08-30
+
+- Implementation commit: `72260b5` (`feat: add bounded AWS results demo`).
+- The presentation is a plain, script-free technical report, not a web
+  application. It shows the deceptive control and official Filesystem MCP
+  summaries, five controlled findings, one claims/static/runtime/scope table,
+  and selected-case limitations.
+- The public-export contract accepts only the two digest-pinned, schema-valid
+  sample reports, extracts explicit fields, bounds all collections and strings,
+  and rejects paths, URLs, controls, bidi text, malformed Unicode, and
+  credential-like values.
+- `npm run build:dashboard` emits exactly `index.html` and `styles.css` plus a
+  private canonical manifest that binds their byte lengths and SHA-256 values.
+- The AWS design is a separate private S3 origin behind CloudFront OAC. The
+  deployer pins the reviewed template, checks the account and exact stack
+  identity, refuses the account root user, snapshots manifest-bound files,
+  uploads only two explicit keys, verifies remote metadata/checksums/bytes, and
+  waits for invalidation completion.
+- Architecture alternatives, cost boundaries, replacement triggers, demo
+  commands, failure modes, and teardown are recorded in
+  `DashboardArchitectureDecision.md` and `DashboardAwsDemo.md`.
+- Independent final reviews passed with no blocking or material finding after
+  the manifest-binding, exact-stack, claim-calibration, and accessibility
+  fixes.
+- Root verification passed: `npm run typecheck`; full `npm test` (67 files,
+  539 tests); `npm run build:dashboard`; Node syntax checks for both scripts;
+  focused dashboard tests (17); template digest check; local HTTP response;
+  staged diff review; and `git diff --cached --check`. The infrastructure agent
+  also passed `sam validate --lint` with AWS credentials/config disabled.
+- AWS CLI v2 was available with Region `us-east-1`, but `aws login`
+  authenticated the default profile as the AWS account root user. A real deploy
+  was intentionally refused before any mutation, and the cached root login was
+  removed. No AWS resource was created. Publication requires a federated or
+  assumed-role profile, after which the reviewed deploy command can continue.
+- Pre-existing `.gitignore`, `agent-runs/`, unseen-MCP holdout files, and their
+  untracked test remained out of scope and uncommitted.
