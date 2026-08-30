@@ -1536,3 +1536,123 @@ Requested: 2026-08-30
 - Suggested commit subject: `feat: add published run explorer`.
 - Status: complete. The milestone commit is the commit containing this ledger
   entry.
+## Active V2 unseen-MCP enrollment wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `codex/v2-unseen-enrollment` at
+  `d222c3d72ffec74fde8bf6719dddb646d785108e`
+  (`docs: record unseen MCP enrollment gap`).
+- Starting worktree was clean. The dirty main checkout remains out of scope;
+  this wave continues only in the isolated V2 worktree.
+- Root owns architecture, integration, this ledger, all Git writes, experiment
+  execution, and final verification. Initial parallel reviewers are read-only
+  and may not edit the checkout.
+- Safety boundary: keep the existing pinned fixture as a positive control.
+  General enrollment may acquire and inspect unfamiliar local or exact-version
+  npm Node.js STDIO MCPs, but execution must remain one-call, synthetic-input,
+  no-network, no-host-secret, no-lifecycle-script, manually reviewed, and
+  raw-result-quarantined. Unsupported targets fail closed with bounded reasons.
+- Success criterion: at least one previously unenrolled MCP reaches the generic
+  one-call path without target-specific source changes, while incompatible or
+  unsafe candidates are rejected before dispatch and the existing controlled
+  V2 verifier remains unchanged and green.
+- Initial read-only architecture and acquisition audits are complete. They made
+  no filesystem or Git changes. No unfamiliar target has been acquired or
+  executed yet.
+- The implementation will be additive. `controlled_fixture_only` stays intact;
+  the new execution class is `enrolled_node_stdio_single_call` and requires an
+  opaque reviewed-enrollment capability plus an exact-call review capability.
+- Enrollment must bind the retained prepared runtime (not a later reinstall),
+  complete post-copy tree snapshot, acquisition provenance/lock/SRI when
+  available, immutable image, normalized Node invocation, complete discovery
+  catalog, exact selected call, expiry, and cleanup evidence. Serialized
+  records are evidence only and never bearer authority.
+- Discovery is acknowledged as untrusted target execution. It runs in a
+  separate no-network/no-secret/zero-call container, and a fresh second session
+  rechecks tree, invocation, resources, catalog, plan, policy, tool, and exact
+  arguments immediately before the sole call.
+- Initial behavioral interpretation is deliberately result-channel-only. It
+  may compare the quarantined MCP result shape/classes against a hypothesis,
+  but filesystem/process/network behavior remains explicitly unassessed until
+  compatible sensors are required and consumed.
+- Audit-identified prerequisites include a bounded post-copy tree snapshot,
+  regular in-tree entrypoint validation, an actual normalized invocation
+  digest, burn-before-validation capability use, structural result quarantine,
+  and retained host inputs whenever container absence is uncertain.
+- Known alpha limitations to preserve honestly: npm acquisition uses registry
+  network; one-page catalogs with `nextCursor` fail closed; Docker is not a
+  malware-grade VM; target-tree inspection is bounded but not a race-free
+  filesystem snapshot; known-malicious packages remain out of scope for this
+  Docker enrollment path.
+
+Implementation wave baseline:
+
+- Editing baseline was `codex/v2-unseen-enrollment` at `6428993`
+  (`docs: start unseen MCP enrollment wave`) with a clean worktree.
+- Contract task owns only `src/contracts/v2/enrollment.ts`, the matching V2
+  barrel export, and `test/unit/audit-v2-enrollment-contracts.test.ts`.
+- Runtime/sandbox task owns only `src/audit/v2/enrolled-runtime.ts`,
+  `src/audit/v2/enrolled-sandbox.ts`, and their focused unit tests.
+- Root owns enrollment/review/execution authority, target preparation and tree
+  integration, plan/hypothesis/observation wiring, lifecycle orchestration,
+  fixtures, verifier, experiments/results, documentation, this ledger, all Git
+  operations, and final verification.
+- Parallel agents must stop before editing any root-owned or overlapping path.
+
+Foundation implementation handoff:
+
+- Contract and runtime/sandbox agents completed their disjoint scopes without
+  Git writes. Root reconciled their shapes, retained the existing controlled
+  execution class unchanged, and added the target-independent compiler,
+  enrollment/review authority, result-observer adapter, and empty-resource
+  quarantine helpers.
+- Strict sidecars now distinguish admitted enrollment, bounded rejection, and
+  exact-call manual review. Records are non-bearer; WeakMap-backed candidate,
+  review, consumed-call, and dispatch claims are burned before validation and
+  reject copies, substitutions, replay, and expiry.
+- The retained prepared tree is bounded and freshly rehashed. Entrypoints must
+  be regular in-tree JavaScript files. Normalized Node invocation, exact image,
+  sandbox profile, mounts, catalog, plan, policy, resources, tool, and argument
+  digest are cross-bound immediately before dispatch.
+- The new compiler is package/tool-name independent. Its first alpha requires
+  process/filesystem/network sensors even though the result observer cannot
+  supply them, so successful result comparison remains overall `inconclusive`
+  rather than being mislabeled behaviorally safe.
+- The Docker profile is independently reconstructed from its frozen evidence:
+  network/IPC/logging disabled; read-only root/target/resources/message queue;
+  minimal reset environment; no provider or writable host bind; one call, no
+  retries/follow-up; bounded temporary storage, CPU, memory, processes, output,
+  file size, and open files.
+- Focused foundation verification passed: 6 files / 40 tests, including the
+  controlled-runtime regression. `npm run typecheck` and `git diff --check`
+  passed after root reconciled readonly runtime types.
+- Known retained limits: tree capture is not race-free `openat` traversal;
+  Docker is not a malware-grade VM; argument syntax cannot infer package-
+  specific meaning; schema records do not themselves authenticate reviewers or
+  recompute digests. The runtime authority performs digest checks and exact
+  in-memory capability validation.
+
+Suggested foundation commit subject:
+
+## Synchronized V2 MCP enrollment foundation
+
+- Merged the newest `codex/v2-unseen-enrollment` branch, which supersedes and
+  contains `codex/v2-outcome-comparison`. The controlled fixture remains the
+  positive-control path; the new enrollment path is target-independent and
+  still requires opaque reviewed enrollment and exact-call review capabilities
+  before a single quarantined synthetic call.
+- Focused branch verification passed: strict TypeScript plus 11 V2/transport
+  suites (103 tests). The merged work still requires the shared verification
+  gate before this milestone is considered synchronized.
+- Known alpha limits remain: acquisition uses registry network, paginated
+  catalogs fail closed, Docker is not a malware-grade VM, target-tree capture is
+  not race-free, and result-channel observations do not assess filesystem,
+  process, or network behavior.
+- Verification passed after integration: `npm run typecheck`; full `npm test`
+  (86 files / 731 tests); `npm run build`; `npm run verify:v2-outcome`; and
+  `npm run verify:e2e` with observer image
+  `sha256:b0daf41d74a397e64e331d919ec54be57b3a31d2ecbd25a7edb56011bffc309f`.
+- Suggested merge subject: `merge: integrate V2 MCP enrollment foundation`.
+- Status: complete. The integration commit is the merge commit containing this
+  ledger entry.

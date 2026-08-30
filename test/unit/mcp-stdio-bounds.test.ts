@@ -27,11 +27,17 @@ class FakeStdioTransport {
   public onerror?: (error: Error) => void;
   public onmessage?: (message: JSONRPCMessage) => void;
   public closeCalls = 0;
+  public readonly sent: JSONRPCMessage[] = [];
 
   public async start(): Promise<void> {}
-  public async send(): Promise<void> {}
+  public async send(message: JSONRPCMessage): Promise<void> {
+    this.sent.push(message);
+  }
   public async close(): Promise<void> {
     this.closeCalls += 1;
+    this.emitClose();
+  }
+  public emitClose(): void {
     this.onclose?.();
   }
 
@@ -73,7 +79,9 @@ describe("bounded MCP acquisition", () => {
 
     try {
       parseBoundedToolsListResult(result);
-      throw new Error("expected tools/list preflight to reject deep outputSchema");
+      throw new Error(
+        "expected tools/list preflight to reject deep outputSchema",
+      );
     } catch (error) {
       expect(error).toBeInstanceOf(JsonLimitError);
       expect(error).toMatchObject({ reason: "json_depth_limit" });
@@ -87,15 +95,12 @@ describe("bounded MCP acquisition", () => {
       const store = await EvidenceStore.create(temporaryRoot, "run-raw-list");
       await mkdir(store.pathFor("raw/raw-list"), { recursive: true });
       const serverPath = join(temporaryRoot, "server.mjs");
-      const serverModule = import.meta.resolve(
-        "@modelcontextprotocol/sdk/server/index.js",
-      );
-      const stdioModule = import.meta.resolve(
-        "@modelcontextprotocol/sdk/server/stdio.js",
-      );
-      const typesModule = import.meta.resolve(
-        "@modelcontextprotocol/sdk/types.js",
-      );
+      const serverModule = import.meta
+        .resolve("@modelcontextprotocol/sdk/server/index.js");
+      const stdioModule = import.meta
+        .resolve("@modelcontextprotocol/sdk/server/stdio.js");
+      const typesModule = import.meta
+        .resolve("@modelcontextprotocol/sdk/types.js");
       await writeFile(
         serverPath,
         [
@@ -132,6 +137,27 @@ describe("bounded MCP acquisition", () => {
           inputSchema: { type: "object" },
         },
       ]);
+      expect(result.discoveredCatalog).toEqual({
+        protocolVersion: "2025-11-25",
+        server: { name: "raw-list", version: "1" },
+        acquisition: {
+          complete: true,
+          pageCount: 1,
+          listChangedDuringDiscovery: false,
+        },
+        tools: [
+          {
+            name: "invalid-output-pattern",
+            inputSchema: { type: "object" },
+            outputSchema: {
+              type: "object",
+              properties: {
+                value: { type: "string", pattern: "[" },
+              },
+            },
+          },
+        ],
+      });
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true });
     }
@@ -204,6 +230,185 @@ describe("bounded MCP acquisition", () => {
     );
     expect(recording.failure?.message).toBe("forced transcript write failure");
     expect(inner.closeCalls).toBe(1);
+  });
+
+  it("rejects a catalog invalidation that arrives while the guarded call record is pending", async () => {
+    const inner = new FakeStdioTransport();
+    let releaseRecord: (() => void) | undefined;
+    let recordStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolveStarted) => {
+      recordStarted = resolveStarted;
+    });
+    const recording = new RecordingTransport(inner as never, async () => {
+      recordStarted?.();
+      await new Promise<void>((resolveRecord) => {
+        releaseRecord = resolveRecord;
+      });
+    });
+    await recording.start();
+    recording.armSingleToolCall("read_document", {
+      path: "/forge/synthetic/document",
+    });
+    const call = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "read_document",
+        arguments: { path: "/forge/synthetic/document" },
+      },
+    } as JSONRPCMessage;
+    const pending = recording.send(call);
+    await started;
+    inner.emit({
+      jsonrpc: "2.0",
+      method: "notifications/tools/list_changed",
+    } as JSONRPCMessage);
+    releaseRecord?.();
+
+    await expect(pending).rejects.toThrow(
+      "catalog changed before the guarded tools/call",
+    );
+    expect(inner.sent).toHaveLength(0);
+  });
+
+  it("allows exactly one armed call with exact parameters", async () => {
+    const inner = new FakeStdioTransport();
+    let sentCallbacks = 0;
+    const recording = new RecordingTransport(
+      inner as never,
+      async () => undefined,
+      () => {
+        sentCallbacks += 1;
+      },
+    );
+    await recording.start();
+    const parameters = {
+      name: "read_document",
+      arguments: { path: "/forge/synthetic/document" },
+    };
+    recording.armSingleToolCall(parameters.name, parameters.arguments);
+    await recording.send({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: parameters,
+    } as JSONRPCMessage);
+    expect(inner.sent).toHaveLength(1);
+    expect(sentCallbacks).toBe(1);
+
+    await expect(
+      recording.send({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: parameters,
+      } as JSONRPCMessage),
+    ).rejects.toThrow("unarmed or repeated");
+    expect(inner.sent).toHaveLength(1);
+    expect(sentCallbacks).toBe(1);
+  });
+
+  it("seals inbound and outbound transcript state after close", async () => {
+    const inner = new FakeStdioTransport();
+    let records = 0;
+    const recording = new RecordingTransport(inner as never, async () => {
+      records += 1;
+    });
+    await recording.start();
+    const capturedInbound = inner.onmessage;
+
+    await recording.close();
+    capturedInbound?.({
+      jsonrpc: "2.0",
+      method: "notifications/tools/list_changed",
+    } as JSONRPCMessage);
+    await recording.flush();
+
+    expect(records).toBe(0);
+    expect(recording.toolsListChanged).toBe(false);
+    await expect(
+      recording.send({
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+      } as JSONRPCMessage),
+    ).rejects.toThrow("closing or closed");
+    expect(inner.sent).toHaveLength(0);
+  });
+
+  it("waits for the underlying close signal before sealing", async () => {
+    class DeferredCloseTransport extends FakeStdioTransport {
+      public override async close(): Promise<void> {
+        this.closeCalls += 1;
+      }
+    }
+    const inner = new DeferredCloseTransport();
+    const recording = new RecordingTransport(
+      inner as never,
+      async () => undefined,
+    );
+    await recording.start();
+    let settled = false;
+    const closing = recording.close().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    inner.emitClose();
+    await closing;
+    expect(settled).toBe(true);
+  });
+
+  it("accounts for a guarded write handoff before backpressure drains", async () => {
+    class BackpressuredTransport extends FakeStdioTransport {
+      private releaseSend: (() => void) | undefined;
+      private announceSend: (() => void) | undefined;
+      public readonly sendStarted = new Promise<void>((resolve) => {
+        this.announceSend = resolve;
+      });
+
+      public override send(message: JSONRPCMessage): Promise<void> {
+        this.sent.push(message);
+        this.announceSend?.();
+        return new Promise<void>((resolve) => {
+          this.releaseSend = resolve;
+        });
+      }
+
+      public release(): void {
+        this.releaseSend?.();
+      }
+    }
+    const inner = new BackpressuredTransport();
+    let sentCallbacks = 0;
+    const recording = new RecordingTransport(
+      inner as never,
+      async () => undefined,
+      () => {
+        sentCallbacks += 1;
+      },
+    );
+    await recording.start();
+    recording.armSingleToolCall("read_document", {
+      path: "/forge/synthetic/document",
+    });
+    const pending = recording.send({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "read_document",
+        arguments: { path: "/forge/synthetic/document" },
+      },
+    } as JSONRPCMessage);
+    await inner.sendStarted;
+    expect(sentCallbacks).toBe(1);
+
+    inner.release();
+    await pending;
+    await recording.close();
   });
 
   it("caps captured stderr and reports overflow", async () => {

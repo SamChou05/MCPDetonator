@@ -1,4 +1,5 @@
 import { createWriteStream } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { Transform, type TransformCallback } from "node:stream";
 import { finished } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
@@ -11,6 +12,7 @@ import {
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type {
   JSONRPCMessage,
+  ListToolsResult,
   MessageExtraInfo,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { ErrorObject, ValidateFunction } from "ajv";
@@ -26,15 +28,9 @@ import {
   type PhaseV1,
 } from "../contracts/v1.js";
 import type { EvidenceStore } from "../evidence-store.js";
-import {
-  assertMcpCatalogWithinLimits,
-  MCP_CATALOG_LIMITS,
-} from "./catalog.js";
+import { assertMcpCatalogWithinLimits, MCP_CATALOG_LIMITS } from "./catalog.js";
 import { compileInputSchema } from "./input-schema.js";
-import {
-  cloneBoundedJson,
-  type JsonTraversalLimits,
-} from "./json-bounds.js";
+import { cloneBoundedJson, type JsonTraversalLimits } from "./json-bounds.js";
 import { parseBoundedToolsListResult } from "./tools-list.js";
 
 type ToolExperimentV1 = TargetConfigV1["experiments"]["tools"][number];
@@ -57,8 +53,26 @@ const rawMcpResultSchema = z.unknown();
 
 export interface McpExperimentResult {
   readonly mcpInterface: McpInterfaceV1;
+  readonly discoveredCatalog: DiscoveredMcpCatalog;
   readonly phases: readonly PhaseV1[];
   readonly toolResult?: unknown;
+}
+
+export interface DiscoveredMcpCatalog {
+  readonly protocolVersion: string;
+  readonly server: { readonly name: string; readonly version: string };
+  readonly acquisition: {
+    readonly complete: boolean;
+    readonly pageCount: 1;
+    readonly listChangedDuringDiscovery: boolean;
+  };
+  readonly tools: ListToolsResult["tools"];
+}
+
+export interface BeforeMcpToolCallContext {
+  readonly catalog: DiscoveredMcpCatalog;
+  readonly toolName: string;
+  readonly arguments: Readonly<Record<string, unknown>>;
 }
 
 function errorMessage(error: unknown): string {
@@ -80,6 +94,30 @@ function combineErrors(
   return new AggregateError([primary, secondary], message, { cause: primary });
 }
 
+const MCP_TRANSPORT_FINALIZATION_TIMEOUT_MS = 5_000;
+
+async function withinTransportFinalizationDeadline<T>(
+  operation: Promise<T>,
+  label: string,
+): Promise<T> {
+  const controller = new AbortController();
+  try {
+    return await Promise.race([
+      operation,
+      delay(MCP_TRANSPORT_FINALIZATION_TIMEOUT_MS, undefined, {
+        signal: controller.signal,
+        ref: false,
+      }).then(() => {
+        throw new Error(
+          `${label} exceeded ${MCP_TRANSPORT_FINALIZATION_TIMEOUT_MS} ms`,
+        );
+      }),
+    ]);
+  } finally {
+    controller.abort();
+  }
+}
+
 export class RecordingTransport implements Transport {
   public onclose?: () => void;
   public onerror?: (error: Error) => void;
@@ -94,9 +132,20 @@ export class RecordingTransport implements Transport {
   private closePromise: Promise<void> | undefined;
   private terminalError: Error | undefined;
   private closeRequested = false;
+  private closed = false;
+  private innerStarted = false;
+  private innerClosed = false;
+  private readonly activeSends = new Set<Promise<void>>();
+  private readonly innerCloseBarrier: Promise<void>;
+  private resolveInnerClose!: () => void;
   private acceptedMessageCount = 0;
   private acceptedMessageBytes = 0;
   private sequence = 0;
+  private initializeRequestId: string | undefined;
+  private observedProtocolVersion: string | undefined;
+  private observedToolsListChanged = false;
+  private armedToolCall:
+    { readonly canonicalParams: string; sent: boolean } | undefined;
 
   public constructor(
     private readonly inner: StdioClientTransport,
@@ -105,10 +154,116 @@ export class RecordingTransport implements Transport {
       sequence: number,
       message: JSONRPCMessage,
     ) => Promise<void>,
-  ) {}
+    private readonly onToolCallSent?: () => void,
+  ) {
+    this.innerCloseBarrier = new Promise<void>((resolveClose) => {
+      this.resolveInnerClose = resolveClose;
+    });
+  }
 
   public get failure(): Error | undefined {
     return this.terminalError;
+  }
+
+  public get negotiatedProtocolVersion(): string | undefined {
+    return this.observedProtocolVersion;
+  }
+
+  public get toolsListChanged(): boolean {
+    return this.observedToolsListChanged;
+  }
+
+  public armSingleToolCall(name: string, arguments_: unknown): void {
+    if (this.closeRequested) {
+      throw new Error("MCP transport is closing or closed");
+    }
+    if (this.armedToolCall !== undefined) {
+      throw new Error("MCP transport tool-call guard can be armed only once");
+    }
+    this.armedToolCall = {
+      canonicalParams: JSON.stringify({ name, arguments: arguments_ }),
+      sent: false,
+    };
+  }
+
+  private inspectMessage(
+    direction: McpMessageV1["direction"],
+    message: JSONRPCMessage,
+  ): void {
+    const record = message as unknown as Record<string, unknown>;
+    if (direction === "client_to_server" && record["method"] === "initialize") {
+      if (this.initializeRequestId !== undefined) {
+        throw new Error(
+          "MCP transport observed more than one initialize request",
+        );
+      }
+      this.initializeRequestId = JSON.stringify(record["id"]);
+      return;
+    }
+    if (
+      direction === "server_to_client" &&
+      record["method"] === "notifications/tools/list_changed"
+    ) {
+      this.observedToolsListChanged = true;
+      return;
+    }
+    if (
+      direction === "server_to_client" &&
+      this.initializeRequestId !== undefined &&
+      JSON.stringify(record["id"]) === this.initializeRequestId
+    ) {
+      const result = record["result"];
+      if (
+        typeof result !== "object" ||
+        result === null ||
+        Array.isArray(result)
+      ) {
+        return;
+      }
+      const protocolVersion = (result as Record<string, unknown>)[
+        "protocolVersion"
+      ];
+      if (typeof protocolVersion === "string" && protocolVersion.length > 0) {
+        this.observedProtocolVersion = protocolVersion;
+      }
+    }
+  }
+
+  private guardToolCallSend(message: JSONRPCMessage): void {
+    const record = message as unknown as Record<string, unknown>;
+    if (record["method"] !== "tools/call") return;
+    if (this.armedToolCall === undefined || this.armedToolCall.sent) {
+      throw new Error(
+        "MCP transport rejected an unarmed or repeated tools/call",
+      );
+    }
+    if (this.observedToolsListChanged) {
+      throw new Error("MCP tool catalog changed before the guarded tools/call");
+    }
+    if (
+      JSON.stringify(record["params"]) !== this.armedToolCall.canonicalParams
+    ) {
+      throw new Error(
+        "MCP tools/call parameters changed after pre-dispatch validation",
+      );
+    }
+    this.armedToolCall.sent = true;
+  }
+
+  private recheckToolCallSend(message: JSONRPCMessage): void {
+    const record = message as unknown as Record<string, unknown>;
+    if (record["method"] !== "tools/call") return;
+    if (this.armedToolCall === undefined || !this.armedToolCall.sent) {
+      throw new Error("MCP transport lost its armed tools/call state");
+    }
+    if (this.observedToolsListChanged) {
+      throw new Error("MCP tool catalog changed before the guarded tools/call");
+    }
+    if (
+      JSON.stringify(record["params"]) !== this.armedToolCall.canonicalParams
+    ) {
+      throw new Error("MCP tools/call parameters changed before wire dispatch");
+    }
   }
 
   private enqueue(
@@ -150,6 +305,8 @@ export class RecordingTransport implements Transport {
       throw failure;
     }
 
+    this.inspectMessage(direction, bounded.clone);
+
     const sequence = this.sequence;
     this.sequence += 1;
     this.acceptedMessageCount += 1;
@@ -165,9 +322,10 @@ export class RecordingTransport implements Transport {
   }
 
   public abort(error: unknown): void {
-    if (this.terminalError !== undefined) return;
+    if (this.closed || this.terminalError !== undefined) return;
     const failure = normalizedError(error, "MCP transport failed");
     this.terminalError = failure;
+    this.closeRequested = true;
     try {
       this.onerror?.(failure);
     } catch {
@@ -180,7 +338,11 @@ export class RecordingTransport implements Transport {
 
   public async start(): Promise<void> {
     this.inner.onclose = () => {
+      if (this.closed) return;
+      this.innerClosed = true;
+      this.resolveInnerClose();
       if (!this.closeRequested && this.terminalError === undefined) {
+        this.closeRequested = true;
         this.terminalError = new Error(
           "MCP transport closed unexpectedly before controller cleanup",
         );
@@ -192,22 +354,68 @@ export class RecordingTransport implements Transport {
       message: T,
       extra?: MessageExtraInfo,
     ) => {
+      if (this.closeRequested) {
+        if (!this.closed && this.terminalError === undefined) {
+          this.terminalError = new Error(
+            "MCP transport received a message after transcript finalization began",
+          );
+        }
+        return;
+      }
       try {
-        void this.enqueue("server_to_client", message).catch((error: unknown) => {
-          this.abort(error);
-        });
+        void this.enqueue("server_to_client", message).catch(
+          (error: unknown) => {
+            this.abort(error);
+          },
+        );
         this.onmessage?.(message, extra);
       } catch (error) {
         this.abort(error);
       }
     };
     await this.inner.start();
+    this.innerStarted = true;
   }
 
-  public async send(message: JSONRPCMessage): Promise<void> {
+  public send(message: JSONRPCMessage): Promise<void> {
+    if (this.closeRequested) {
+      return Promise.reject(new Error("MCP transport is closing or closed"));
+    }
+    const operation = this.sendWhileOpen(message);
+    this.activeSends.add(operation);
+    void operation.then(
+      () => {
+        if (!this.closed) this.activeSends.delete(operation);
+      },
+      () => {
+        if (!this.closed) this.activeSends.delete(operation);
+      },
+    );
+    return operation;
+  }
+
+  private async sendWhileOpen(message: JSONRPCMessage): Promise<void> {
     try {
+      this.guardToolCallSend(message);
       await this.enqueue("client_to_server", message);
-      await this.inner.send(message);
+      if (this.closeRequested) {
+        throw new Error("MCP transport closed before wire dispatch");
+      }
+      // A list_changed notification can arrive while the durable transcript
+      // append is pending. Recheck synchronously before invoking the wire send;
+      // there is no await between this check and inner.send.
+      this.recheckToolCallSend(message);
+      const wireSend = this.inner.send(message);
+      if (
+        (message as unknown as Record<string, unknown>)["method"] ===
+        "tools/call"
+      ) {
+        // StdioClientTransport invokes Writable.write synchronously when send
+        // is called, but its promise may wait for a later drain event. Account
+        // for the handoff now so an early server response cannot race the count.
+        this.onToolCallSent?.();
+      }
+      await wireSend;
     } catch (error) {
       this.abort(error);
       throw error;
@@ -227,23 +435,64 @@ export class RecordingTransport implements Transport {
   private async closeResources(): Promise<void> {
     this.closeRequested = true;
     let closeError: unknown;
-    if (this.abortPromise === undefined) {
-      try {
-        await this.inner.close();
-      } catch (error) {
-        closeError = error;
-      }
-    } else {
-      await this.abortPromise;
-      closeError = this.abortCloseError;
-    }
     try {
-      await this.flush();
-    } catch (error) {
-      closeError =
-        closeError === undefined
-          ? error
-          : combineErrors(error, closeError, errorMessage(error));
+      if (this.abortPromise === undefined) {
+        try {
+          await this.inner.close();
+        } catch (error) {
+          closeError = error;
+        }
+      } else {
+        await this.abortPromise;
+        closeError = this.abortCloseError;
+      }
+
+      if (this.innerStarted && !this.innerClosed) {
+        try {
+          await withinTransportFinalizationDeadline(
+            this.innerCloseBarrier,
+            "MCP child-process close barrier",
+          );
+        } catch (error) {
+          closeError =
+            closeError === undefined
+              ? error
+              : combineErrors(closeError, error, errorMessage(closeError));
+        }
+      }
+
+      if (this.activeSends.size > 0) {
+        try {
+          await withinTransportFinalizationDeadline(
+            Promise.allSettled([...this.activeSends]).then(() => undefined),
+            "MCP active-send finalization",
+          );
+        } catch (error) {
+          closeError =
+            closeError === undefined
+              ? error
+              : combineErrors(closeError, error, errorMessage(closeError));
+        }
+      }
+
+      try {
+        await this.flush();
+      } catch (error) {
+        closeError =
+          closeError === undefined
+            ? error
+            : combineErrors(error, closeError, errorMessage(error));
+      }
+    } finally {
+      // No callback can mutate transcript state after close() settles.
+      this.closed = true;
+      this.activeSends.clear();
+      delete this.inner.onmessage;
+      delete this.inner.onerror;
+      delete this.inner.onclose;
+      delete this.onmessage;
+      delete this.onerror;
+      delete this.onclose;
     }
     if (closeError !== undefined) throw closeError;
   }
@@ -307,7 +556,10 @@ function formatAjvErrors(errors: ErrorObject[] | null | undefined): string {
     return "unknown schema validation error";
   }
   return errors
-    .map((error) => `${error.instancePath || "input"} ${error.message ?? "is invalid"}`)
+    .map(
+      (error) =>
+        `${error.instancePath || "input"} ${error.message ?? "is invalid"}`,
+    )
     .join("; ");
 }
 
@@ -319,6 +571,11 @@ export async function runMcpExperiment(options: {
   readonly timeoutMs: number;
   readonly cooldownMs: number;
   readonly toolExperiment?: ToolExperimentV1;
+  readonly beforeToolCall?: (
+    context: BeforeMcpToolCallContext,
+  ) => void | Promise<void>;
+  /** Called once after the guarded tools/call write is accepted by transport. */
+  readonly onToolCallSent?: () => void;
 }): Promise<McpExperimentResult> {
   const {
     runId,
@@ -328,6 +585,8 @@ export async function runMcpExperiment(options: {
     timeoutMs,
     cooldownMs,
     toolExperiment,
+    beforeToolCall,
+    onToolCallSent,
   } = options;
   const stdio = new StdioClientTransport({
     ...server,
@@ -335,6 +594,10 @@ export async function runMcpExperiment(options: {
       server.maxBufferSize ?? MAX_MCP_JSONRPC_MESSAGE_BYTES,
       MAX_MCP_JSONRPC_MESSAGE_BYTES,
     ),
+  });
+  await mkdir(store.pathFor(`raw/${experimentId}`), {
+    recursive: true,
+    mode: 0o700,
   });
   const stderrOutput = createWriteStream(
     store.pathFor(`raw/${experimentId}/server-stderr.log`),
@@ -360,6 +623,7 @@ export async function runMcpExperiment(options: {
         entry,
       );
     },
+    onToolCallSent,
   );
   const stderrCapture = new BoundedStderrTransform((error) =>
     recording.abort(error),
@@ -392,7 +656,9 @@ export async function runMcpExperiment(options: {
         kind,
         name,
         ...(details.stage === undefined ? {} : { stage: details.stage }),
-        ...(details.toolName === undefined ? {} : { toolName: details.toolName }),
+        ...(details.toolName === undefined
+          ? {}
+          : { toolName: details.toolName }),
         startedAt,
         endedAt: timestamp(),
         status: "completed",
@@ -409,7 +675,9 @@ export async function runMcpExperiment(options: {
         kind,
         name,
         ...(details.stage === undefined ? {} : { stage: details.stage }),
-        ...(details.toolName === undefined ? {} : { toolName: details.toolName }),
+        ...(details.toolName === undefined
+          ? {}
+          : { toolName: details.toolName }),
         startedAt,
         endedAt: timestamp(),
         status: "failed",
@@ -431,6 +699,7 @@ export async function runMcpExperiment(options: {
 
   let connected = false;
   let mcpInterface: McpInterfaceV1 | undefined;
+  let discoveredCatalog: DiscoveredMcpCatalog | undefined;
   let toolResult: unknown;
   let primaryError: unknown;
 
@@ -456,6 +725,12 @@ export async function runMcpExperiment(options: {
       name: serverVersion?.name ?? "unknown-server",
       version: serverVersion?.version ?? "unknown-version",
     };
+    const protocolVersion = recording.negotiatedProtocolVersion;
+    if (protocolVersion === undefined) {
+      throw new Error(
+        "MCP initialization did not retain a negotiated protocol version",
+      );
+    }
     // Validate the exact fields Forge retains before recursively cloning or
     // serializing attacker-controlled schemas. This makes the accepted catalog
     // depth and work explicit instead of relying only on the STDIO byte bound.
@@ -468,7 +743,9 @@ export async function runMcpExperiment(options: {
       tools: listedTools.tools.map((tool) => ({
         name: tool.name,
         ...(tool.title === undefined ? {} : { title: tool.title }),
-        ...(tool.description === undefined ? {} : { description: tool.description }),
+        ...(tool.description === undefined
+          ? {}
+          : { description: tool.description }),
         inputSchema: JSON.parse(
           JSON.stringify(tool.inputSchema),
         ) as McpInterfaceV1["tools"][number]["inputSchema"],
@@ -481,6 +758,20 @@ export async function runMcpExperiment(options: {
             }),
       })),
     };
+    discoveredCatalog = cloneBoundedJson(
+      {
+        protocolVersion,
+        server: advertisedServer,
+        acquisition: {
+          complete: listedTools.nextCursor === undefined,
+          pageCount: 1,
+          listChangedDuringDiscovery: recording.toolsListChanged,
+        },
+        tools: listedTools.tools,
+      },
+      MCP_JSONRPC_MESSAGE_LIMITS,
+      "discovered MCP catalog",
+    ).clone as DiscoveredMcpCatalog;
     await store.writeJson(
       `mcp/${experimentId}/interface.json`,
       mcpInterfaceV1Schema,
@@ -492,7 +783,9 @@ export async function runMcpExperiment(options: {
         (tool) => tool.name === toolExperiment.tool,
       );
       if (advertisedTool === undefined) {
-        throw new Error(`MCP did not advertise configured tool '${toolExperiment.tool}'`);
+        throw new Error(
+          `MCP did not advertise configured tool '${toolExperiment.tool}'`,
+        );
       }
 
       const schemaJson = JSON.stringify(advertisedTool.inputSchema);
@@ -510,18 +803,46 @@ export async function runMcpExperiment(options: {
           { cause: error },
         );
       }
-      if (!validateInput(toolExperiment.input)) {
+      const argumentsCopy = cloneBoundedJson(
+        toolExperiment.input,
+        MCP_JSONRPC_MESSAGE_LIMITS,
+        `configured input for '${toolExperiment.tool}'`,
+      ).clone as Readonly<Record<string, unknown>>;
+      if (!validateInput(argumentsCopy)) {
         throw new Error(
           `configured input does not match '${toolExperiment.tool}' schema: ${formatAjvErrors(validateInput.errors)}`,
         );
       }
+
+      await recording.flush();
+      if (beforeToolCall !== undefined) {
+        const beforeArguments = JSON.stringify(argumentsCopy);
+        const beforeCatalog = JSON.stringify(discoveredCatalog);
+        await beforeToolCall({
+          catalog: discoveredCatalog,
+          toolName: toolExperiment.tool,
+          arguments: argumentsCopy,
+        });
+        if (
+          JSON.stringify(argumentsCopy) !== beforeArguments ||
+          JSON.stringify(discoveredCatalog) !== beforeCatalog
+        ) {
+          throw new Error("pre-dispatch hook mutated frozen call inputs");
+        }
+        if (!validateInput(argumentsCopy)) {
+          throw new Error(
+            `configured input no longer matches '${toolExperiment.tool}' schema after pre-dispatch validation`,
+          );
+        }
+      }
+      recording.armSingleToolCall(toolExperiment.tool, argumentsCopy);
 
       toolResult = await inPhase(
         "tool",
         `call ${toolExperiment.tool}`,
         () =>
           client.callTool(
-            { name: toolExperiment.tool, arguments: toolExperiment.input },
+            { name: toolExperiment.tool, arguments: argumentsCopy },
             undefined,
             { timeout: timeoutMs },
           ),
@@ -582,7 +903,11 @@ export async function runMcpExperiment(options: {
   if (primaryError !== undefined) {
     let failure: unknown = primaryError;
     if (recording.failure !== undefined && recording.failure !== failure) {
-      failure = combineErrors(failure, recording.failure, errorMessage(failure));
+      failure = combineErrors(
+        failure,
+        recording.failure,
+        errorMessage(failure),
+      );
     }
     if (cleanupError !== undefined && cleanupError !== failure) {
       failure = combineErrors(failure, cleanupError, errorMessage(failure));
@@ -595,9 +920,13 @@ export async function runMcpExperiment(options: {
   if (mcpInterface === undefined) {
     throw new Error("MCP initialization did not produce an interface");
   }
+  if (discoveredCatalog === undefined) {
+    throw new Error("MCP initialization did not produce a discovered catalog");
+  }
 
   return {
     mcpInterface,
+    discoveredCatalog,
     phases,
     ...(toolResult === undefined ? {} : { toolResult }),
   };
