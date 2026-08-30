@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Bounded public Forge demo: a private S3 origin and a CloudFront distribution.
+  Upload only the validated synthetic dashboard artifact from dist/dashboard-site.
+
+Resources:
+  DashboardBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Application
+          Value: forge-dashboard-demo
+        - Key: DataClassification
+          Value: synthetic-presentation-only
+
+  DashboardOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Description: Signed read-only access to the private Forge dashboard origin
+        Name: !Join
+          - '-'
+          - - forge-dashboard-oac
+            - !Select [2, !Split ['/', !Ref 'AWS::StackId']]
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  DashboardSecurityHeaders:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Comment: Strict headers for the script-free Forge synthetic dashboard
+        Name: !Join
+          - '-'
+          - - forge-dashboard-headers
+            - !Select [2, !Split ['/', !Ref 'AWS::StackId']]
+        SecurityHeadersConfig:
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: >-
+              default-src 'none'; style-src 'self'; img-src 'self';
+              script-src 'none'; connect-src 'none'; object-src 'none';
+              base-uri 'none'; frame-ancestors 'none'; form-action 'none'
+            Override: true
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          ReferrerPolicy:
+            ReferrerPolicy: no-referrer
+            Override: true
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 63072000
+            IncludeSubdomains: true
+            Override: true
+
+  DashboardDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: Public Forge dashboard backed only by a sanitized static snapshot
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          # AWS managed CachingOptimized policy.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          Compress: true
+          ResponseHeadersPolicyId: !Ref DashboardSecurityHeaders
+          TargetOriginId: dashboard-s3-origin
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: index.html
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        Origins:
+          - DomainName: !GetAtt DashboardBucket.RegionalDomainName
+            Id: dashboard-s3-origin
+            OriginAccessControlId: !GetAtt DashboardOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        PriceClass: PriceClass_100
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: none
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+      Tags:
+        - Key: Application
+          Value: forge-dashboard-demo
+        - Key: DataClassification
+          Value: synthetic-presentation-only
+
+  DashboardBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DashboardBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowOnlyThisCloudFrontDistributionToRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${DashboardBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub >-
+                  arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${DashboardDistribution}
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt DashboardBucket.Arn
+              - !Sub '${DashboardBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+Outputs:
+  SiteUrl:
+    Description: Public HTTPS URL for the synthetic dashboard
+    Value: !Sub 'https://${DashboardDistribution.DomainName}'
+  SiteBucketName:
+    Description: Private S3 origin bucket; never make this bucket public
+    Value: !Ref DashboardBucket
+  DistributionId:
+    Description: CloudFront distribution ID used for cache invalidations
+    Value: !Ref DashboardDistribution
+  DistributionDomainName:
+    Description: CloudFront-generated hostname
+    Value: !GetAtt DashboardDistribution.DomainName
+  OriginAccessControlId:
+    Description: Origin access control that signs S3 origin requests
+    Value: !GetAtt DashboardOriginAccessControl.Id
+  SecurityHeadersPolicyId:
+    Description: CloudFront response headers policy ID
+    Value: !Ref DashboardSecurityHeaders

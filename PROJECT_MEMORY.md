@@ -862,3 +862,41 @@ Verification for this milestone:
 
 Completed implementation commit: `9716f99`
 (`feat: publish verified runs to S3 and Postgres`).
+
+## Active static AWS dashboard wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `main` at `7d904b0`
+  (`docs: record publisher milestone`).
+- Pre-existing out-of-scope paths are the modified `.gitignore`, generated
+  untracked `agent-runs/`, and the untracked unseen-MCP holdout directory/test.
+  This wave must not edit, stage, or commit them.
+- User goal: build and, when a configured AWS account is available, deploy a
+  shareable Forge results website; document the considered infrastructure
+  designs and why the selected design fits the bounded demo.
+- After clarification, the user explicitly narrowed the product to a very bare
+  bones single-page report viewer. It must not grow routes, filters, accounts,
+  a backend API, live database reads, raw-evidence browsing, or a frontend
+  framework. Its demo value is the fast controlled-vs-official story, not a
+  claim that Forge is already a hosted product.
+- Selected boundary: construct a strict field-by-field public export from only
+  pinned, sanitized sample reports, render a read-only static dashboard, and
+  serve it from a private S3 origin through CloudFront. Canonical evidence S3 and
+  PostgreSQL remain private and are not queried by the browser.
+- The decision is deliberately reversible: the versioned presentation contract
+  can later be produced by an authenticated API without replacing the UI.
+- Root owns `PROJECT_MEMORY.md`, shared/package integration, Git coordination,
+  local preview, verification, final architecture review, and any AWS account
+  inspection or deployment.
+- Planned parallel ownership is disjoint:
+  - public-export agent: `src/dashboard/` and its focused unit test;
+  - infrastructure/docs agent: `infra/aws/`, the dashboard deployment script,
+    and dashboard architecture/demo documentation;
+  - read-only dashboard reviewer: public-content safety, information design,
+    accessibility, and architecture critique without checkout edits.
+- Root exclusively owns the `dashboard/` site source, its first preview,
+  package/build integration, and generated presentation artifact.
+- No AWS resource should be created until the complete local artifact and
+  infrastructure template pass review and verification.
+- Status: active.
