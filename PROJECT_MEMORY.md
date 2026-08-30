@@ -1126,6 +1126,9 @@ Requested: 2026-08-30
 
 Completed: 2026-08-30
 
+- Implementation commit: `cb3c4a8`
+  (`feat: add analyze-and-publish convenience flow`).
+
 - `forge analyze <target> --publish [--refresh-dashboard]` now provides the
   one-command demo path while calling the existing publisher directly against
   the exact `AnalyzeResult.runDirectory`. It does not search for a newest run,
