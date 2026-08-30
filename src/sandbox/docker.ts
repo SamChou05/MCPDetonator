@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { chmod, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 
 import type { StdioServerParameters } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -17,12 +18,41 @@ const execFileAsync = promisify(execFile);
 export const defaultSandboxImage = "forge-sandbox:dev";
 /** Maximum bytes buffered for one raw JSON-RPC stdio message by the MCP SDK. */
 export const MCP_STDIO_MESSAGE_BUFFER_BYTES = 1_000_000;
+const managedCleanupChecks = 3;
+const managedCleanupSettlementMs = 50;
+const managedInspectTimeoutMs = 5_000;
+const managedRemoveTimeoutMs = 10_000;
 
 export interface DockerMcpInvocation {
   readonly containerName: string;
   readonly runId: string;
   readonly server: StdioServerParameters;
   readonly pathMappings: readonly ObservedPathMapping[];
+}
+
+interface DockerCommandResult {
+  readonly stdout: string;
+}
+
+type DockerCommandRunner = (
+  args: readonly string[],
+  timeoutMs: number,
+) => Promise<DockerCommandResult>;
+
+interface ManagedContainerCleanupOptions {
+  /** Test seam; production callers use the bounded Docker CLI runner. */
+  readonly runDocker?: DockerCommandRunner;
+  readonly checks?: number;
+  readonly inspectTimeoutMs?: number;
+  readonly removeTimeoutMs?: number;
+  readonly settle?: () => Promise<void>;
+}
+
+export class ManagedContainerCleanupError extends Error {
+  public constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ManagedContainerCleanupError";
+  }
 }
 
 function safeDockerToken(value: string): string {
@@ -36,6 +66,78 @@ function safeDockerToken(value: string): string {
 function assertMountSafe(path: string): void {
   if (path.includes(",")) {
     throw new Error(`Docker bind path contains an unsupported comma: ${path}`);
+  }
+}
+
+function textField(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Buffer.isBuffer(value)) return value.toString("utf8");
+  return undefined;
+}
+
+function dockerErrorText(error: unknown): string {
+  if (typeof error !== "object" || error === null) return "";
+  const candidate = error as {
+    readonly message?: unknown;
+    readonly stderr?: unknown;
+    readonly stdout?: unknown;
+  };
+  return [candidate.message, candidate.stderr, candidate.stdout]
+    .map(textField)
+    .filter((value): value is string => value !== undefined)
+    .join("\n");
+}
+
+function containerDoesNotExist(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as {
+    readonly code?: unknown;
+    readonly exitCode?: unknown;
+    readonly status?: unknown;
+  };
+  if (
+    [candidate.code, candidate.exitCode, candidate.status].some(
+      (value) => value === 0 || value === "0",
+    )
+  ) {
+    return false;
+  }
+  const diagnostic = dockerErrorText(error).replace(/\r\n?/gu, "\n");
+  return diagnostic.split("\n").some((line) =>
+    /^\s*(?:docker:\s*)?error(?:\s+response\s+from\s+daemon)?\s*:\s*no\s+such\s+(?:object|container)(?::|\s|$)/iu.test(
+      line,
+    ),
+  );
+}
+
+async function defaultManagedDockerRunner(
+  args: readonly string[],
+  timeoutMs: number,
+): Promise<DockerCommandResult> {
+  const { stdout } = await execFileAsync("docker", [...args], {
+    encoding: "utf8",
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+    maxBuffer: 64_000,
+  });
+  return { stdout };
+}
+
+async function withinDeadline<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  const controller = new AbortController();
+  try {
+    return await Promise.race([
+      operation,
+      delay(timeoutMs, undefined, { signal: controller.signal }).then(() => {
+        throw new Error(`${label} timed out after ${timeoutMs} ms`);
+      }),
+    ]);
+  } finally {
+    controller.abort();
   }
 }
 
@@ -246,31 +348,85 @@ export async function createDockerMcpInvocation(options: {
 export async function removeManagedContainer(
   containerName: string,
   expectedRunId: string,
+  options: ManagedContainerCleanupOptions = {},
 ): Promise<void> {
-  let actualRunId: string;
-  try {
-    const { stdout } = await execFileAsync(
-      "docker",
-      [
-        "inspect",
-        "--format",
-        '{{ index .Config.Labels "forge.run_id" }}',
-        containerName,
-      ],
-      { encoding: "utf8" },
-    );
-    actualRunId = stdout.trim();
-  } catch {
-    return;
-  }
-
-  if (actualRunId !== expectedRunId) {
-    throw new Error(
-      `refusing to remove container '${containerName}' because its Forge run label does not match`,
+  const runDocker = options.runDocker ?? defaultManagedDockerRunner;
+  const checks = options.checks ?? managedCleanupChecks;
+  const inspectTimeout = options.inspectTimeoutMs ?? managedInspectTimeoutMs;
+  const removeTimeout = options.removeTimeoutMs ?? managedRemoveTimeoutMs;
+  const settle = options.settle ?? (() => delay(managedCleanupSettlementMs));
+  if (!Number.isSafeInteger(checks) || checks <= 0) {
+    throw new ManagedContainerCleanupError(
+      "managed-container cleanup checks must be positive",
     );
   }
 
-  await execFileAsync("docker", ["rm", "--force", "--volumes", containerName], {
-    encoding: "utf8",
-  });
+  const inspect = async (): Promise<
+    | { readonly state: "absent" }
+    | { readonly state: "present"; readonly runId: string }
+  > => {
+    try {
+      const result = await withinDeadline(
+        runDocker(
+          [
+            "container",
+            "inspect",
+            "--format",
+            '{{ index .Config.Labels "forge.run_id" }}',
+            containerName,
+          ],
+          inspectTimeout,
+        ),
+        inspectTimeout,
+        "Docker container inspect",
+      );
+      return { state: "present", runId: result.stdout.trim() };
+    } catch (error) {
+      if (containerDoesNotExist(error)) return { state: "absent" };
+      throw new ManagedContainerCleanupError(
+        `could not verify cleanup of container '${containerName}'`,
+        { cause: error },
+      );
+    }
+  };
+
+  let consecutiveAbsenceChecks = 0;
+  let removalAttempts = 0;
+  while (consecutiveAbsenceChecks < checks) {
+    const observed = await inspect();
+    if (observed.state === "absent") {
+      consecutiveAbsenceChecks += 1;
+    } else {
+      consecutiveAbsenceChecks = 0;
+      if (observed.runId !== expectedRunId) {
+        throw new ManagedContainerCleanupError(
+          `refusing to remove container '${containerName}' because its Forge run label does not match`,
+        );
+      }
+      if (removalAttempts >= checks) {
+        throw new ManagedContainerCleanupError(
+          `container '${containerName}' still exists after cleanup`,
+        );
+      }
+      removalAttempts += 1;
+      try {
+        await withinDeadline(
+          runDocker(
+            ["container", "rm", "--force", "--volumes", containerName],
+            removeTimeout,
+          ),
+          removeTimeout,
+          "Docker container removal",
+        );
+      } catch (error) {
+        if (!containerDoesNotExist(error)) {
+          throw new ManagedContainerCleanupError(
+            `could not remove container '${containerName}'`,
+            { cause: error },
+          );
+        }
+      }
+    }
+    if (consecutiveAbsenceChecks < checks) await settle();
+  }
 }

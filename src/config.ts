@@ -203,6 +203,35 @@ export const targetConfigV1Schema = z
       }
       seen.add(id);
     }
+
+    if (config.experiments.initialization !== false) {
+      const reservedIndex = config.experiments.tools.findIndex(
+        (experiment) => experiment.id === "baseline-initialization",
+      );
+      if (reservedIndex !== -1) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "experiment id 'baseline-initialization' is reserved while initialization is enabled",
+          path: ["experiments", "tools", reservedIndex, "id"],
+        });
+      }
+    }
+    for (const internalId of [
+      "install-scripts-disabled",
+      "install-scripts-enabled",
+    ]) {
+      const reservedIndex = config.experiments.tools.findIndex(
+        (experiment) => experiment.id === internalId,
+      );
+      if (reservedIndex !== -1) {
+        context.addIssue({
+          code: "custom",
+          message: `experiment id '${internalId}' is reserved for install lifecycle evidence`,
+          path: ["experiments", "tools", reservedIndex, "id"],
+        });
+      }
+    }
   });
 
 export type ExpectedScopeV1 = z.infer<typeof expectedScopeV1Schema>;

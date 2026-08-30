@@ -8,8 +8,11 @@ cache, it compares scripts-disabled and scripts-enabled installation in fresh
 sandboxes; local `install:none` targets skip that pair. It then observes the MCP
 handshake, tool discovery, isolated tool calls, and their observation windows
 as separate stages. The dedicated initialization experiment includes its final
-observation window as activity before any tool call. The result is an
-evidence-linked `report.json`.
+observation window as activity before any tool call. Each runtime experiment
+also records bounded before/after state for its synthetic home and workspace.
+Advertised interface text and schemas are preserved as untrusted claims, then
+compared with package-source signals, selected runtime effects, and
+operator-authored scope. The result is an evidence-linked `report.json`.
 
 The same core pipeline is verified against two different targets:
 
@@ -105,8 +108,13 @@ reusable npm cache? -- yes --> fresh scripts-off/on install A/B + delta
 fresh runtime sandbox per initialization or tool experiment
                       |
                       v
-raw MCP + strace -> normalized events -> phase attribution -> rules
-                      + phase-scoped counts + bounded static/runtime comparison
+advertised interface -> bounded claim extraction
+before state -> raw MCP + strace -> after state + bounded delta
+                            |
+                            v
+normalized events -> phase attribution -> deterministic rules
+                      + phase-scoped counts
+                      + claimed/static/observed/configured comparison
                       |
                       v
                   report.json
@@ -126,7 +134,14 @@ Dependency acquisition and the installation experiments share `sandbox.limits.in
 The checked-in representative paired verification produced:
 
 - Deceptive control: [`examples/reports/deceptive-control.report.json`](examples/reports/deceptive-control.report.json). It reports five deterministic findings: a high-confidence sensitive credential read during initialization; an out-of-scope credential read, unexpected child executable, and unexpected network attempt during the tool experiment; and medium-confidence post-return file activity from a tool-originated worker during cooldown. Its install delta also exposes the controlled postinstall execution, canary read, and marker write.
-- Official Filesystem MCP: [`examples/reports/official-filesystem.report.json`](examples/reports/official-filesystem.report.json). It records exact npm provenance, preserves both pre-install and selected-runtime static inspections, completes both install modes, discovers the real MCP interface, and reports phase-scoped counts for the configured `read_text_file` and `write_file` effects. Its bounded static/runtime table finds filesystem signals and observes only the expected selected filesystem behavior; it reports no deterministic finding within those inputs and rules, which is not a claim that the package is universally safe.
+- Official Filesystem MCP: [`examples/reports/official-filesystem.report.json`](examples/reports/official-filesystem.report.json). It records exact npm provenance, preserves both pre-install and selected-runtime static inspections, completes both install modes, discovers the real MCP interface, and reports phase-scoped counts for the configured `read_text_file` and `write_file` effects. Its filesystem claims, static signals, selected runtime effects, and configured scope align for those two tool experiments. The read experiment has no final-state change; the write experiment records the created synthetic-workspace output. It reports no deterministic finding within those inputs and rules, which is not a claim that the package is universally safe.
+
+The deceptive tool's description explicitly negates network and process
+behavior. The bounded claim extractor therefore records a filesystem claim but
+no network or process claim, while static and runtime evidence independently
+show both hidden capabilities outside configured scope. This is a selected-case
+demonstration of useful disagreement, not a general semantic-understanding
+claim.
 
 ## Evidence directory
 
@@ -150,7 +165,13 @@ runs/<run-id>/
 |   `-- inspection.json
 |-- install/
 |   `-- delta.json
-|-- mcp/<runtime-experiment>/interface.json
+|-- mcp/
+|   |-- advertised-claims.json
+|   `-- <runtime-experiment>/interface.json
+|-- runtime/filesystem-state/<runtime-experiment>/
+|   |-- before.json
+|   |-- after.json
+|   `-- delta.json
 |-- raw/
 |   |-- acquisition/npm-install.log
 |   |-- static/<evidence-id>.json
@@ -168,11 +189,21 @@ runs/<run-id>/
 `-- sandboxes/<experiment>/profile.json
 ```
 
-Some target evidence files are conditional. The primary static summary is explicitly tied to the selected runtime snapshot; the earlier inspection is retained to show the package before lifecycle scripts ran. Every normalized event contains a raw evidence reference, findings cite normalized event IDs, and attribution is stored separately from observed facts. `report.json` also includes phase-scoped effect counts, compact expected-scope examples, and a bounded source-signal/runtime-observation comparison so positive behavior is visible without hiding the complete event stream or implying intent.
+Some target evidence files are conditional. The primary static summary is explicitly tied to the selected runtime snapshot; the earlier inspection is retained to show the package before lifecycle scripts ran. Every normalized event contains a raw evidence reference, findings cite normalized event IDs, and attribution is stored separately from observed facts. `report.json` also includes phase-scoped effect counts, compact expected-scope examples, and the bounded four-way behavior comparison so positive behavior is visible without hiding the complete event stream or implying intent.
+
+The report's per-experiment behavior comparison keeps four questions separate:
+what the MCP advertised, what bounded package inspection found, what the
+selected runtime experiment observed, and what the operator configured. Exact
+event and claim evidence references remain attached to each row. Filesystem
+state summaries link to complete bounded snapshot/delta artifacts; reported
+differences show retained state change over the experiment window and do not by
+themselves identify the responsible process, phase, or source line. Comparison
+rows separately expose events whose association with a tool is temporal overlap
+rather than matching process origin.
 
 ## Containment model
 
-Runtime and install experiments use disposable Docker containers with blocked networking, read-only container roots, synthetic home/workspace data, bounded CPU/memory/processes/time, `no_new_privs`, and exact label-checked cleanup. The runtime target runs as UID/GID 65534 with all target capabilities cleared and cannot write the observer-owned trace directory. Each run manifest records both the configured observer-image reference and the resolved immutable image ID.
+Runtime and install experiments use disposable Docker containers with blocked networking, read-only container roots, synthetic home/workspace data, bounded CPU/memory/processes/time, `no_new_privs`, and exact label-checked cleanup. Runtime cleanup fails closed on ambiguous Docker responses and requires repeated verified absence before Forge scans host-mounted profile state. The runtime target runs as UID/GID 65534 with all target capabilities cleared and cannot write the observer-owned trace directory. Each run manifest records both the configured observer-image reference and the resolved immutable image ID.
 
 This is useful take-home containment, not proof that arbitrary hostile code is perfectly safe. The trusted `strace` supervisor currently shares the target container. A production design should use disposable Linux workers or microVMs and place observation outside the target boundary, for example with host-side tracing or eBPF.
 
@@ -180,7 +211,10 @@ This is useful take-home containment, not proof that arbitrary hostile code is p
 
 - Support is currently Node.js packages on Linux, local execution over MCP STDIO, and npm or local-directory sources.
 - Static inspection is bounded lexical analysis of selected Node source plus manifest, script, dependency, lockfile, and provenance metadata. It is not whole-program reachability or data-flow analysis, and dependency source under `node_modules` is not scanned.
+- Advertised-claim extraction is bounded lexical classification of tool names, titles, descriptions, and input schemas. Selected standard annotations are preserved separately and do not independently map to capabilities. The extractor handles nearby negation for its supported terms, but it is not general natural-language understanding; no detected claim is not a denial of capability or permission to perform it.
+- The complete `tools/list` result and every recorded JSON-RPC message are bounded before schema validation or persistence. The retained interface, advertised-claim evidence, and catalog fingerprints intentionally omit output schemas and other unretained MCP metadata, so those fields are not analyzed for claims or drift.
 - Runtime normalization covers a focused `strace` syscall subset for process, file, and socket behavior, including supported failed exec/file attempts and terminal signal exits. It does not reconstruct every kernel action, DNS meaning, or encrypted network payload.
+- Before/after filesystem evidence is bounded to the synthetic home and workspace, does not intentionally follow entries observed as symlinks, hashes only supported files within configured limits, and omits unsupported special-file contents. Pathname-replacement races remain a documented limitation even though after-state capture waits for verified container absence. Reported differences show that retained state differed across the isolated experiment window; an empty delta is not proof that no unrecorded state changed, and neither result identifies exact syscall or process causality.
 - Results cover only the configured initialization and isolated tool inputs. A clean report means no covered rule mismatch was observed, not that the target is safe for every input.
 - Workflow execution, HTML reporting, and LLM interpretation are not implemented in the core path. Automated Agent V1 rollouts are available separately through `forge agent-evaluate`; they do not modify this report or core analysis flow.
 - This is not yet a production VM/microVM or out-of-container eBPF observer.

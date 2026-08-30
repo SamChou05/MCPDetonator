@@ -20,6 +20,11 @@ import {
   normalizeRun,
   type ObservedPathMapping,
 } from "./observe/strace-normalizer.js";
+import {
+  captureFilesystemState,
+  persistFilesystemStateEvidence,
+  type FilesystemStateDeltaV1,
+} from "./observe/filesystem-state.js";
 import { writeReport } from "./report.js";
 import { evaluateRuntimeRules } from "./rules.js";
 import {
@@ -203,6 +208,7 @@ export async function analyzeTarget(
     string,
     readonly ObservedPathMapping[]
   >();
+  const filesystemStateDeltas: FilesystemStateDeltaV1[] = [];
   let preparedTarget: PreparedTarget | undefined;
   let installObservation: InstallLifecycleObservation | undefined;
   let installDelta: InstallLifecycleDeltaV1 | undefined;
@@ -312,6 +318,12 @@ export async function analyzeTarget(
       );
       profileRootsByExperiment.set(experiment.id, profile.manifest.roots);
       pathMappingsByExperiment.set(experiment.id, invocation.pathMappings);
+      const beforeFilesystemState = await captureFilesystemState({
+        runId,
+        experimentId: experiment.id,
+        profile,
+        label: "before",
+      });
 
       try {
         const result = await runMcpExperiment({
@@ -327,6 +339,19 @@ export async function analyzeTarget(
         interfaces.push(result.mcpInterface);
       } finally {
         await removeManagedContainer(invocation.containerName, runId);
+        const afterFilesystemState = await captureFilesystemState({
+          runId,
+          experimentId: experiment.id,
+          profile,
+          label: "after",
+        });
+        filesystemStateDeltas.push(
+          await persistFilesystemStateEvidence({
+            store,
+            before: beforeFilesystemState,
+            after: afterFilesystemState,
+          }),
+        );
       }
     }
 
@@ -391,6 +416,7 @@ export async function analyzeTarget(
       provenance: reportProvenance,
       staticInspection,
       profileRootsByExperiment,
+      filesystemStateDeltas,
       ...(installObservation === undefined
         ? {}
         : {

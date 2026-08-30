@@ -9,7 +9,7 @@ import { compareStaticAndRuntime } from "../../src/report.js";
 import { nodePackageStaticInspectionV1Schema } from "../../src/static/contracts.js";
 
 describe("static/runtime comparison", () => {
-  it("compares bounded user effects without treating bootstrap Unix sockets as network behavior", () => {
+  it("compares bounded effects without borrowing child identity across experiments", () => {
     const staticEvidence = {
       artifactPath: "raw/static/source.json",
       targetPath: "index.js",
@@ -67,6 +67,7 @@ describe("static/runtime comparison", () => {
     const eventInputs = [
       {
         id: "evt-child-start",
+        experimentId: "read-document",
         sequence: 0,
         processRef: "run-comparison:read-document:pid-20",
         effect: {
@@ -77,17 +78,19 @@ describe("static/runtime comparison", () => {
       },
       {
         id: "evt-child-exec",
+        experimentId: "read-document",
         sequence: 1,
         processRef: "run-comparison:read-document:pid-20",
         effect: {
           kind: "process.exec" as const,
           executable: "/usr/bin/helper",
           args: ["helper"],
-          outcome: { status: "succeeded" as const },
+          outcome: { status: "failed" as const, errno: "ENOENT" },
         },
       },
       {
         id: "evt-workspace-read",
+        experimentId: "read-document",
         sequence: 2,
         processRef: "run-comparison:read-document:pid-10",
         effect: {
@@ -99,6 +102,7 @@ describe("static/runtime comparison", () => {
       },
       {
         id: "evt-bootstrap-unix",
+        experimentId: "read-document",
         sequence: 3,
         processRef: "run-comparison:read-document:pid-10",
         effect: {
@@ -108,13 +112,36 @@ describe("static/runtime comparison", () => {
           outcome: { status: "failed" as const, errno: "ENOENT" },
         },
       },
+      {
+        id: "evt-other-experiment-child",
+        experimentId: "other-experiment",
+        sequence: 4,
+        processRef: "shared-process-ref",
+        effect: {
+          kind: "process.start" as const,
+          pid: 20,
+          parentProcessRef: "other-root-ref",
+        },
+      },
+      {
+        id: "evt-root-exec-with-colliding-ref",
+        experimentId: "read-document",
+        sequence: 5,
+        processRef: "shared-process-ref",
+        effect: {
+          kind: "process.exec" as const,
+          executable: "/usr/bin/node",
+          args: ["node", "index.mjs"],
+          outcome: { status: "succeeded" as const },
+        },
+      },
     ];
     const events = eventInputs.map((input) =>
       observedEventV1Schema.parse({
         schema: "forge.event/v1",
         eventId: input.id,
         runId: "run-comparison",
-        experimentId: "read-document",
+        experimentId: input.experimentId,
         sequence: input.sequence,
         timestamp: `2026-08-29T20:00:01.${input.sequence}00Z`,
         processRef: input.processRef,

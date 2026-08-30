@@ -115,10 +115,38 @@ describe("report static snapshot alignment", () => {
       phases: [],
       attributions: [],
       findings: [],
-      interfaces: [],
+      interfaces: [
+        {
+          schema: "forge.mcp-interface/v1",
+          runId: "run-static-alignment",
+          experimentId: "inspect-snapshot",
+          server: { name: "snapshot-server", version: "2.0.0" },
+          tools: [
+            {
+              name: "inspect_snapshot",
+              title: "Inspect selected snapshot",
+              description: "Returns bounded snapshot metadata.",
+              inputSchema: {
+                type: "object",
+                properties: {},
+                additionalProperties: false,
+              },
+              annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+              },
+            },
+          ],
+        },
+      ],
       provenance,
       staticInspection: runtimeInspection,
-      profileRootsByExperiment: new Map(),
+      profileRootsByExperiment: new Map([
+        [
+          "inspect-snapshot",
+          { home: "/sandbox/home/forge", workspace: "/sandbox/workspace" },
+        ],
+      ]),
       limitations: [],
     });
 
@@ -137,6 +165,13 @@ describe("report static snapshot alignment", () => {
     expect(report.evidence).toMatchObject({
       staticInspection: "static/inspection.json",
       preInstallStaticInspection: "static/pre-install-inspection.json",
+      advertisedClaims: "mcp/advertised-claims.json",
     });
+    expect(report.advertisedTools[0]).toMatchObject({
+      name: "inspect_snapshot",
+      title: "Inspect selected snapshot",
+      annotations: { readOnlyHint: true, destructiveHint: false },
+    });
+    expect(report.advertisedClaims.interfaces[0]?.annotations).toHaveLength(2);
   });
 });

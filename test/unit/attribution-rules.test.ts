@@ -702,6 +702,16 @@ describe("attribution and runtime rules", () => {
         outcome: { status: "succeeded" },
       },
     );
+    const cooldownUnexpectedDelete = event(
+      "evt-initialization-cooldown-unexpected-delete",
+      "2026-08-29T21:00:02.400Z",
+      rootProcessRef,
+      {
+        kind: "file.delete",
+        path: `${profileWorkspace}/protected.txt`,
+        outcome: { status: "failed", errno: "EPERM" },
+      },
+    );
     const events = [
       rootStart,
       rootShimExec,
@@ -718,6 +728,7 @@ describe("attribution and runtime rules", () => {
       unixConnection,
       cooldownCredentialRead,
       cooldownUnexpectedWrite,
+      cooldownUnexpectedDelete,
     ];
     const attributions = await attributeEvents({
       store,
@@ -743,7 +754,7 @@ describe("attribution and runtime rules", () => {
       ]),
     });
 
-    expect(findings).toHaveLength(6);
+    expect(findings).toHaveLength(7);
     expect(
       findings.find(
         (value) => value.ruleId === "runtime.initialization_sensitive_access",
@@ -765,6 +776,7 @@ describe("attribution and runtime rules", () => {
         unexpectedRead.eventId,
         unexpectedWrite.eventId,
         cooldownUnexpectedWrite.eventId,
+        cooldownUnexpectedDelete.eventId,
       ].sort(),
     );
     expect(

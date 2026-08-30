@@ -57,6 +57,195 @@ async function readJsonl(path) {
     .map((line) => JSON.parse(line));
 }
 
+function claimReferenceKeys(claims) {
+  return new Set(
+    claims.interfaces.flatMap((mcpInterface) =>
+      mcpInterface.capabilityAssessments.flatMap((assessment) =>
+        assessment.evidence.map(
+          (evidence) => `${evidence.evidenceId}\0${evidence.pointer}`,
+        ),
+      ),
+    ),
+  );
+}
+
+function assertBehaviorClaimReferences(report, label) {
+  const available = claimReferenceKeys(report.advertisedClaims);
+  for (const scope of report.behaviorComparison.scopes) {
+    for (const row of scope.rows) {
+      for (const reference of row.advertisedClaimReferences) {
+        invariant(
+          available.has(`${reference.evidenceId}\0${reference.fieldReference}`),
+          `${label} behavior comparison contains an unresolved advertised-claim reference`,
+        );
+      }
+    }
+  }
+}
+
+const COMPARED_CAPABILITIES = [
+  "filesystem_access",
+  "network_access",
+  "process_execution",
+];
+
+function sortedUnique(values) {
+  return [...new Set(values)].sort();
+}
+
+function assertBehaviorComparisonCompleteness(report, label) {
+  const observations = new Map(
+    report.runtimeObservations.map((observation) => [
+      observation.experimentId,
+      observation,
+    ]),
+  );
+  invariant(
+    observations.size === report.runtimeObservations.length,
+    `${label} contains duplicate runtime-observation experiment IDs`,
+  );
+  const scopes = new Map(
+    report.behaviorComparison.scopes.map((scope) => [scope.experimentId, scope]),
+  );
+  invariant(
+    scopes.size === report.behaviorComparison.scopes.length &&
+      scopes.size === observations.size,
+    `${label} behavior comparison does not cover each runtime experiment exactly once`,
+  );
+
+  for (const [experimentId, observation] of observations) {
+    const scope = scopes.get(experimentId);
+    invariant(
+      scope?.kind === observation.kind && scope.toolName === observation.toolName,
+      `${label} behavior scope '${experimentId}' has the wrong kind or tool identity`,
+    );
+    invariant(
+      scope.rows.length === COMPARED_CAPABILITIES.length &&
+        JSON.stringify(sortedUnique(scope.rows.map((row) => row.capability))) ===
+        JSON.stringify(COMPARED_CAPABILITIES),
+      `${label} behavior scope '${experimentId}' does not contain each compared capability exactly once`,
+    );
+
+    for (const row of scope.rows) {
+      const claimKeys = row.advertisedClaimReferences.map(
+        (reference) => `${reference.evidenceId}\0${reference.fieldReference}`,
+      );
+      invariant(
+        (row.staticState === "found") === (row.staticSignalIds.length > 0) &&
+          sortedUnique(row.staticSignalIds).length === row.staticSignalIds.length,
+        `${label} ${experimentId}/${row.capability} has inconsistent static evidence`,
+      );
+      invariant(
+        (row.runtimeState === "observed") === (row.runtimeEventIds.length > 0),
+        `${label} ${experimentId}/${row.capability} has inconsistent runtime evidence`,
+      );
+      invariant(
+        sortedUnique(row.runtimeEventIds).length === row.runtimeEventIds.length &&
+          sortedUnique(row.temporalOverlapEventIds).length ===
+            row.temporalOverlapEventIds.length &&
+          sortedUnique(claimKeys).length === claimKeys.length,
+        `${label} ${experimentId}/${row.capability} repeats a behavior-evidence identifier`,
+      );
+
+      const partition = [
+        ...row.withinOperatorScopeEventIds,
+        ...row.outsideOperatorScopeEventIds,
+        ...row.unclassifiedRuntimeEventIds,
+      ];
+      invariant(
+        partition.length === sortedUnique(partition).length &&
+          JSON.stringify([...partition].sort()) ===
+            JSON.stringify([...row.runtimeEventIds].sort()),
+        `${label} ${experimentId}/${row.capability} does not exactly partition runtime events by operator scope`,
+      );
+      invariant(
+        row.temporalOverlapEventIds.every((eventId) =>
+          row.runtimeEventIds.includes(eventId),
+        ),
+        `${label} ${experimentId}/${row.capability} has a temporal-overlap ID outside its runtime evidence`,
+      );
+      invariant(
+        (row.operatorScopeState === "configured" &&
+          row.unclassifiedRuntimeEventIds.length === 0) ||
+          (row.operatorScopeState === "not_configured" &&
+            row.withinOperatorScopeEventIds.length === 0 &&
+            row.outsideOperatorScopeEventIds.length === 0),
+        `${label} ${experimentId}/${row.capability} contradicts its operator-scope state`,
+      );
+
+      if (scope.kind === "initialization") {
+        invariant(
+          row.advertisedState === "not_applicable" &&
+            row.advertisedClaimReferences.length === 0,
+          `${label} ${experimentId}/${row.capability} assigns tool claims to initialization`,
+        );
+      } else {
+        invariant(
+          row.advertisedState !== "not_applicable" &&
+            (row.advertisedState === "claimed") ===
+              (row.advertisedClaimReferences.length > 0),
+          `${label} ${experimentId}/${row.capability} has inconsistent advertised-claim evidence`,
+        );
+      }
+    }
+  }
+}
+
+async function readFilesystemStateEvidence(
+  runDirectory,
+  expectedRunId,
+  observation,
+) {
+  const state = observation?.filesystemStateDelta;
+  invariant(
+    state?.scope === "isolated_experiment_window" &&
+      state.attribution === "experiment_only",
+    `experiment '${observation?.experimentId ?? "unknown"}' lacks explicit filesystem-state scope`,
+  );
+  const before = await readJson(join(runDirectory, state.artifactRefs.before));
+  const after = await readJson(join(runDirectory, state.artifactRefs.after));
+  const delta = await readJson(join(runDirectory, state.artifactRefs.delta));
+  invariant(
+    before.schema === "forge.filesystem-state/v1" &&
+      before.runId === expectedRunId &&
+      before.label === "before" &&
+      before.experimentId === observation.experimentId &&
+      after.schema === "forge.filesystem-state/v1" &&
+      after.runId === expectedRunId &&
+      after.label === "after" &&
+      after.experimentId === observation.experimentId &&
+      delta.schema === "forge.filesystem-delta/v1" &&
+      delta.runId === expectedRunId &&
+      delta.experimentId === observation.experimentId &&
+      JSON.stringify(delta.artifactRefs) === JSON.stringify(state.artifactRefs) &&
+      delta.snapshotsComplete.before === before.complete &&
+      delta.snapshotsComplete.after === after.complete &&
+      state.snapshotsComplete.before === before.complete &&
+      state.snapshotsComplete.after === after.complete &&
+      state.changeCounts.created === delta.changes.created.length &&
+      state.changeCounts.modified === delta.changes.modified.length &&
+      state.changeCounts.deleted === delta.changes.deleted.length &&
+      state.changeCounts.typeChanged === delta.changes.typeChanged.length,
+    `experiment '${observation.experimentId}' has inconsistent filesystem-state artifacts`,
+  );
+  return { before, after, delta };
+}
+
+async function readAllFilesystemStateEvidence(runDirectory, report) {
+  return new Map(
+    await Promise.all(
+      report.runtimeObservations.map(async (observation) => [
+        observation.experimentId,
+        await readFilesystemStateEvidence(
+          runDirectory,
+          report.runId,
+          observation,
+        ),
+      ]),
+    ),
+  );
+}
+
 async function imageId() {
   const { stdout } = await execFileAsync(
     "docker",
@@ -105,6 +294,15 @@ invariant(
 
 const deceptiveReport = await readJson(join(deceptive.runDirectory, "report.json"));
 const deceptiveRunManifest = await readJson(join(deceptive.runDirectory, "run.json"));
+assertBehaviorComparisonCompleteness(deceptiveReport, "deceptive control");
+await readAllFilesystemStateEvidence(deceptive.runDirectory, deceptiveReport);
+invariant(
+  deceptiveReport.advertisedInterfaceSummary.catalogConsistency === "consistent" &&
+    deceptiveReport.advertisedInterfaceSummary.comparedExperimentIds.length === 2 &&
+    deceptiveReport.advertisedInterfaceSummary.differingExperimentIds.length === 0 &&
+    deceptiveReport.advertisedInterfaceSummary.duplicateToolNames.length === 0,
+  "deceptive run did not establish a stable per-experiment MCP catalog",
+);
 invariant(
   deceptiveRunManifest.toolchain.observerImageReference === "forge-sandbox:dev" &&
     deceptiveRunManifest.toolchain.observerImageId === observerImage,
@@ -173,16 +371,17 @@ const postReturnFinding = deceptiveReport.findings.find(
   (finding) => finding.ruleId === "runtime.post_return_activity",
 );
 invariant(
-  postReturnFinding?.eventIds.some((eventId) => {
-    const event = deceptiveEvents.find((candidate) => candidate.eventId === eventId);
-    const attribution = deceptiveAttributions.get(eventId);
-    return (
-      event?.effect.kind === "file.read" &&
-      event.effect.path.endsWith("/.ssh/id_ed25519") &&
-      attribution?.activePhaseId?.includes("cooldown") &&
-      attribution?.processOriginPhaseId?.includes("tool")
-    );
-  }),
+  postReturnFinding?.confidence === "medium" &&
+    postReturnFinding.eventIds.some((eventId) => {
+      const event = deceptiveEvents.find((candidate) => candidate.eventId === eventId);
+      const attribution = deceptiveAttributions.get(eventId);
+      return (
+        event?.effect.kind === "file.read" &&
+        event.effect.path.endsWith("/.ssh/id_ed25519") &&
+        attribution?.activePhaseId?.includes("cooldown") &&
+        attribution?.processOriginPhaseId?.includes("tool")
+      );
+    }),
   "deceptive control did not link delayed credential access to a tool-originated cooldown process",
 );
 const deceptiveComparison = new Map(
@@ -199,6 +398,40 @@ for (const capability of [
     `deceptive control static/runtime comparison is incomplete for ${capability}`,
   );
 }
+const deceptiveToolComparison = deceptiveReport.behaviorComparison.scopes.find(
+  (scope) => scope.experimentId === "summarize-file",
+);
+const deceptiveBehaviorRows = new Map(
+  deceptiveToolComparison?.rows.map((row) => [row.capability, row]) ?? [],
+);
+invariant(
+  deceptiveBehaviorRows.get("filesystem_access")?.advertisedState === "claimed" &&
+    deceptiveBehaviorRows.get("filesystem_access")?.staticState === "found" &&
+    deceptiveBehaviorRows.get("filesystem_access")?.runtimeState === "observed" &&
+    deceptiveBehaviorRows.get("filesystem_access")?.withinOperatorScopeEventIds
+      .length > 0 &&
+    deceptiveBehaviorRows.get("filesystem_access")?.outsideOperatorScopeEventIds
+      .length > 0,
+  "deceptive control did not retain its advertised filesystem claim",
+);
+for (const capability of ["process_execution", "network_access"]) {
+  const row = deceptiveBehaviorRows.get(capability);
+  invariant(
+    row?.advertisedState === "not_claimed" &&
+      row.staticState === "found" &&
+      row.runtimeState === "observed" &&
+      row.outsideOperatorScopeEventIds.length > 0,
+    `deceptive control did not expose unclaimed, out-of-scope ${capability}`,
+  );
+}
+const deceptiveClaims = await readJson(
+  join(deceptive.runDirectory, deceptiveReport.evidence.advertisedClaims),
+);
+invariant(
+  JSON.stringify(deceptiveClaims) === JSON.stringify(deceptiveReport.advertisedClaims),
+  "deceptive advertised-claim artifact and report summary diverged",
+);
+assertBehaviorClaimReferences(deceptiveReport, "deceptive control");
 const treatmentEventIds = new Set(
   Object.values(deceptiveReport.installLifecycle.delta.treatmentOnly).flat(),
 );
@@ -229,6 +462,18 @@ invariant(
 
 const filesystemReport = await readJson(join(filesystem.runDirectory, "report.json"));
 const filesystemRunManifest = await readJson(join(filesystem.runDirectory, "run.json"));
+assertBehaviorComparisonCompleteness(filesystemReport, "Filesystem case study");
+const filesystemStateEvidence = await readAllFilesystemStateEvidence(
+  filesystem.runDirectory,
+  filesystemReport,
+);
+invariant(
+  filesystemReport.advertisedInterfaceSummary.catalogConsistency === "consistent" &&
+    filesystemReport.advertisedInterfaceSummary.comparedExperimentIds.length === 3 &&
+    filesystemReport.advertisedInterfaceSummary.differingExperimentIds.length === 0 &&
+    filesystemReport.advertisedInterfaceSummary.duplicateToolNames.length === 0,
+  "Filesystem run did not establish a stable per-experiment MCP catalog",
+);
 invariant(
   filesystemRunManifest.toolchain.observerImageReference === "forge-sandbox:dev" &&
     filesystemRunManifest.toolchain.observerImageId === observerImage,
@@ -236,8 +481,15 @@ invariant(
 );
 invariant(
   filesystemReport.artifactProvenance.source.type === "npm" &&
-    filesystemReport.artifactProvenance.source.requestedVersion === "2026.7.10",
+    filesystemReport.artifactProvenance.source.package ===
+      "@modelcontextprotocol/server-filesystem" &&
+    filesystemReport.artifactProvenance.source.requestedVersion === "2026.7.10" &&
+    filesystemReport.artifactProvenance.source.resolvedVersion === "2026.7.10",
   "Filesystem report is missing exact npm provenance",
+);
+invariant(
+  filesystemReport.findings.length === 0,
+  `Filesystem report unexpectedly produced ${filesystemReport.findings.length} findings`,
 );
 invariant(
   filesystemReport.staticAnalysis.manifest.name ===
@@ -308,6 +560,60 @@ invariant(
       ]),
   "Filesystem report effect counts are not scoped to the active tool phases",
 );
+invariant(
+  readObservation?.filesystemStateDelta?.snapshotsComplete.before === true &&
+    readObservation.filesystemStateDelta.snapshotsComplete.after === true &&
+    Object.values(readObservation.filesystemStateDelta.changeCounts).every(
+      (count) => count === 0,
+    ),
+  "Filesystem read experiment changed durable synthetic profile state",
+);
+invariant(
+  writeObservation?.filesystemStateDelta?.snapshotsComplete.before === true &&
+    writeObservation.filesystemStateDelta.snapshotsComplete.after === true &&
+    writeObservation.filesystemStateDelta.examples.some(
+      (change) =>
+        change.change === "created" &&
+        change.path === "/sandbox/workspace/forge-output.txt" &&
+        change.afterKind === "file",
+    ),
+  "Filesystem write experiment lacks a durable created-file state delta",
+);
+const readStateEvidence = filesystemStateEvidence.get("read-synthetic-report");
+const writeStateEvidence = filesystemStateEvidence.get("write-synthetic-output");
+invariant(
+  readStateEvidence !== undefined && writeStateEvidence !== undefined,
+  "Filesystem tool experiments lack linked state evidence",
+);
+invariant(
+  Object.values(readStateEvidence.delta.changes).every(
+    (changes) => changes.length === 0,
+  ) &&
+    !readStateEvidence.before.entries.some(
+      (entry) => entry.path === "/sandbox/workspace/forge-output.txt",
+    ) &&
+    !readStateEvidence.after.entries.some(
+      (entry) => entry.path === "/sandbox/workspace/forge-output.txt",
+    ),
+  "Filesystem read state artifacts contain an unexpected change",
+);
+invariant(
+  writeStateEvidence.delta.changes.created.length === 1 &&
+    writeStateEvidence.delta.changes.modified.length === 0 &&
+    writeStateEvidence.delta.changes.deleted.length === 0 &&
+    writeStateEvidence.delta.changes.typeChanged.length === 0 &&
+    writeStateEvidence.delta.changes.created[0]?.path ===
+      "/sandbox/workspace/forge-output.txt" &&
+    !writeStateEvidence.before.entries.some(
+      (entry) => entry.path === "/sandbox/workspace/forge-output.txt",
+    ) &&
+    writeStateEvidence.after.entries.some(
+      (entry) =>
+        entry.path === "/sandbox/workspace/forge-output.txt" &&
+        entry.kind === "file",
+    ),
+  "Filesystem write state summary is not linked to an exact created-file delta",
+);
 const filesystemComparison = new Map(
   filesystemReport.staticRuntimeComparison.rows.map((row) => [row.capability, row]),
 );
@@ -320,6 +626,51 @@ invariant(
       "not_observed",
   "Filesystem static/runtime comparison does not reflect selected tool effects",
 );
+for (const experimentId of [
+  "read-synthetic-report",
+  "write-synthetic-output",
+]) {
+  const scope = filesystemReport.behaviorComparison.scopes.find(
+    (candidate) => candidate.experimentId === experimentId,
+  );
+  const filesystemRow = scope?.rows.find(
+    (row) => row.capability === "filesystem_access",
+  );
+  const negativeRows = scope?.rows.filter(
+    (row) => row.capability !== "filesystem_access",
+  );
+  invariant(
+    filesystemRow?.advertisedState === "claimed" &&
+      filesystemRow.staticState === "found" &&
+      filesystemRow.runtimeState === "observed" &&
+      filesystemRow.operatorScopeState === "configured" &&
+      filesystemRow.withinOperatorScopeEventIds.length > 0 &&
+      filesystemRow.outsideOperatorScopeEventIds.length === 0 &&
+      filesystemRow.unclassifiedRuntimeEventIds.length === 0 &&
+      negativeRows?.length === 2 &&
+      negativeRows.every(
+        (row) =>
+          row.advertisedState === "not_claimed" &&
+          row.staticState === "not_found" &&
+          row.runtimeState === "not_observed" &&
+          row.operatorScopeState === "configured" &&
+          row.runtimeEventIds.length === 0 &&
+          row.withinOperatorScopeEventIds.length === 0 &&
+          row.outsideOperatorScopeEventIds.length === 0 &&
+          row.unclassifiedRuntimeEventIds.length === 0,
+      ),
+    `Filesystem four-way comparison is incomplete for ${experimentId}`,
+  );
+}
+const filesystemClaims = await readJson(
+  join(filesystem.runDirectory, filesystemReport.evidence.advertisedClaims),
+);
+invariant(
+  JSON.stringify(filesystemClaims) ===
+    JSON.stringify(filesystemReport.advertisedClaims),
+  "Filesystem advertised-claim artifact and report summary diverged",
+);
+assertBehaviorClaimReferences(filesystemReport, "Filesystem case study");
 const attributions = new Map(
   (await readJsonl(join(filesystem.runDirectory, "attributions.jsonl"))).map(
     (value) => [value.eventId, value],

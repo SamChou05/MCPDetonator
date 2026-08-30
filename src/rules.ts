@@ -175,7 +175,7 @@ export async function evaluateRuntimeRules(options: {
     const unexpectedPaths = new Map<
       string,
       {
-        readonly kind: "file.read" | "file.write";
+        readonly kind: "file.read" | "file.write" | "file.delete";
         readonly path: string;
         readonly events: ObservedEventV1[];
       }
@@ -184,7 +184,8 @@ export async function evaluateRuntimeRules(options: {
     for (const event of initializationEvents) {
       if (
         event.effect.kind !== "file.read" &&
-        event.effect.kind !== "file.write"
+        event.effect.kind !== "file.write" &&
+        event.effect.kind !== "file.delete"
       ) {
         continue;
       }
@@ -192,8 +193,12 @@ export async function evaluateRuntimeRules(options: {
       if (sensitiveInitializationEventIds.has(event.eventId)) {
         continue;
       }
-      const kind: "file.read" | "file.write" =
-        effect.kind === "file.read" ? "file.read" : "file.write";
+      const kind: "file.read" | "file.write" | "file.delete" =
+        effect.kind === "file.read"
+          ? "file.read"
+          : effect.kind === "file.write"
+            ? "file.write"
+            : "file.delete";
       const allowed =
         kind === "file.read"
           ? initializationScope.fileReads
@@ -227,7 +232,8 @@ export async function evaluateRuntimeRules(options: {
       const succeeded = unexpected.events.some(
         (event) =>
           (event.effect.kind === "file.read" ||
-            event.effect.kind === "file.write") &&
+            event.effect.kind === "file.write" ||
+            event.effect.kind === "file.delete") &&
           event.effect.outcome.status === "succeeded",
       );
       findings.push(
@@ -340,7 +346,11 @@ export async function evaluateRuntimeRules(options: {
 
     const unexpectedPaths = new Map<string, ObservedEventV1[]>();
     for (const event of activeEvents) {
-      if (event.effect.kind !== "file.read" && event.effect.kind !== "file.write") {
+      if (
+        event.effect.kind !== "file.read" &&
+        event.effect.kind !== "file.write" &&
+        event.effect.kind !== "file.delete"
+      ) {
         continue;
       }
       const allowed =
@@ -373,7 +383,8 @@ export async function evaluateRuntimeRules(options: {
       const succeeded = events.some(
         (event) =>
           (event.effect.kind === "file.read" ||
-            event.effect.kind === "file.write") &&
+            event.effect.kind === "file.write" ||
+            event.effect.kind === "file.delete") &&
           event.effect.outcome.status === "succeeded",
       );
       const sensitiveTitle =
@@ -381,9 +392,13 @@ export async function evaluateRuntimeRules(options: {
           ? succeeded
             ? "Tool read an unrelated synthetic credential"
             : "Tool attempted to read an unrelated synthetic credential"
-          : succeeded
-            ? "Tool modified an unrelated synthetic credential"
-            : "Tool attempted to modify an unrelated synthetic credential";
+          : kind === "file.delete"
+            ? succeeded
+              ? "Tool deleted an unrelated synthetic credential"
+              : "Tool attempted to delete an unrelated synthetic credential"
+            : succeeded
+              ? "Tool modified an unrelated synthetic credential"
+              : "Tool attempted to modify an unrelated synthetic credential";
       findings.push(
         finding({
           id: `finding-${experiment.id}-file-scope-${pathIndex}`,

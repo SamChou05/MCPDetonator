@@ -100,6 +100,44 @@ describe("loadTargetConfig", () => {
     await expect(loadTargetConfig(path)).rejects.toThrow("must be unique");
   });
 
+  it("reserves the baseline initialization experiment ID while initialization is enabled", async () => {
+    const path = await writeTarget(
+      validTarget.replace("id: summarize-file", "id: baseline-initialization"),
+    );
+
+    await expect(loadTargetConfig(path)).rejects.toThrow(TargetConfigError);
+    await expect(loadTargetConfig(path)).rejects.toThrow(
+      "'baseline-initialization' is reserved while initialization is enabled",
+    );
+  });
+
+  it("allows the baseline initialization ID when initialization is disabled", async () => {
+    const path = await writeTarget(
+      validTarget
+        .replace("initialization: true", "initialization: false")
+        .replace("id: summarize-file", "id: baseline-initialization"),
+    );
+
+    const loaded = await loadTargetConfig(path);
+    expect(loaded.config.experiments.tools[0]?.id).toBe(
+      "baseline-initialization",
+    );
+  });
+
+  it.each(["install-scripts-disabled", "install-scripts-enabled"])(
+    "reserves internal install experiment ID %s",
+    async (experimentId) => {
+      const path = await writeTarget(
+        validTarget.replace("id: summarize-file", `id: ${experimentId}`),
+      );
+
+      await expect(loadTargetConfig(path)).rejects.toThrow(TargetConfigError);
+      await expect(loadTargetConfig(path)).rejects.toThrow(
+        `'${experimentId}' is reserved for install lifecycle evidence`,
+      );
+    },
+  );
+
   it("rejects workflow experiments because execution is not implemented", async () => {
     const withWorkflow = validTarget.replace(
       "  workflows: []",

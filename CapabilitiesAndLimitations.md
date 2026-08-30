@@ -112,6 +112,30 @@ test settings
    tool's name, description, input rules, and extra hints supplied by the
    server. It also records the MCP requests and responses.
 
+   Forge separately performs a bounded, deterministic classification of
+   positive filesystem, network, and program-execution claims in tool names,
+   titles, descriptions, and input rules. Each claim points to the exact MCP
+   interface field that produced it. Standard MCP hints are retained as their
+   own evidence instead of being silently converted into permissions. The
+   classifier handles common negation, but it remains a lexical aid: “no claim
+   identified” does not mean the capability is absent.
+
+   Because every isolated start may advertise a different interface, Forge
+   records which experiment supplied the top-level summary and reports catalog
+   drift or duplicate tool names instead of silently treating the first list as
+   universal. Catalog drift uses a bounded, tool-order-independent SHA-256
+   fingerprint, while an order-sensitive fingerprint binds the selected source
+   interface. Object keys are sorted in JavaScript code-unit order; string
+   contents are preserved rather than Unicode-normalized. Forge iteratively
+   bounds the complete `tools/list` result—including fields it does not retain—
+   before MCP shape validation, so an untrusted output schema is not compiled
+   during discovery. It also bounds every JSON-RPC message before cloning or
+   persistence, the aggregate transcript, and captured server stderr. The
+   retained interface, claim extraction, and catalog fingerprints cover server
+   name/version plus tool name, title, description, input schema, and standard
+   annotations; output schemas and other unretained MCP metadata are not
+   analyzed or fingerprinted.
+
    Before calling a selected tool, Forge checks the example input against the
    input rules advertised by that tool. The person running Forge still chooses
    the tools, example inputs, and allowed behavior. The core test does not trust
@@ -131,6 +155,16 @@ test settings
    The network is blocked, but attempted connections are still recorded. This
    lets the report show that software tried to connect even when the connection
    failed.
+
+   Forge also records bounded before-and-after state for the synthetic home and
+   workspace. It hashes ordinary files up to a fixed size, records directories
+   and stationary symlink targets without intentionally following them, and
+   produces a durable
+   created/modified/deleted/type-changed delta for each isolated experiment.
+   Aggregate visited-entry, hash-byte, issue, and best-effort elapsed-time
+   budgets prevent many individually small files or errors from bypassing the
+   per-entry limits. Pathname-replacement races remain possible despite scanning
+   after verified container cleanup and are stated as a limitation.
 
 5. **Turn the raw trace logs into readable actions.** Raw `strace` lines are
    detailed and tied to Linux internals. Forge converts the supported lines into
@@ -160,7 +194,9 @@ test settings
    is strongest when the tool call runs by itself, creates the process, and the
    action happens during that call. Timing by itself is weaker evidence, so the
    report says how confident Forge is instead of claiming perfect cause and
-   effect.
+   effect. Four-way comparison rows also list tool-phase events supported only
+   by temporal overlap with an earlier-origin process, so machine consumers do
+   not have to infer that caveat from prose.
 
 7. **Check the actions and write the report.** Forge applies the same fixed
    checks to every target. The current checks look for:
@@ -169,17 +205,25 @@ test settings
      pre-tool observation window.
    - Exceeding an optional operator-authored initialization scope for synthetic
      files, child programs, or non-local network destinations.
-   - Reading or writing a file outside the allowed list for a tool.
+   - Reading, writing, or deleting a file outside the allowed list for a tool;
+     deletions use the configured write scope.
    - Starting a program outside the allowed list.
    - Trying an unexpected network connection.
    - A process created by a tool continuing to act after the tool returned.
 
-   Forge also places the code scan beside the recorded behavior. For file
-   access, child programs, and network use, the report says whether Forge saw a
-   matching code clue and whether it saw matching behavior during the selected
-   tests. Environment-variable access, code created while running, modules
-   chosen while running, and compiled native code are not yet checked in this
-   side-by-side view.
+   Forge also compares four deliberately separate facts for file access, child
+   programs, and non-local network use: whether the tool interface made a
+   bounded positive claim, whether package-authored source contained a lexical
+   signal, whether the selected runtime phases produced matching events, and
+   whether those exact events fell inside the operator-authored scope. Tool
+   claims never enlarge operator approval. Environment-variable access, code
+   created while running, modules chosen while running, and compiled native
+   code are not yet checked in this four-way view.
+
+   A row says `not_observed` when Forge did not obtain a bounded claim
+   assessment for that experiment's configured tool. That is distinct from
+   `not_claimed`, which means an available bounded assessment found no matching
+   positive signal.
 
    “Not found in the code scan” means Forge did not find one of its known text
    patterns. “Not seen while running” means the selected test inputs did not
@@ -189,11 +233,15 @@ test settings
 The main code for these steps is in
 [`src/static/node-package.ts`](src/static/node-package.ts),
 [`src/mcp/stdio.ts`](src/mcp/stdio.ts),
+[`src/mcp/catalog.ts`](src/mcp/catalog.ts),
+[`src/mcp/interface-claims.ts`](src/mcp/interface-claims.ts),
 [`container/trace-entrypoint.sh`](container/trace-entrypoint.sh),
 [`src/observe/strace-parser.ts`](src/observe/strace-parser.ts),
 [`src/observe/strace-normalizer.ts`](src/observe/strace-normalizer.ts),
-[`src/attribute.ts`](src/attribute.ts), [`src/rules.ts`](src/rules.ts), and
-[`src/report.ts`](src/report.ts).
+[`src/observe/filesystem-state.ts`](src/observe/filesystem-state.ts),
+[`src/attribute.ts`](src/attribute.ts),
+[`src/behavior-comparison.ts`](src/behavior-comparison.ts),
+[`src/rules.ts`](src/rules.ts), and [`src/report.ts`](src/report.ts).
 
 ### What the core test produces
 
@@ -203,9 +251,12 @@ The main code for these steps is in
 - The package and source-file fingerprints used to identify the tested code.
 - Package scans from before installation and from the copy actually tested.
 - MCP tool information and message logs.
+- Bounded advertised-claim evidence and standard MCP annotation evidence.
 - Raw `strace` logs and the smaller list of readable actions created from them.
+- Before/after synthetic-profile snapshots and durable filesystem deltas for
+  every initialization or tool experiment.
 - Test-step timings, action-to-step links, rule results, server error output, and
-  descriptions of the fake test environment.
+  a claimed/source/observed/configured-scope comparison.
 
 ### What the core test cannot tell you
 
@@ -222,6 +273,11 @@ The main code for these steps is in
   network traffic.
 - Supported failed syscall attempts are evidence of attempted behavior, not
   proof that the requested access or execution succeeded.
+- Filesystem snapshots are bounded and omit some metadata. Large same-size
+  content changes can be missed when a file exceeds the hashing limit, and a
+  state delta identifies an isolated experiment window rather than one process,
+  source line, or exact phase. The elapsed-time bound is checked between
+  operations and cannot interrupt one blocking filesystem call.
 - Connecting an action to a tool uses timing and process history. This is useful
   evidence, but it is not perfect proof that one exact line of code caused the
   action.

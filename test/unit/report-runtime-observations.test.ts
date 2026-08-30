@@ -6,6 +6,7 @@ import {
   observedEventV1Schema,
   phaseV1Schema,
 } from "../../src/contracts/v1.js";
+import { filesystemStateDeltaV1Schema } from "../../src/observe/filesystem-state.js";
 import { summarizeRuntimeObservations } from "../../src/report.js";
 
 describe("runtime observation report summary", () => {
@@ -122,6 +123,35 @@ describe("runtime observation report summary", () => {
         confidence: "medium",
         reasons: ["process_origin_precedes_active_phase"],
       });
+    const filesystemStateDelta = filesystemStateDeltaV1Schema.parse({
+      schema: "forge.filesystem-delta/v1",
+      runId: "run-summary",
+      experimentId: "read-document",
+      artifactRefs: {
+        before: "runtime/filesystem-state/read-document/before.json",
+        after: "runtime/filesystem-state/read-document/after.json",
+        delta: "runtime/filesystem-state/read-document/delta.json",
+      },
+      snapshotsComplete: { before: true, after: true },
+      changes: {
+        created: [
+          {
+            root: "workspace",
+            path: "/sandbox/workspace/output.txt",
+            kind: "file",
+            mode: 0o644,
+            size: 6,
+            content: { status: "hashed", sha256: "a".repeat(64) },
+          },
+        ],
+        modified: [],
+        deleted: [],
+        typeChanged: [],
+      },
+      limitations: [
+        "Experiment-level state change; exact process and phase are unknown.",
+      ],
+    });
 
     const result = summarizeRuntimeObservations({
       config,
@@ -140,6 +170,7 @@ describe("runtime observation report summary", () => {
           reasons: ["outside_phase"],
         }),
       ],
+      filesystemStateDeltas: [filesystemStateDelta],
     });
 
     expect(result).toEqual([
@@ -159,6 +190,27 @@ describe("runtime observation report summary", () => {
             },
           ],
           examplesTruncated: false,
+        },
+        filesystemStateDelta: {
+          scope: "isolated_experiment_window",
+          attribution: "experiment_only",
+          snapshotsComplete: { before: true, after: true },
+          changeCounts: {
+            created: 1,
+            modified: 0,
+            deleted: 0,
+            typeChanged: 0,
+          },
+          examples: [
+            {
+              change: "created",
+              path: "/sandbox/workspace/output.txt",
+              afterKind: "file",
+            },
+          ],
+          examplesTruncated: false,
+          artifactRefs: filesystemStateDelta.artifactRefs,
+          limitations: filesystemStateDelta.limitations,
         },
       },
     ]);

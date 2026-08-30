@@ -13,9 +13,10 @@ target config
   -> scripts-disabled / scripts-enabled install comparison when preparation
      produced a reusable npm cache
   -> isolated initialization and tool experiments
-  -> raw MCP and operating-system evidence
+  -> advertised-interface claims plus raw MCP and operating-system evidence
+  -> bounded before/after synthetic-profile state
   -> normalized events and phase attribution
-  -> phase-scoped runtime summary and bounded static/runtime comparison
+  -> phase-scoped runtime summary and claimed/source/observed/scope comparison
   -> deterministic runtime findings
   -> report.json
 ```
@@ -72,7 +73,7 @@ Dependency acquisition and install use `sandbox.limits.installTimeoutMs` (defaul
 
 ### 5. Isolated runtime observation
 
-Initialization and every configured tool input start from a fresh synthetic developer profile and fresh container. The Node target communicates over STDIO through the MCP SDK. Handshake, tool discovery, invocation, and the bounded observation window are recorded as separate stages. The dedicated initialization run includes its observation window as pre-tool evidence. `strace -ff` follows processes and records the selected process, file, network, read, and write syscalls. The normalizer retains supported failed exec/file attempts and terminal signal exits when the raw trace identifies them reliably. The target runs without capabilities while the protected supervisor owns raw traces.
+Initialization and every configured tool input start from a fresh synthetic developer profile and fresh container. The Node target communicates over STDIO through the MCP SDK. Handshake, tool discovery, invocation, and the bounded observation window are recorded as separate stages. Tool discovery requests raw `tools/list` data, applies an iterative whole-result budget before MCP shape validation, and therefore does not ask the SDK to compile an untrusted output schema during discovery. Every JSON-RPC message is likewise iteratively bounded and cloned before persistence; per-message, aggregate transcript count/bytes, and server-stderr quotas fail the experiment closed. The dedicated initialization run includes its observation window as pre-tool evidence. `strace -ff` follows processes and records the selected process, file, network, read, and write syscalls. The normalizer retains supported failed exec/file attempts and terminal signal exits when the raw trace identifies them reliably. Before and after each isolated runtime experiment, Forge also captures bounded synthetic-home/workspace state, does not intentionally follow stationary symlinks, explicitly records pathname-replacement TOCTOU limits, and persists created/modified/deleted/type-changed deltas. Per-entry and aggregate entry/hash/error/time budgets are explicit, and the after-snapshot starts only after label ownership and repeated container absence are verified. The target runs without capabilities while the protected supervisor owns raw traces.
 
 ### 6. Normalization, attribution, and deterministic rules
 
@@ -83,11 +84,11 @@ records the active lifecycle/tool phase per event and infers process origin from
 that process's first observed event. Matching isolated phases raise confidence;
 they do not prove unique causality.
 
-Current policy rules compare tool effects with operator-owned expected scope for file reads/writes, child executables, and network destinations. Initialization remains backwards compatible as a boolean, but may instead carry its own expected scope; that enables deterministic checks for synthetic file access, child executables, and non-Unix network attempts before any tool call. Separate rules surface sensitive initialization access and meaningful effects from tool-originated processes after a response. Failed access attempts are described as attempts rather than completed access. The rules do not trust MCP-authored descriptions as policy.
+Current policy rules compare tool effects with operator-owned expected scope for file reads/writes, child executables, and network destinations; file deletion is treated as a mutation governed by the write scope. Initialization remains backwards compatible as a boolean, but may instead carry its own expected scope; that enables deterministic checks for synthetic file access, child executables, and non-Unix network attempts before any tool call. Separate rules surface sensitive initialization access and meaningful effects from tool-originated processes after a response. Failed access attempts are described as attempts rather than completed access. The rules do not trust MCP-authored descriptions as policy.
 
 ### 7. Evidence-linked report
 
-`report.json` combines artifact provenance, advertised MCP interface, static summary, installation outcomes/delta, experiment inputs and expectations, phase-scoped effect counts, compact expected-scope examples, deterministic findings, a bounded static/runtime capability table, evidence paths, and explicit limitations. Each positive example keeps its event ID, observed effect, attribution confidence, and raw trace reference. The comparison distinguishes found/observed, not-found/not-observed, and not-comparable states without treating agreement as proof of safety or intent. JSON/JSONL remains the primary output so deterministic code or a future LLM can consume the same facts.
+`report.json` combines artifact provenance, advertised MCP interface, bounded interface-claim/annotation evidence, static summary, installation outcomes/delta, experiment inputs and expectations, phase-scoped effect counts, compact expected-scope examples, deterministic findings, filesystem-state deltas, evidence paths, and explicit limitations. The interface summary names its source experiment and reports cross-start catalog drift or duplicate tool names using a bounded, tool-order-independent SHA-256 catalog fingerprint; a separate order-sensitive fingerprint binds the selected source interface. Object keys are sorted in JavaScript code-unit order without Unicode-normalizing string contents, and over-limit interface catalogs fail explicitly before recursive serialization. The retained interface and fingerprints bind server name/version and each tool's name, title, description, input schema, and standard annotations; output schemas and other unretained MCP metadata are bounded during acquisition but are not included in claim extraction or drift fingerprints. Each positive syscall example keeps its event ID, observed effect, attribution confidence, and raw trace reference. A per-experiment four-way table keeps advertised claims, package-source signals, selected runtime events, and operator-configured scope separate, with exact event IDs partitioned inside/outside/unclassified and tool-phase temporal-overlap IDs called out. `not_observed` claim state means the configured tool lacked a bounded claim assessment, while `not_claimed` means an available assessment found no positive signal. Advertised claims remain untrusted and selected non-observation is never treated as proof of absence. State summaries are machine-labeled as isolated-experiment-window evidence with experiment-only attribution. JSON/JSONL remains the primary output so deterministic code or a future LLM can consume the same facts.
 
 ### 8. Supplementary Agent V1
 
@@ -124,8 +125,8 @@ unchanged.
 
 The paired end-to-end check currently verifies for these two cases:
 
-- The official `@modelcontextprotocol/server-filesystem@2026.7.10` package can be acquired, statically inspected, installed both ways, initialized, and exercised with `read_text_file` and `write_file`. Expected read/write events are linked to the correct tool phases and raw traces, tool counts exclude initialization/cooldown noise, and the bounded comparison reports static and observed filesystem capability. Its checked-in representative report has no deterministic finding.
-- The local deceptive MCP passes through the same pipeline. Its representative report, [`examples/reports/deceptive-control.report.json`](examples/reports/deceptive-control.report.json), produces exactly five deterministic findings: high-confidence initialization-sensitive access; file-scope, child-process, and network violations; and medium-confidence tool-originated post-return activity. Its install delta also reveals the controlled postinstall process, synthetic canary read, and marker write.
+- The official `@modelcontextprotocol/server-filesystem@2026.7.10` package can be acquired, statically inspected, installed both ways, initialized, and exercised with `read_text_file` and `write_file`. Expected read/write events are linked to the correct tool phases and raw traces, the interface/source/runtime/scope comparison aligns for both tools, the read leaves state unchanged, and the write produces a linked durable created-file delta. Its checked-in representative report has no deterministic finding.
+- The local deceptive MCP passes through the same pipeline. Its representative report, [`examples/reports/deceptive-control.report.json`](examples/reports/deceptive-control.report.json), produces exactly five deterministic findings: high-confidence initialization-sensitive access; file-scope, child-process, and network violations; and medium-confidence tool-originated post-return activity. Its install delta also reveals the controlled postinstall process, synthetic canary read, and marker write. The four-way comparison shows advertised filesystem behavior but no bounded positive process/network claim, while runtime observes both outside operator scope.
 - The verifier checks that both run manifests record the same resolved immutable observer image ID and that selected case-study identifiers do not appear in core source/container code.
 
 This is meaningful evidence against direct case-specific branching. It is not enough to claim that every Node MCP, package layout, or behavior is supported.
@@ -142,7 +143,7 @@ npm run verify:e2e
 npm run verify:agent
 ```
 
-`npm run verify:e2e` builds the CLI, runs both full analyses, validates positive and negative evidence, checks exact npm provenance, acquisition/install completion, phase-scoped counts, bounded static/runtime comparison, immutable observer-image identity, and cleanup.
+`npm run verify:e2e` builds the CLI, runs both full analyses, validates positive and negative evidence, checks exact npm provenance, acquisition/install completion, phase-scoped counts, claim-reference resolution, all cells of the four-way comparison, linked before/after/delta artifacts, immutable observer-image identity, and verified cleanup.
 
 `npm run verify:agent` uses a deterministic scripted provider and the poisoned
 metadata fixture to verify policy modes, synthetic effects, provider-data
@@ -152,8 +153,8 @@ a live OpenRouter request.
 ## Remaining work, in priority order
 
 1. **Challenge generalization with an unseen third target.** Select another independently authored Node/STDIO MCP and require a configuration-only integration. Any failure should improve a generic adapter or contract, never add package/tool-name branches.
-2. **Harden evidence fidelity.** Failed exec/file attempts and terminal signal exits now have adversarial coverage. Continue with symlinks/path changes, create/rename/truncate semantics, concurrent children, timeouts, sockets, filesystem state deltas, and partial-run preservation. Expand the syscall model only where a concrete blind spot justifies it.
-3. **Deepen capability correlation.** Add entrypoint-aware reachability context and carefully scoped dependency-source signals to the existing bounded static/runtime table, without treating either side as proof of safety or intent.
+2. **Harden evidence fidelity.** Failed exec/file attempts, terminal signal exits, and bounded filesystem state deltas now have adversarial coverage. Continue with syscall-level create/rename/truncate semantics, concurrent children, timeouts, sockets, and partial-run preservation. Expand the syscall model only where a concrete blind spot justifies it.
+3. **Deepen capability correlation.** Add entrypoint-aware reachability context, carefully scoped dependency-source signals, environment-read evidence, and Node module-load evidence to the current four-way comparison without treating any evidence source as proof of safety or intent.
 4. **Improve isolation before hostile production use.** Move execution to disposable Linux workers or microVMs and put observation outside the target boundary, potentially with eBPF or another host-side sensor.
 5. **Add breadth only after the core is stronger.** Multi-tool core workflows, HTML, LLM explanation, and integration of the standalone Agent V1 results remain lower priority than target generalization and evidence correctness.
 
@@ -165,5 +166,5 @@ a live OpenRouter request.
 - Hand-authored initialization/tool experiments only; workflow execution is not wired into analysis.
 - No HTML report or LLM interpretation. Agent rollouts are implemented only as a separate supplementary V1 and are not part of core findings or admission decisions.
 - No production VM/microVM boundary, out-of-container observer, or eBPF implementation.
-- The static/runtime table covers selected capabilities and inputs; it is not whole-program reachability or a safety verdict.
+- The four-way comparison covers selected capabilities and inputs; bounded claim/source absence and runtime non-observation are not whole-program reachability or a safety verdict.
 - A clean selected-input report means “no covered mismatch observed,” never “safe.”

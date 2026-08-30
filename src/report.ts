@@ -4,6 +4,11 @@ import {
   type TargetConfigV1,
 } from "./config.js";
 import {
+  compareAdvertisedStaticObservedAndApproved,
+  type AdvertisedClaimsByExperiment,
+  type ComparedBehaviorCapability,
+} from "./behavior-comparison.js";
+import {
   reportV1Schema,
   type AttributionV1,
   type FindingV1,
@@ -24,8 +29,20 @@ import type {
 } from "./static/contracts.js";
 import type { InstallLifecycleObservation } from "./install/lifecycle.js";
 import type { InstallLifecycleDeltaV1 } from "./install/delta.js";
+import {
+  extractMcpAdvertisedClaims,
+  mcpAdvertisedClaimsV1Schema,
+  type McpAdvertisedClaimsV1,
+} from "./mcp/interface-claims.js";
+import {
+  assertMcpCatalogWithinLimits,
+  MCP_CATALOG_HASH_ALGORITHM,
+  MCP_CATALOG_LIMITS,
+} from "./mcp/catalog.js";
+import type { FilesystemStateDeltaV1 } from "./observe/filesystem-state.js";
 
 const maxExpectedScopeExamples = 25;
+const maxFilesystemStateExamples = 50;
 const comparedCapabilities = new Set<StaticCapability>([
   "filesystem_access",
   "process_execution",
@@ -41,6 +58,106 @@ const allStaticCapabilities: readonly StaticCapability[] = [
   "native_code_loading",
 ];
 
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+export function summarizeAdvertisedInterfaces(
+  interfaces: readonly McpInterfaceV1[],
+): ReportV1["advertisedInterfaceSummary"] {
+  if (interfaces.length === 0) {
+    return {
+      selection: "first_observed_interface",
+      catalogHashAlgorithm: MCP_CATALOG_HASH_ALGORITHM,
+      catalogLimits: MCP_CATALOG_LIMITS,
+      catalogConsistency: "not_observed",
+      comparedExperimentIds: [],
+      catalogFingerprints: [],
+      differingExperimentIds: [],
+      duplicateToolNames: [],
+      limitations: [
+        "No MCP interface completed, so the top-level advertised server and tools use explicit unknown/empty placeholders.",
+      ],
+    };
+  }
+
+  const byExperiment = new Map<string, McpInterfaceV1>();
+  for (const mcpInterface of interfaces) {
+    if (byExperiment.has(mcpInterface.experimentId)) {
+      throw new Error(
+        `MCP interfaces contain duplicate experiment ID '${mcpInterface.experimentId}'`,
+      );
+    }
+    byExperiment.set(mcpInterface.experimentId, mcpInterface);
+  }
+  const source = interfaces[0];
+  if (source === undefined) {
+    throw new Error("missing first observed MCP interface");
+  }
+  const fingerprints = new Map(
+    interfaces.map((mcpInterface) => [
+      mcpInterface.experimentId,
+      assertMcpCatalogWithinLimits(mcpInterface.server, mcpInterface.tools),
+    ]),
+  );
+  const sourceFingerprint = fingerprints.get(source.experimentId);
+  if (sourceFingerprint === undefined) {
+    throw new Error("missing source MCP catalog fingerprint");
+  }
+  const comparedExperimentIds = [...byExperiment.keys()].sort(compareText);
+  const differingExperimentIds = comparedExperimentIds.filter(
+    (experimentId) =>
+      fingerprints.get(experimentId)?.sha256 !== sourceFingerprint.sha256,
+  );
+  const catalogFingerprints = comparedExperimentIds.map((experimentId) => {
+    const fingerprint = fingerprints.get(experimentId);
+    if (fingerprint === undefined) {
+      throw new Error(
+        `missing MCP catalog fingerprint for experiment '${experimentId}'`,
+      );
+    }
+    return {
+      experimentId,
+      sha256: fingerprint.sha256,
+      orderedSha256: fingerprint.orderedSha256,
+    };
+  });
+  const duplicateToolNames: ReportV1["advertisedInterfaceSummary"]["duplicateToolNames"] = [];
+  for (const experimentId of comparedExperimentIds) {
+    const mcpInterface = byExperiment.get(experimentId);
+    if (mcpInterface === undefined) continue;
+    const counts = new Map<string, number>();
+    for (const tool of mcpInterface.tools) {
+      counts.set(tool.name, (counts.get(tool.name) ?? 0) + 1);
+    }
+    const names = [...counts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([name]) => name)
+      .sort(compareText);
+    if (names.length > 0) duplicateToolNames.push({ experimentId, names });
+  }
+
+  return {
+    selection: "first_observed_interface",
+    catalogHashAlgorithm: MCP_CATALOG_HASH_ALGORITHM,
+    catalogLimits: MCP_CATALOG_LIMITS,
+    sourceCatalogSha256: sourceFingerprint.sha256,
+    sourceOrderedCatalogSha256: sourceFingerprint.orderedSha256,
+    sourceExperimentId: source.experimentId,
+    catalogConsistency:
+      differingExperimentIds.length === 0 ? "consistent" : "drift_detected",
+    comparedExperimentIds,
+    catalogFingerprints,
+    differingExperimentIds,
+    duplicateToolNames,
+    limitations: [
+      "The top-level advertisedServer and advertisedTools are copied from sourceExperimentId; per-experiment interface artifacts remain authoritative when drift or duplicate tool names are reported.",
+      "Catalog consistency uses a bounded, tool-order-independent SHA-256 digest of the retained server name/version and each tool's name, title, description, input schema, and annotations; a separate order-sensitive digest binds the selected source interface.",
+      "The complete tools/list result is bounded before schema validation, but output schemas and other unretained MCP metadata are not included in interface artifacts, claim extraction, or catalog-drift fingerprints.",
+    ],
+  };
+}
+
 type ProfileRootsByExperiment = ReadonlyMap<
   string,
   { readonly home: string; readonly workspace: string }
@@ -50,6 +167,57 @@ type RuntimeObservation = ReportV1["runtimeObservations"][number];
 type ExpectedScopeExample = NonNullable<
   RuntimeObservation["expectedScopeMatches"]
 >["examples"][number];
+
+function comparisonClaimsByExperiment(
+  config: TargetConfigV1,
+  claims: McpAdvertisedClaimsV1,
+): AdvertisedClaimsByExperiment {
+  const interfaceByExperiment = new Map(
+    claims.interfaces.map((analysis) => [analysis.experimentId, analysis]),
+  );
+  if (interfaceByExperiment.size !== claims.interfaces.length) {
+    throw new Error("advertised claim analyses contain duplicate experiment IDs");
+  }
+
+  const result = new Map<
+    string,
+    Map<
+      ComparedBehaviorCapability,
+      { readonly evidenceId: string; readonly fieldReference: string }[]
+    >
+  >();
+  for (const experiment of config.experiments.tools) {
+    const analysis = interfaceByExperiment.get(experiment.id);
+    const matchingAssessments =
+      analysis?.capabilityAssessments.filter(
+        (assessment) => assessment.toolName === experiment.tool,
+      ) ?? [];
+    if (matchingAssessments.length === 0) {
+      continue;
+    }
+    const byCapability = new Map<
+      ComparedBehaviorCapability,
+      { readonly evidenceId: string; readonly fieldReference: string }[]
+    >();
+    for (const assessment of matchingAssessments) {
+      if (
+        assessment.status !== "claim_identified"
+      ) {
+        continue;
+      }
+      const references = byCapability.get(assessment.capability) ?? [];
+      references.push(
+        ...assessment.evidence.map((evidence) => ({
+          evidenceId: evidence.evidenceId,
+          fieldReference: evidence.pointer,
+        })),
+      );
+      byCapability.set(assessment.capability, references);
+    }
+    result.set(experiment.id, byCapability);
+  }
+  return result;
+}
 
 function eventMatchesExpectedScope(
   event: ObservedEventV1,
@@ -66,6 +234,15 @@ function eventMatchesExpectedScope(
         expected.fileReadPrefixes,
       );
     case "file.write":
+      if (event.effect.outcome.status !== "succeeded") {
+        return false;
+      }
+      return pathMatchesExpectedScope(
+        event.effect.path,
+        expected.fileWrites,
+        expected.fileWritePrefixes,
+      );
+    case "file.delete":
       if (event.effect.outcome.status !== "succeeded") {
         return false;
       }
@@ -98,6 +275,7 @@ function expectedScopeExampleKey(event: ObservedEventV1): string {
   switch (event.effect.kind) {
     case "file.read":
     case "file.write":
+    case "file.delete":
       return `${event.effect.kind}:${event.effect.path}`;
     case "process.exec":
       return `${event.effect.kind}:${event.effect.executable}:${JSON.stringify(event.effect.args)}`;
@@ -118,16 +296,90 @@ function effectCounts(events: readonly ObservedEventV1[]): RuntimeObservation["e
     .map(([effectKind, count]) => ({ effectKind, count }));
 }
 
+function summarizeFilesystemStateDelta(
+  delta: FilesystemStateDeltaV1 | undefined,
+): NonNullable<RuntimeObservation["filesystemStateDelta"]> | undefined {
+  if (delta === undefined) {
+    return undefined;
+  }
+  const allExamples: NonNullable<
+    RuntimeObservation["filesystemStateDelta"]
+  >["examples"] = [
+    ...delta.changes.created.map((entry) => ({
+      change: "created" as const,
+      path: entry.path,
+      afterKind: entry.kind,
+    })),
+    ...delta.changes.modified.map((entry) => ({
+      change: "modified" as const,
+      path: entry.path,
+      beforeKind: entry.before.kind,
+      afterKind: entry.after.kind,
+      changedAttributes: entry.changed,
+    })),
+    ...delta.changes.deleted.map((entry) => ({
+      change: "deleted" as const,
+      path: entry.path,
+      beforeKind: entry.kind,
+    })),
+    ...delta.changes.typeChanged.map((entry) => ({
+      change: "type_changed" as const,
+      path: entry.path,
+      beforeKind: entry.before.kind,
+      afterKind: entry.after.kind,
+    })),
+  ];
+  allExamples.sort(
+    (left, right) =>
+      compareText(left.path, right.path) || compareText(left.change, right.change),
+  );
+  const examples = allExamples.slice(0, maxFilesystemStateExamples);
+  const examplesTruncated = examples.length < allExamples.length;
+
+  return {
+    scope: "isolated_experiment_window",
+    attribution: "experiment_only",
+    snapshotsComplete: delta.snapshotsComplete,
+    changeCounts: {
+      created: delta.changes.created.length,
+      modified: delta.changes.modified.length,
+      deleted: delta.changes.deleted.length,
+      typeChanged: delta.changes.typeChanged.length,
+    },
+    examples,
+    examplesTruncated,
+    artifactRefs: delta.artifactRefs,
+    limitations: [
+      ...delta.limitations,
+      ...(examplesTruncated
+        ? [
+            `The report includes the first ${maxFilesystemStateExamples} state changes in stable path order; the complete delta remains in ${delta.artifactRefs.delta}.`,
+          ]
+        : []),
+    ],
+  };
+}
+
 export function summarizeRuntimeObservations(options: {
   readonly config: TargetConfigV1;
   readonly events: readonly ObservedEventV1[];
   readonly phases: readonly PhaseV1[];
   readonly attributions: readonly AttributionV1[];
+  readonly filesystemStateDeltas?: readonly FilesystemStateDeltaV1[];
 }): ReportV1["runtimeObservations"] {
   const attributionByEvent = new Map(
     options.attributions.map((attribution) => [attribution.eventId, attribution]),
   );
   const observations: ReportV1["runtimeObservations"] = [];
+  const filesystemStateByExperiment = new Map<string, FilesystemStateDeltaV1>();
+  for (const delta of options.filesystemStateDeltas ?? []) {
+    if (filesystemStateByExperiment.has(delta.experimentId)) {
+      throw new Error(
+        `duplicate filesystem state delta for experiment '${delta.experimentId}'`,
+      );
+    }
+    filesystemStateByExperiment.set(delta.experimentId, delta);
+  }
 
   if (initializationEnabled(options.config.experiments.initialization)) {
     const experimentEvents = options.events.filter(
@@ -151,6 +403,9 @@ export function summarizeRuntimeObservations(options: {
                 attributionByEvent.get(event.eventId)?.activePhaseId ?? "",
               ),
           );
+    const filesystemStateDelta = summarizeFilesystemStateDelta(
+      filesystemStateByExperiment.get("baseline-initialization"),
+    );
     observations.push({
       experimentId: "baseline-initialization",
       kind: "initialization",
@@ -167,6 +422,9 @@ export function summarizeRuntimeObservations(options: {
           effectCounts: effectCounts(phaseEvents),
         };
       }),
+      ...(filesystemStateDelta === undefined
+        ? {}
+        : { filesystemStateDelta }),
     });
   }
 
@@ -204,6 +462,9 @@ export function summarizeRuntimeObservations(options: {
       });
     }
     const examples = [...uniqueExamples.values()].slice(0, maxExpectedScopeExamples);
+    const filesystemStateDelta = summarizeFilesystemStateDelta(
+      filesystemStateByExperiment.get(experiment.id),
+    );
     observations.push({
       experimentId: experiment.id,
       kind: "tool",
@@ -214,6 +475,9 @@ export function summarizeRuntimeObservations(options: {
         examples,
         examplesTruncated: uniqueExamples.size > examples.length,
       },
+      ...(filesystemStateDelta === undefined
+        ? {}
+        : { filesystemStateDelta }),
     });
   }
 
@@ -222,6 +486,10 @@ export function summarizeRuntimeObservations(options: {
 
 function pathIsInside(path: string, root: string): boolean {
   return path === root || path.startsWith(root.endsWith("/") ? root : `${root}/`);
+}
+
+function processIdentity(experimentId: string, processRef: string): string {
+  return JSON.stringify([experimentId, processRef]);
 }
 
 export function compareStaticAndRuntime(options: {
@@ -242,14 +510,14 @@ export function compareStaticAndRuntime(options: {
   const attributionByEvent = new Map(
     options.attributions.map((attribution) => [attribution.eventId, attribution]),
   );
-  const childProcessRefs = new Set(
+  const childProcessIdentities = new Set(
     options.events
       .filter(
         (event) =>
           event.effect.kind === "process.start" &&
           event.effect.parentProcessRef !== undefined,
       )
-      .map((event) => event.processRef),
+      .map((event) => processIdentity(event.experimentId, event.processRef)),
   );
   const runtimeEventsByCapability = new Map<
     StaticCapability,
@@ -308,8 +576,9 @@ export function compareStaticAndRuntime(options: {
     }
     if (
       event.effect.kind === "process.exec" &&
-      event.effect.outcome.status === "succeeded" &&
-      childProcessRefs.has(event.processRef)
+      childProcessIdentities.has(
+        processIdentity(event.experimentId, event.processRef),
+      )
     ) {
       addRuntimeEvent("process_execution", event);
       continue;
@@ -372,7 +641,7 @@ export function compareStaticAndRuntime(options: {
     rows,
     limitations: [
       "The static scan is bounded lexical analysis of package-authored source and excludes dependency source.",
-      "Filesystem comparison is limited to normalized reads, writes, and deletes under the synthetic home/workspace roots, so open-only activity is excluded; process comparison excludes the root server exec; network comparison excludes Unix-domain sockets.",
+      "Runtime comparison includes supported failed attempts. Filesystem comparison is limited to normalized reads, writes, and deletes under the synthetic home/workspace roots, so open-only activity is excluded; process comparison excludes the root server exec; network comparison excludes Unix-domain sockets.",
       "Environment, dynamic-code, dynamic-module, and native-code capabilities are not directly comparable with the current normalized runtime evidence.",
       "Agreement or disagreement is evidence about selected inputs, not a verdict about intent or safety.",
     ],
@@ -483,6 +752,7 @@ export async function writeReport(options: {
   readonly provenance: TargetProvenanceV1;
   readonly staticInspection: NodePackageStaticInspectionV1;
   readonly profileRootsByExperiment: ProfileRootsByExperiment;
+  readonly filesystemStateDeltas?: readonly FilesystemStateDeltaV1[];
   readonly installObservation?: InstallLifecycleObservation;
   readonly installDelta?: InstallLifecycleDeltaV1;
   readonly limitations: readonly string[];
@@ -494,13 +764,27 @@ export async function writeReport(options: {
     );
   }
   const canonicalInterface = options.interfaces[0];
+  const advertisedInterfaceSummary = summarizeAdvertisedInterfaces(
+    options.interfaces,
+  );
+  const advertisedClaims = extractMcpAdvertisedClaims(
+    options.runId,
+    options.interfaces,
+  );
+  await options.store.writeJson(
+    "mcp/advertised-claims.json",
+    mcpAdvertisedClaimsV1Schema,
+    advertisedClaims,
+  );
   const initializationScope = initializationExpectedScope(
     options.config.experiments.initialization,
   );
   const advertisedTools = (canonicalInterface?.tools ?? []).map((tool) => ({
     name: tool.name,
+    ...(tool.title === undefined ? {} : { title: tool.title }),
     ...(tool.description === undefined ? {} : { description: tool.description }),
     inputSchema: tool.inputSchema,
+    ...(tool.annotations === undefined ? {} : { annotations: tool.annotations }),
   }));
   const experiments: ReportV1["experiments"] = [
     ...(options.installObservation?.experiments.map((experiment) => ({
@@ -558,8 +842,22 @@ export async function writeReport(options: {
       version: "unknown-version",
     },
     advertisedTools,
+    advertisedInterfaceSummary,
+    advertisedClaims,
     staticAnalysis: summarizeStaticAnalysis(options.staticInspection, runtimeSnapshot),
     staticRuntimeComparison: compareStaticAndRuntime({
+      staticInspection: options.staticInspection,
+      events: options.events,
+      phases: options.phases,
+      attributions: options.attributions,
+      profileRootsByExperiment: options.profileRootsByExperiment,
+    }),
+    behaviorComparison: compareAdvertisedStaticObservedAndApproved({
+      config: options.config,
+      advertisedClaimsByExperiment: comparisonClaimsByExperiment(
+        options.config,
+        advertisedClaims,
+      ),
       staticInspection: options.staticInspection,
       events: options.events,
       phases: options.phases,
@@ -572,6 +870,9 @@ export async function writeReport(options: {
       events: options.events,
       phases: options.phases,
       attributions: options.attributions,
+      ...(options.filesystemStateDeltas === undefined
+        ? {}
+        : { filesystemStateDeltas: options.filesystemStateDeltas }),
     }),
     installLifecycle:
       options.installObservation === undefined
@@ -628,9 +929,13 @@ export async function writeReport(options: {
       targetProvenance: "target/provenance.json",
       staticInspection: "static/inspection.json",
       preInstallStaticInspection: "static/pre-install-inspection.json",
+      advertisedClaims: "mcp/advertised-claims.json",
       ...(options.installDelta === undefined
         ? {}
         : { installDelta: "install/delta.json" }),
+      ...((options.filesystemStateDeltas?.length ?? 0) === 0
+        ? {}
+        : { filesystemStateRoot: "runtime/filesystem-state" }),
     },
     limitations: [...options.limitations],
   };
