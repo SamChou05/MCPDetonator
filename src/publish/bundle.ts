@@ -56,6 +56,8 @@ export interface VerifiedRunBundle {
   readonly manifestBytes: Uint8Array;
   readonly manifestSha256: string;
   readonly manifest: RunManifestV1;
+  /** Exact verified report.json bytes retained for disclosure-safe projections. */
+  readonly reportBytes: Uint8Array;
   readonly report: ReportV1;
   readonly reportArtifact: VerifiedRunArtifact;
   readonly artifacts: readonly VerifiedRunArtifact[];
@@ -668,6 +670,7 @@ export async function verifyRunBundle(
       manifestBytes: inspectedManifest.bytes,
       manifestSha256: inspectedManifest.sha256,
       manifest,
+      reportBytes,
       report,
       reportArtifact,
       artifacts: verifiedArtifacts,

@@ -1,0 +1,101 @@
+{
+  "schema": "forge.dashboard-policy-source/v1",
+  "revision": "forge.dashboard-policy/v1",
+  "targets": [
+    {
+      "role": "controlled",
+      "targetId": "deceptive-document-summarizer",
+      "configSha256": "fa4839a21415c8990e5d0de59ba6c063755fd01f5b1d723445573b019647cd89",
+      "displayName": "Deceptive control",
+      "description": "Purpose-built negative case · selected tool: summarize_file",
+      "scopeLabels": [
+        {
+          "experimentId": "baseline-initialization",
+          "label": "Initialization"
+        },
+        {
+          "experimentId": "summarize-file",
+          "label": "summarize_file tool"
+        }
+      ],
+      "limitations": [
+        "This purpose-built synthetic negative case is not a third-party malware attribution."
+      ],
+      "experimentIds": [
+        "install-scripts-disabled",
+        "install-scripts-enabled",
+        "baseline-initialization",
+        "summarize-file"
+      ],
+      "sampleReportFile": "deceptive-control.report.json",
+      "sampleReportSha256": "45fa8a54cb9b6bf5ede4da2a03bd36e4ada55e8ae9cfcb3cf332171a87ab5411",
+      "eligibility": {
+        "sandboxProfile": "developer-v1",
+        "network": "blocked",
+        "forgeVersion": "0.1.0",
+        "reportSchema": "forge.report/v1",
+        "installStrategy": "npm-install",
+        "lifecycleScripts": "disabled",
+        "packageManifestSha256": "7df5714dfa54b02e2681db94bd131e2f91fdca93c6cf8b31d8ce1cd665e15aa0",
+        "packageLockSha256": "0aca4a216701b9bdfecbbf2e4ee4b4352a4c3ef4153d53396a7f0d05f87d1070",
+        "source": {
+          "type": "local",
+          "sourceTreeSha256": "07b8c979333d81a7370f0a07f1b87bdded54d86e55aefb9cbfd1ec07c69e7a4a",
+          "sourceFileCount": 4
+        }
+      }
+    },
+    {
+      "role": "reference",
+      "targetId": "official-filesystem",
+      "configSha256": "6f82c83aa0734dd7635397b42447bf2bfafc735692ed2980f949ebbddb099d20",
+      "displayName": "Official Filesystem MCP",
+      "description": "Reviewed real-package case study · selected tools: read_text_file and write_file",
+      "scopeLabels": [
+        {
+          "experimentId": "baseline-initialization",
+          "label": "Initialization"
+        },
+        {
+          "experimentId": "read-synthetic-report",
+          "label": "read_text_file tool"
+        },
+        {
+          "experimentId": "write-synthetic-output",
+          "label": "write_file tool"
+        }
+      ],
+      "limitations": [
+        "Results cover only these selected tools and inputs; zero findings would not be a universal safety claim."
+      ],
+      "experimentIds": [
+        "install-scripts-disabled",
+        "install-scripts-enabled",
+        "baseline-initialization",
+        "read-synthetic-report",
+        "write-synthetic-output"
+      ],
+      "sampleReportFile": "official-filesystem.report.json",
+      "sampleReportSha256": "c1402b752d842d9717067ba4b17ed7aedfa2ba059c6c6eea4299a247ded0a34a",
+      "eligibility": {
+        "sandboxProfile": "developer-v1",
+        "network": "blocked",
+        "forgeVersion": "0.1.0",
+        "reportSchema": "forge.report/v1",
+        "installStrategy": "npm-install",
+        "lifecycleScripts": "disabled",
+        "packageManifestSha256": "6b2c11d4d348cace9c652636d602713c377ba59d868e013de69f3a9046d61244",
+        "packageLockSha256": "02225ba465f13936c74ec69a7bcf8f4e73b73ce2f0d1f36986b0d844d9de01c2",
+        "source": {
+          "type": "npm",
+          "package": "@modelcontextprotocol/server-filesystem",
+          "requestedVersion": "2026.7.10",
+          "resolvedVersion": "2026.7.10",
+          "packageTreeSha256": "f8aa4720ccb5fa2279e22861bf26ea54a4172b2bc50d6b7cd618cebce98a5268",
+          "packageFileCount": 7,
+          "integrity": "sha512-Mmjg4anFBD5OzbPnGJOA0jPPN8645ERhQk38HQLpSenx1ox9bfdPkmAzUnNjeQtqQGFLtKe13J20RtLBmUKMZA=="
+        }
+      }
+    }
+  ]
+}

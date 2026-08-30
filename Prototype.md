@@ -216,6 +216,13 @@ run/artifact/finding metadata in PostgreSQL. All deterministic S3 keys and
 PostgreSQL values are preflighted before remote writes; identical retries verify
 service checksums and exact published metadata sets.
 
+For the two exact reviewed demo identities, `publish-run --refresh-dashboard`
+also stores a separate disclosure-safe projection after finalization and
+regenerates the local script-free results page from the latest published row per
+target. The browser never reaches PostgreSQL or the canonical evidence bucket;
+an explicit content-only deploy moves only validated HTML/CSS to the AWS site
+bucket.
+
 The S3 `run.json` is an artifact-completeness marker, not a cross-store atomic
 commit. PostgreSQL `status = 'published'` is query authority; hosted use still
 needs reconciliation for a database failure after manifest upload. See

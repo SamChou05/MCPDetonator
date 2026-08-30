@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 
 import {
   MAX_PUBLICATION_ARTIFACT_COUNT,
@@ -12,6 +13,8 @@ const PUBLIC_METADATA_MAX_DEPTH = 8;
 const PUBLIC_METADATA_MAX_NODES = 1_024;
 const PUBLIC_METADATA_MAX_STRING_CHARACTERS = 32_768;
 const POSTGRES_SCHEMA_LOCK_KEY = 1_180_148_281;
+const POSTGRES_DASHBOARD_REFRESH_LOCK_KEY = 1_180_148_282;
+const MAX_DASHBOARD_TARGET_COUNT = 64;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const TRANSACTION_GUARDS_SQL = `SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '120s';
@@ -136,6 +139,39 @@ export interface FinalizePublicationResult {
   readonly findingCount: number;
 }
 
+export type DashboardProjectionRole = "controlled" | "reference";
+
+export interface DashboardProjectionInput {
+  readonly runId: string;
+  readonly targetId: string;
+  readonly manifestSha256: string;
+  readonly policyId: string;
+  readonly role: DashboardProjectionRole;
+  readonly projection: PublicationPublicMetadata;
+}
+
+export interface StoredDashboardProjection extends DashboardProjectionInput {
+  readonly projectionSha256: string;
+  readonly runCompletedAt: string;
+  readonly createdAt: string;
+}
+
+export interface StoreDashboardProjectionResult {
+  readonly disposition: "stored" | "already_stored";
+  readonly projection: StoredDashboardProjection;
+}
+
+export interface LatestDashboardProjectionQuery {
+  readonly policyId: string;
+  readonly targetIds: readonly string[];
+}
+
+export interface DashboardProjectionReader {
+  getLatestPublishedDashboardProjections(
+    input: LatestDashboardProjectionQuery,
+  ): Promise<readonly StoredDashboardProjection[]>;
+}
+
 export type PublicationRepositoryErrorCode =
   | "database_invariant"
   | "identity_conflict"
@@ -183,6 +219,12 @@ interface ValidatedFinalizePublicationInput {
   readonly findings: readonly ValidatedPublishedFindingInput[];
 }
 
+interface ValidatedDashboardProjectionInput extends DashboardProjectionInput {
+  readonly projection: PublicationPublicMetadata;
+  readonly projectionJson: string;
+  readonly projectionSha256: string;
+}
+
 const RUN_COLUMNS = `
   run_id AS "runId",
   target_id AS "targetId",
@@ -197,6 +239,19 @@ const RUN_COLUMNS = `
   publication_started_at AS "publicationStartedAt",
   published_at AS "publishedAt",
   public_metadata AS "publicMetadata"
+`;
+
+const DASHBOARD_PROJECTION_COLUMNS = `
+  p.run_id AS "runId",
+  p.target_id AS "targetId",
+  p.manifest_sha256 AS "manifestSha256",
+  p.policy_id AS "policyId",
+  p.role,
+  p.projection,
+  p.projection_sha256 AS "projectionSha256",
+  r.run_completed_at AS "runCompletedAt",
+  p.created_at AS "createdAt",
+  r.status AS "publicationStatus"
 `;
 
 const SCHEMA_STATEMENTS = [
@@ -256,6 +311,22 @@ const SCHEMA_STATEMENTS = [
       ),
     PRIMARY KEY (run_id, finding_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS forge_dashboard_projections (
+    run_id TEXT NOT NULL REFERENCES forge_published_runs(run_id) ON DELETE CASCADE,
+    target_id TEXT NOT NULL CHECK (length(target_id) BETWEEN 1 AND 256),
+    manifest_sha256 CHAR(64) NOT NULL
+      CHECK (manifest_sha256 ~ '^[a-f0-9]{64}$'),
+    policy_id TEXT NOT NULL CHECK (length(policy_id) BETWEEN 1 AND 256),
+    role TEXT NOT NULL CHECK (role IN ('controlled', 'reference')),
+    projection JSONB NOT NULL CHECK (
+      jsonb_typeof(projection) = 'object' AND
+      octet_length(projection::text) <= ${POSTGRES_PUBLIC_METADATA_MAX_BYTES}
+    ),
+    projection_sha256 CHAR(64) NOT NULL
+      CHECK (projection_sha256 ~ '^[a-f0-9]{64}$'),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (run_id, policy_id)
+  )`,
   `CREATE INDEX IF NOT EXISTS forge_published_runs_status_started_idx
     ON forge_published_runs(status, publication_started_at)`,
   `CREATE INDEX IF NOT EXISTS forge_published_runs_target_completed_idx
@@ -264,6 +335,8 @@ const SCHEMA_STATEMENTS = [
     ON forge_published_artifacts(sha256)`,
   `CREATE INDEX IF NOT EXISTS forge_published_findings_rule_severity_idx
     ON forge_published_findings(rule_id, severity)`,
+  `CREATE INDEX IF NOT EXISTS forge_dashboard_projections_policy_target_idx
+    ON forge_dashboard_projections(policy_id, target_id, run_id)`,
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -452,6 +525,59 @@ function validateMetadata(
 
 function normalizedMetadataJson(value: unknown, label: string): string {
   return validateMetadata(value, label).json;
+}
+
+function sha256Utf8(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function validateDashboardProjectionInput(
+  input: DashboardProjectionInput,
+): ValidatedDashboardProjectionInput {
+  if (input.role !== "controlled" && input.role !== "reference") {
+    return invalidInput("dashboard projection role is invalid");
+  }
+  const projection = validateMetadata(
+    input.projection,
+    "dashboard projection",
+  );
+  const projectionSha256 = sha256Utf8(projection.json);
+
+  return {
+    runId: validateText(input.runId, "runId", 256),
+    targetId: validateText(input.targetId, "targetId", 256),
+    manifestSha256: validateSha256(
+      input.manifestSha256,
+      "manifestSha256",
+    ),
+    policyId: validateText(input.policyId, "policyId", 256),
+    role: input.role,
+    projection: projection.value,
+    projectionJson: projection.json,
+    projectionSha256,
+  };
+}
+
+function validateLatestDashboardProjectionQuery(
+  input: LatestDashboardProjectionQuery,
+): LatestDashboardProjectionQuery {
+  const policyId = validateText(input.policyId, "policyId", 256);
+  if (
+    !Array.isArray(input.targetIds) ||
+    input.targetIds.length === 0 ||
+    input.targetIds.length > MAX_DASHBOARD_TARGET_COUNT
+  ) {
+    return invalidInput(
+      `targetIds must contain from 1 to ${MAX_DASHBOARD_TARGET_COUNT} targets`,
+    );
+  }
+  const targetIds = input.targetIds.map((targetId, index) =>
+    validateText(targetId, `targetIds[${index}]`, 256),
+  );
+  if (new Set(targetIds).size !== targetIds.length) {
+    return invalidInput("targetIds must not contain duplicates");
+  }
+  return { policyId, targetIds };
 }
 
 function validateBeginInput(
@@ -729,6 +855,89 @@ function rowToRun(row: Record<string, unknown>): PublicationRun {
     ...(publishedAt === undefined ? {} : { publishedAt }),
     publicMetadata,
   };
+}
+
+function rowToDashboardProjection(
+  row: Record<string, unknown>,
+): StoredDashboardProjection {
+  if (row.publicationStatus !== "published") {
+    throw new PublicationRepositoryError(
+      "database_invariant",
+      "dashboard projection query returned a run that is not published",
+    );
+  }
+  const role = row.role;
+  if (role !== "controlled" && role !== "reference") {
+    throw new PublicationRepositoryError(
+      "database_invariant",
+      "database returned an invalid dashboard projection role",
+    );
+  }
+  const projection = validateMetadata(
+    row.projection,
+    "database dashboard projection",
+  );
+  const projectionSha256 = validateSha256(
+    requireString(row, "projectionSha256"),
+    "database projectionSha256",
+  );
+  if (sha256Utf8(projection.json) !== projectionSha256) {
+    throw new PublicationRepositoryError(
+      "database_invariant",
+      "stored dashboard projection digest does not match its normalized JSON",
+    );
+  }
+  const runCompletedAt = databaseTimestamp(row, "runCompletedAt");
+  const createdAt = databaseTimestamp(row, "createdAt");
+  if (runCompletedAt === undefined || createdAt === undefined) {
+    throw new PublicationRepositoryError(
+      "database_invariant",
+      "database returned incomplete dashboard projection timestamps",
+    );
+  }
+
+  return {
+    runId: validateText(requireString(row, "runId"), "database runId", 256),
+    targetId: validateText(
+      requireString(row, "targetId"),
+      "database targetId",
+      256,
+    ),
+    manifestSha256: validateSha256(
+      requireString(row, "manifestSha256"),
+      "database manifestSha256",
+    ),
+    policyId: validateText(
+      requireString(row, "policyId"),
+      "database policyId",
+      256,
+    ),
+    role,
+    projection: projection.value,
+    projectionSha256,
+    runCompletedAt,
+    createdAt,
+  };
+}
+
+function dashboardProjectionMatches(
+  actual: StoredDashboardProjection,
+  expected: ValidatedDashboardProjectionInput,
+  run: PublicationRun,
+): boolean {
+  return (
+    actual.runId === expected.runId &&
+    actual.targetId === expected.targetId &&
+    actual.manifestSha256 === expected.manifestSha256 &&
+    actual.policyId === expected.policyId &&
+    actual.role === expected.role &&
+    actual.projectionSha256 === expected.projectionSha256 &&
+    actual.runCompletedAt === run.runCompletedAt &&
+    normalizedMetadataJson(
+      actual.projection,
+      "stored dashboard projection",
+    ) === expected.projectionJson
+  );
 }
 
 function assertRunIdentity(
@@ -1392,6 +1601,274 @@ export class PostgresPublicationRepository {
           throw new AggregateError(
             [error, rollbackError],
             "Postgres publication finalization and rollback both failed",
+          );
+        }
+      }
+      throw error;
+    } finally {
+      client.release(poisonedConnection);
+    }
+  }
+
+  public async storeDashboardProjection(
+    input: DashboardProjectionInput,
+  ): Promise<StoreDashboardProjectionResult> {
+    this.assertOpen();
+    const validated = validateDashboardProjectionInput(input);
+    const client = await this.pool.connect();
+    let transactionStarted = false;
+    let poisonedConnection: Error | undefined;
+    try {
+      await client.query("BEGIN");
+      transactionStarted = true;
+      await client.query(TRANSACTION_GUARDS_SQL);
+      const locked = await client.query(
+        `SELECT ${RUN_COLUMNS}
+         FROM forge_published_runs
+         WHERE run_id = $1
+         FOR UPDATE`,
+        [validated.runId],
+      );
+      if (locked.rowCount === 0) {
+        throw new PublicationRepositoryError(
+          "not_found",
+          `publication ${validated.runId} does not exist`,
+        );
+      }
+      const run = rowToRun(
+        requireSingleRow(locked, "dashboard projection publication lookup"),
+      );
+      if (
+        run.targetId !== validated.targetId ||
+        run.manifestSha256 !== validated.manifestSha256
+      ) {
+        throw new PublicationRepositoryError(
+          "identity_conflict",
+          `dashboard projection identity conflicts with publication ${validated.runId}`,
+        );
+      }
+      if (run.status !== "published") {
+        throw new PublicationRepositoryError(
+          "not_found",
+          `publication ${validated.runId} must be published before storing a dashboard projection`,
+        );
+      }
+
+      const inserted = await client.query(
+        `INSERT INTO forge_dashboard_projections (
+           run_id, target_id, manifest_sha256, policy_id, role,
+           projection, projection_sha256
+         ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+         ON CONFLICT (run_id, policy_id) DO NOTHING
+         RETURNING run_id AS "runId"`,
+        [
+          validated.runId,
+          validated.targetId,
+          validated.manifestSha256,
+          validated.policyId,
+          validated.role,
+          validated.projectionJson,
+          validated.projectionSha256,
+        ],
+      );
+      if (inserted.rowCount !== 0 && inserted.rowCount !== 1) {
+        throw new PublicationRepositoryError(
+          "database_invariant",
+          "dashboard projection insert returned an ambiguous row count",
+        );
+      }
+      const disposition = inserted.rowCount === 1 ? "stored" : "already_stored";
+      const storedResult = await client.query(
+        `SELECT ${DASHBOARD_PROJECTION_COLUMNS}
+         FROM forge_dashboard_projections p
+         JOIN forge_published_runs r ON r.run_id = p.run_id
+         WHERE p.run_id = $1 AND p.policy_id = $2`,
+        [validated.runId, validated.policyId],
+      );
+      const stored = rowToDashboardProjection(
+        requireSingleRow(storedResult, "dashboard projection lookup"),
+      );
+      if (!dashboardProjectionMatches(stored, validated, run)) {
+        throw new PublicationRepositoryError(
+          disposition === "stored" ? "database_invariant" : "metadata_conflict",
+          `dashboard projection conflicts with stored metadata for ${validated.runId}`,
+        );
+      }
+
+      await client.query("COMMIT");
+      transactionStarted = false;
+      return { disposition, projection: stored };
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          await client.query("ROLLBACK");
+        } catch (rollbackError) {
+          poisonedConnection = errorForRelease(rollbackError);
+          throw new AggregateError(
+            [error, rollbackError],
+            "dashboard projection storage and rollback both failed",
+          );
+        }
+      }
+      throw error;
+    } finally {
+      client.release(poisonedConnection);
+    }
+  }
+
+  private async queryLatestPublishedDashboardProjections(
+    queryable: PgQueryableLike,
+    input: LatestDashboardProjectionQuery,
+  ): Promise<readonly StoredDashboardProjection[]> {
+    const validated = validateLatestDashboardProjectionQuery(input);
+    const result = await queryable.query(
+      `WITH ranked AS (
+         SELECT
+           p.run_id AS "runId",
+           p.target_id AS "targetId",
+           p.manifest_sha256 AS "manifestSha256",
+           p.policy_id AS "policyId",
+           p.role,
+           p.projection,
+           p.projection_sha256 AS "projectionSha256",
+           r.run_completed_at AS "runCompletedAt",
+           p.created_at AS "createdAt",
+           r.status AS "publicationStatus",
+           ROW_NUMBER() OVER (
+             PARTITION BY r.target_id
+             ORDER BY r.run_completed_at DESC, r.run_id ASC
+           ) AS target_rank
+         FROM forge_published_runs r
+         JOIN forge_dashboard_projections p
+           ON p.run_id = r.run_id
+          AND p.target_id = r.target_id
+          AND p.manifest_sha256 = r.manifest_sha256
+         WHERE r.status = 'published'
+           AND p.policy_id = $1
+           AND r.target_id = ANY($2::text[])
+       )
+       SELECT
+         "runId", "targetId", "manifestSha256", "policyId", role,
+         projection, "projectionSha256", "runCompletedAt", "createdAt",
+         "publicationStatus"
+       FROM ranked
+       WHERE target_rank <= 2
+       ORDER BY "targetId" ASC, "runCompletedAt" DESC, "runId" ASC`,
+      [validated.policyId, [...validated.targetIds]],
+    );
+    if (result.rowCount !== result.rows.length) {
+      throw new PublicationRepositoryError(
+        "database_invariant",
+        "latest dashboard projection query returned an ambiguous row count",
+      );
+    }
+    if (result.rows.length > validated.targetIds.length * 2) {
+      throw new PublicationRepositoryError(
+        "database_invariant",
+        "latest dashboard projection query exceeded its bounded result count",
+      );
+    }
+
+    const requestedTargets = new Set(validated.targetIds);
+    const seenRuns = new Set<string>();
+    const byTarget = new Map<string, StoredDashboardProjection[]>();
+    for (const row of result.rows) {
+      const projection = rowToDashboardProjection(row);
+      if (
+        projection.policyId !== validated.policyId ||
+        !requestedTargets.has(projection.targetId)
+      ) {
+        throw new PublicationRepositoryError(
+          "database_invariant",
+          "latest dashboard projection query returned an unrequested identity",
+        );
+      }
+      const identity = `${projection.runId}\0${projection.policyId}`;
+      if (seenRuns.has(identity)) {
+        throw new PublicationRepositoryError(
+          "database_invariant",
+          "latest dashboard projection query returned a duplicate row",
+        );
+      }
+      seenRuns.add(identity);
+      const entries = byTarget.get(projection.targetId) ?? [];
+      entries.push(projection);
+      if (entries.length > 2) {
+        throw new PublicationRepositoryError(
+          "database_invariant",
+          "latest dashboard projection query returned too many rows for a target",
+        );
+      }
+      byTarget.set(projection.targetId, entries);
+    }
+
+    const selected: StoredDashboardProjection[] = [];
+    for (const targetId of validated.targetIds) {
+      const entries = byTarget.get(targetId) ?? [];
+      entries.sort((left, right) => {
+        const completionDifference =
+          Date.parse(right.runCompletedAt) - Date.parse(left.runCompletedAt);
+        if (completionDifference !== 0) return completionDifference;
+        if (left.runId === right.runId) return 0;
+        return left.runId < right.runId ? -1 : 1;
+      });
+      const latest = entries[0];
+      if (latest === undefined) continue;
+      if (
+        entries[1] !== undefined &&
+        entries[1].runCompletedAt === latest.runCompletedAt
+      ) {
+        throw new PublicationRepositoryError(
+          "metadata_conflict",
+          `published dashboard projections for target ${targetId} have an ambiguous latest completion time`,
+        );
+      }
+      selected.push(latest);
+    }
+    return selected;
+  }
+
+  public async getLatestPublishedDashboardProjections(
+    input: LatestDashboardProjectionQuery,
+  ): Promise<readonly StoredDashboardProjection[]> {
+    this.assertOpen();
+    return await this.queryLatestPublishedDashboardProjections(this.pool, input);
+  }
+
+  public async withDashboardRefreshLock<T>(
+    operation: (reader: DashboardProjectionReader) => Promise<T>,
+  ): Promise<T> {
+    this.assertOpen();
+    if (typeof operation !== "function") {
+      return invalidInput("dashboard refresh operation must be a function");
+    }
+    const client = await this.pool.connect();
+    let transactionStarted = false;
+    let poisonedConnection: Error | undefined;
+    try {
+      await client.query("BEGIN");
+      transactionStarted = true;
+      await client.query(TRANSACTION_GUARDS_SQL);
+      await client.query("SELECT pg_advisory_xact_lock($1)", [
+        POSTGRES_DASHBOARD_REFRESH_LOCK_KEY,
+      ]);
+      const reader: DashboardProjectionReader = {
+        getLatestPublishedDashboardProjections: async (input) =>
+          await this.queryLatestPublishedDashboardProjections(client, input),
+      };
+      const result = await operation(reader);
+      await client.query("COMMIT");
+      transactionStarted = false;
+      return result;
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          await client.query("ROLLBACK");
+        } catch (rollbackError) {
+          poisonedConnection = errorForRelease(rollbackError);
+          throw new AggregateError(
+            [error, rollbackError],
+            "dashboard refresh and lock rollback both failed",
           );
         }
       }

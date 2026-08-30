@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
+  buildDemoRunV1,
   buildDemoExportV1,
   DEMO_EXPORT_DISCLAIMER,
   demoExportV1Schema,
@@ -176,11 +177,10 @@ describe("public dashboard demo export", () => {
     const [controlled, reference] = output.runs;
     expect(controlled).toMatchObject({
       role: "controlled",
-      reportSha256: CONTROLLED_SHA256,
       target: {
-        id: CONTROLLED_TARGET_ID,
         displayName: "Controlled deceptive target",
       },
+      presentation: { source: "sample" },
       counts: {
         advertisedTools: 1,
         experiments: 4,
@@ -229,17 +229,15 @@ describe("public dashboard demo export", () => {
         unclassifiedCount: 0,
       },
     });
-    expect(controlled?.findings[0]).toEqual({
-      ruleId: "runtime.file_scope_exceeded",
-      title: "Tool read an unrelated synthetic credential",
+    expect(controlled?.findings).toContainEqual({
+      title: "Tool accessed data outside its configured scope",
       severity: "high",
       confidence: "medium",
     });
 
     expect(reference).toMatchObject({
       role: "reference",
-      reportSha256: REFERENCE_SHA256,
-      target: { id: REFERENCE_TARGET_ID },
+      target: { displayName: "Official filesystem target" },
       counts: {
         advertisedTools: 14,
         experiments: 5,
@@ -261,6 +259,30 @@ describe("public dashboard demo export", () => {
         },
       },
     });
+  });
+
+  it("builds and validates one publication-safe run projection", () => {
+    const output = buildDemoRunV1(
+      controlledInput({
+        presentation: {
+          source: "published",
+          publishedAt: "2026-08-30T20:00:00.000Z",
+        },
+      }),
+    );
+
+    expect(output).toMatchObject({
+      role: "controlled",
+      analyzedAt: "2026-08-30T18:10:55.977Z",
+      presentation: {
+        source: "published",
+        publishedAt: "2026-08-30T20:00:00.000Z",
+      },
+      summary:
+        "5 deterministic findings were produced for the selected cases and current rule coverage.",
+    });
+    expect(JSON.stringify(output)).not.toContain(CONTROLLED_SHA256);
+    expect(JSON.stringify(output)).not.toContain(CONTROLLED_TARGET_ID);
   });
 
   it("is deterministic across input and trusted label ordering", () => {
@@ -447,21 +469,20 @@ describe("public dashboard demo export", () => {
     ).toThrow("invalid public demo build input");
   });
 
-  it("rejects unsafe report strings even when the changed bytes are re-pinned", () => {
+  it("does not let report-authored summaries or finding titles affect public output", () => {
+    const baseline = buildDemoRunV1(controlledInput());
     const unsafeSummaryBytes = mutateReport(controlledBytes, (document) => {
       document.summary = "Review https://example.test/private before presenting.";
+      const findings = document.findings as Array<Record<string, unknown>>;
+      findings[0]!.title = "Private /Users/alice detail with api_key=secret-value";
     });
-    expect(() =>
-      buildDemoExportV1({
-        reports: [
-          controlledInput({
-            reportBytes: unsafeSummaryBytes,
-            expectedSha256: sha256(unsafeSummaryBytes),
-          }),
-          referenceInput(),
-        ],
+    const mutated = buildDemoRunV1(
+      controlledInput({
+        reportBytes: unsafeSummaryBytes,
+        expectedSha256: sha256(unsafeSummaryBytes),
       }),
-    ).toThrow("summary contains a URL");
+    );
+    expect(mutated).toEqual(baseline);
   });
 
   it("rejects report-byte mutation against the pinned digest", () => {
@@ -507,6 +528,9 @@ describe("public dashboard demo export", () => {
       "annotations",
       "expected",
       "evidence",
+      "reportSha256",
+      "ruleId",
+      "targetId",
     ]) {
       expect(keys).not.toContain(privateKey);
     }

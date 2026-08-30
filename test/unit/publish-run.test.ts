@@ -3,7 +3,10 @@ import type { FileHandle } from "node:fs/promises";
 import type { VerifiedRunBundle } from "../../src/publish/bundle.js";
 import {
   publishVerifiedRun,
+  type DashboardRefreshResult,
+  type PreparedDashboardRefresh,
   type PublicationArtifactStore,
+  type PublicationDashboardRefresher,
   type PublicationRepository,
 } from "../../src/publish/publish-run.js";
 import type {
@@ -92,6 +95,7 @@ function fixtureBundle(): VerifiedRunBundle {
     manifestBytes: Buffer.from("exact manifest\n", "utf8"),
     manifestSha256,
     manifest,
+    reportBytes: Buffer.from("{}", "utf8"),
     report,
     reportArtifact: artifacts[0]!,
     artifacts,
@@ -196,6 +200,34 @@ class FakeRepository implements PublicationRepository {
   }
 }
 
+class FakeDashboardRefresher implements PublicationDashboardRefresher {
+  public prepareCount = 0;
+  public executeCount = 0;
+  public failPreparation = false;
+  public failExecution = false;
+
+  public constructor(private readonly repository: FakeRepository) {}
+
+  public prepare(): PreparedDashboardRefresh {
+    this.prepareCount += 1;
+    if (this.failPreparation) {
+      throw new Error("synthetic dashboard preparation failure");
+    }
+    return {
+      execute: async (): Promise<DashboardRefreshResult> => {
+        this.executeCount += 1;
+        if (this.repository.events.at(-1) !== "finalize") {
+          throw new Error("dashboard executed before publication finalization");
+        }
+        if (this.failExecution) {
+          throw new Error("synthetic dashboard delivery failure");
+        }
+        return { status: "refreshed", disposition: "changed" };
+      },
+    };
+  }
+}
+
 describe("publishVerifiedRun", () => {
   it("uploads every verified artifact, then the manifest, then finalizes metadata", async () => {
     const bundle = fixtureBundle();
@@ -265,7 +297,64 @@ describe("publishVerifiedRun", () => {
       findingCount: 1,
       beginDisposition: "created",
       finalizeDisposition: "published",
+      dashboard: { status: "not_configured" },
     });
+  });
+
+  it("prepares early but refreshes only after PostgreSQL finalization", async () => {
+    const repository = new FakeRepository();
+    const dashboardRefresher = new FakeDashboardRefresher(repository);
+
+    const result = await publishVerifiedRun(fixtureBundle(), {
+      artifactStore: new FakeArtifactStore(),
+      repository,
+      dashboardRefresher,
+    });
+
+    expect(dashboardRefresher.prepareCount).toBe(1);
+    expect(dashboardRefresher.executeCount).toBe(1);
+    expect(result.dashboard).toEqual({
+      status: "refreshed",
+      disposition: "changed",
+    });
+  });
+
+  it("preserves published state and reports retryable presentation failures", async () => {
+    const repository = new FakeRepository();
+    const dashboardRefresher = new FakeDashboardRefresher(repository);
+    dashboardRefresher.failExecution = true;
+
+    const result = await publishVerifiedRun(fixtureBundle(), {
+      artifactStore: new FakeArtifactStore(),
+      repository,
+      dashboardRefresher,
+    });
+
+    expect(repository.events.at(-1)).toBe("finalize");
+    expect(result.status).toBe("published");
+    expect(result.dashboard).toEqual({
+      status: "failed",
+      message: "synthetic dashboard delivery failure",
+      retryable: true,
+    });
+  });
+
+  it("does not execute a prepared refresh when canonical publication fails", async () => {
+    const repository = new FakeRepository();
+    const dashboardRefresher = new FakeDashboardRefresher(repository);
+    const artifactStore = new FakeArtifactStore();
+    artifactStore.failArtifactSha256 = evidenceSha256;
+
+    await expect(
+      publishVerifiedRun(fixtureBundle(), {
+        artifactStore,
+        repository,
+        dashboardRefresher,
+      }),
+    ).rejects.toThrow("synthetic artifact upload failure");
+
+    expect(dashboardRefresher.prepareCount).toBe(1);
+    expect(dashboardRefresher.executeCount).toBe(0);
   });
 
   it("never writes the manifest or finalizes metadata after an artifact failure", async () => {
@@ -294,16 +383,19 @@ describe("publishVerifiedRun", () => {
     const artifactStore = new FakeArtifactStore();
     const repository = new FakeRepository();
     repository.beginDisposition = "already_published";
+    const dashboardRefresher = new FakeDashboardRefresher(repository);
 
     const result = await publishVerifiedRun(fixtureBundle(), {
       artifactStore,
       repository,
+      dashboardRefresher,
     });
 
     expect(artifactStore.events.at(-1)).toBe("manifest");
     expect(repository.events.at(-1)).toBe("finalize");
     expect(result.beginDisposition).toBe("already_published");
     expect(result.finalizeDisposition).toBe("already_published");
+    expect(dashboardRefresher.executeCount).toBe(1);
   });
 
   it("uploads identical artifact bytes once while retaining every logical row", async () => {

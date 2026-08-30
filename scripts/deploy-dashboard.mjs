@@ -14,7 +14,7 @@ const TEMPLATE_PATH = resolve(REPOSITORY_ROOT, "infra/aws/dashboard.yaml");
 const SITE_DIRECTORY = resolve(REPOSITORY_ROOT, "dist/dashboard-site");
 const BUILD_MANIFEST_PATH = resolve(REPOSITORY_ROOT, "dist/dashboard-site.manifest.json");
 const EXPECTED_TEMPLATE_SHA256 =
-  "7a7f08079903ad8b16ab1fd378232248bdc6d044883445cd7a7e692f3e874731";
+  "2fc2d75c4a0562324095fc1b0ae38cad19e5dd544ad0474fd47b3ce300bfaafa";
 const EXPECTED_SITE_FILES = ["index.html", "styles.css"];
 const EXPECTED_OUTPUT_KEYS = [
   "DistributionDomainName",
@@ -32,7 +32,8 @@ const MAX_TEMPLATE_BYTES = 51_200;
 const MAX_BUILD_MANIFEST_BYTES = 4 * 1024;
 const MAX_SITE_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
-const CACHE_CONTROL = "public,max-age=300,must-revalidate";
+const HTML_CACHE_CONTROL = "no-cache,max-age=0,must-revalidate";
+const STYLES_CACHE_CONTROL = "public,max-age=300,must-revalidate";
 
 function usage() {
   return `Usage:
@@ -41,10 +42,12 @@ function usage() {
     --stack <name> \\
     --region <commercial-aws-region> \\
     [--stack-id <exact-existing-stack-arn>] \\
+    [--content-only] \\
     --yes
 
 Creates a new stack only when the name is absent. Updating an existing stack
-also requires its exact --stack-id. The deployment publishes immutable
+also requires its exact --stack-id. --content-only requires that exact existing
+Stack ID and skips CloudFormation. The deployment publishes immutable
 snapshots of exactly dist/dashboard-site/index.html and styles.css. The --yes
 flag and expected AWS account are mandatory. AWS authentication stays within
 the AWS CLI credential chain.`;
@@ -61,6 +64,7 @@ function parseArguments(argv) {
 
   const parsed = {
     account: undefined,
+    contentOnly: false,
     help: false,
     region: undefined,
     stack: undefined,
@@ -80,6 +84,11 @@ function parseArguments(argv) {
       parsed.yes = true;
       continue;
     }
+    if (argument === "--content-only") {
+      if (parsed.contentOnly) fail("--content-only may be supplied only once");
+      parsed.contentOnly = true;
+      continue;
+    }
     const key = valueArguments.get(argument);
     if (!key) fail(`unknown argument: ${argument}`);
     if (parsed[key] !== undefined) fail(`${argument} may be supplied only once`);
@@ -93,6 +102,9 @@ function parseArguments(argv) {
   if (!parsed.account) fail("--account is required");
   if (!parsed.stack) fail("--stack is required");
   if (!parsed.region) fail("--region is required");
+  if (parsed.contentOnly && parsed.stackId === undefined) {
+    fail("--content-only requires the exact existing --stack-id");
+  }
   if (!/^\d{12}$/.test(parsed.account)) {
     fail("--account must be the exact 12-digit AWS account ID");
   }
@@ -260,8 +272,16 @@ async function snapshotLocalInputs() {
     const snapshotTemplatePath = join(directory, "dashboard.yaml");
     await writeFile(snapshotTemplatePath, templateBytes, { flag: "wx", mode: 0o400 });
     const files = [
-      { contentType: "text/css; charset=utf-8", key: "styles.css" },
-      { contentType: "text/html; charset=utf-8", key: "index.html" },
+      {
+        cacheControl: STYLES_CACHE_CONTROL,
+        contentType: "text/css; charset=utf-8",
+        key: "styles.css",
+      },
+      {
+        cacheControl: HTML_CACHE_CONTROL,
+        contentType: "text/html; charset=utf-8",
+        key: "index.html",
+      },
     ].map((specification) => {
       const bytes = sourceFiles.get(specification.key);
       return {
@@ -534,7 +554,7 @@ function verifyObjectMetadata(response, file) {
   if (
     response.ContentLength !== file.bytes.length ||
     response.ContentType !== file.contentType ||
-    response.CacheControl !== CACHE_CONTROL ||
+    response.CacheControl !== file.cacheControl ||
     response.ServerSideEncryption !== "AES256" ||
     response.ChecksumSHA256 !== file.digest.base64
   ) {
@@ -542,7 +562,7 @@ function verifyObjectMetadata(response, file) {
   }
 }
 
-async function publishAndVerifySite(snapshot, deployed, region) {
+async function publishAndVerifySite(snapshot, deployed, region, { conditional }) {
   const versioning = runAwsJson(
     [
       "s3api",
@@ -566,9 +586,42 @@ async function publishAndVerifySite(snapshot, deployed, region) {
   ) {
     fail("private site bucket versioning changed from the reviewed unversioned configuration");
   }
-  requireAllowedInventory(listObjects(deployed.bucket, region), { exact: false });
+  const initialObjects = listObjects(deployed.bucket, region);
+  requireAllowedInventory(initialObjects, { exact: conditional });
+  const etags = new Map();
+  if (conditional) {
+    for (const file of snapshot.files) {
+      const head = runAwsJson(
+        [
+          "s3api",
+          "head-object",
+          "--bucket",
+          deployed.bucket,
+          "--key",
+          file.key,
+          "--checksum-mode",
+          "ENABLED",
+          "--region",
+          region,
+        ],
+        `existing S3 head ${file.key}`,
+      );
+      if (
+        head.ContentLength !== initialObjects.get(file.key) ||
+        head.ContentType !== file.contentType ||
+        head.CacheControl !== file.cacheControl ||
+        head.ServerSideEncryption !== "AES256" ||
+        typeof head.ETag !== "string" ||
+        !/^"[0-9a-f]{32}"$/i.test(head.ETag)
+      ) {
+        fail(`existing S3 object metadata is invalid for ${file.key}`);
+      }
+      etags.set(file.key, head.ETag);
+    }
+  }
 
   for (const file of snapshot.files) {
+    const etag = etags.get(file.key);
     const putResponse = runAwsJson(
       [
         "s3api",
@@ -582,13 +635,14 @@ async function publishAndVerifySite(snapshot, deployed, region) {
         "--content-type",
         file.contentType,
         "--cache-control",
-        CACHE_CONTROL,
+        file.cacheControl,
         "--server-side-encryption",
         "AES256",
         "--checksum-algorithm",
         "SHA256",
         "--checksum-sha256",
         file.digest.base64,
+        ...(etag === undefined ? [] : ["--if-match", etag]),
         "--region",
         region,
       ],
@@ -690,79 +744,87 @@ async function deploy(snapshot, options) {
   );
   const before = preflightStack(options);
 
-  let targetStackId;
-  if (before.exists) {
-    targetStackId = before.stack.stackId;
-    runAws([
-      "cloudformation",
-      "deploy",
-      "--template-file",
-      snapshot.templatePath,
-      "--stack-name",
-      targetStackId,
-      "--region",
-      options.region,
-      "--no-fail-on-empty-changeset",
-      "--tags",
-      "Application=forge-dashboard-demo",
-      "DataClassification=synthetic-presentation-only",
-    ]);
+  let after;
+  if (options.contentOnly) {
+    if (!before.exists) fail("--content-only requires an existing Forge stack");
+    after = before.stack;
   } else {
-    const creation = runAwsJson(
-      [
+    let targetStackId;
+    if (before.exists) {
+      targetStackId = before.stack.stackId;
+      runAws([
         "cloudformation",
-        "create-stack",
-        "--stack-name",
-        options.stack,
-        "--template-body",
-        `file://${snapshot.templatePath}`,
-        "--region",
-        options.region,
-        "--tags",
-        "Key=Application,Value=forge-dashboard-demo",
-        "Key=DataClassification,Value=synthetic-presentation-only",
-      ],
-      "created stack",
-    );
-    if (
-      !creation ||
-      typeof creation !== "object" ||
-      Array.isArray(creation) ||
-      JSON.stringify(Object.keys(creation)) !== JSON.stringify(["StackId"])
-    ) {
-      fail("CloudFormation returned an ambiguous create-stack response");
-    }
-    targetStackId = validateStackArn(creation.StackId, options);
-    runAws([
-      "cloudformation",
-      "wait",
-      "stack-create-complete",
-      "--stack-name",
-      targetStackId,
-      "--region",
-      options.region,
-    ]);
-  }
-
-  const after = readStackRecord(
-    runAwsJson(
-      [
-        "cloudformation",
-        "describe-stacks",
+        "deploy",
+        "--template-file",
+        snapshot.templatePath,
         "--stack-name",
         targetStackId,
         "--region",
         options.region,
-      ],
-      "deployed stack",
-    ),
-    options,
-  );
-  if (after.stackId !== targetStackId) {
-    fail("the deployed stack identity changed after the atomic target selection");
+        "--no-fail-on-empty-changeset",
+        "--tags",
+        "Application=forge-dashboard-demo",
+        "DataClassification=synthetic-presentation-only",
+      ]);
+    } else {
+      const creation = runAwsJson(
+        [
+          "cloudformation",
+          "create-stack",
+          "--stack-name",
+          options.stack,
+          "--template-body",
+          `file://${snapshot.templatePath}`,
+          "--region",
+          options.region,
+          "--tags",
+          "Key=Application,Value=forge-dashboard-demo",
+          "Key=DataClassification,Value=synthetic-presentation-only",
+        ],
+        "created stack",
+      );
+      if (
+        !creation ||
+        typeof creation !== "object" ||
+        Array.isArray(creation) ||
+        JSON.stringify(Object.keys(creation)) !== JSON.stringify(["StackId"])
+      ) {
+        fail("CloudFormation returned an ambiguous create-stack response");
+      }
+      targetStackId = validateStackArn(creation.StackId, options);
+      runAws([
+        "cloudformation",
+        "wait",
+        "stack-create-complete",
+        "--stack-name",
+        targetStackId,
+        "--region",
+        options.region,
+      ]);
+    }
+
+    after = readStackRecord(
+      runAwsJson(
+        [
+          "cloudformation",
+          "describe-stacks",
+          "--stack-name",
+          targetStackId,
+          "--region",
+          options.region,
+        ],
+        "deployed stack",
+      ),
+      options,
+    );
+    if (after.stackId !== targetStackId) {
+      fail("the deployed stack identity changed after the atomic target selection");
+    }
   }
 
-  await publishAndVerifySite(snapshot, after, options.region);
+  await publishAndVerifySite(snapshot, after, options.region, {
+    conditional: options.contentOnly,
+  });
   const invalidation = readInvalidation(
     runAwsJson(
       [
@@ -826,7 +888,9 @@ async function main() {
   }
 
   const deployed = result.deployed;
-  process.stdout.write(`\nForge dashboard deployment complete\n`);
+  process.stdout.write(
+    `\nForge dashboard ${options.contentOnly ? "content refresh" : "deployment"} complete\n`,
+  );
   process.stdout.write(`AWS account: ${options.account}\n`);
   process.stdout.write(`Stack ID: ${deployed.stackId}\n`);
   process.stdout.write(`Site URL: ${deployed.siteUrl}\n`);

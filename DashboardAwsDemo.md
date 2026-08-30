@@ -49,10 +49,13 @@ The builder also atomically writes the private receipt
 SHA-256 of both files. The receipt sits outside the site directory and is never
 uploaded.
 
-The dashboard builder is the security gate that constructs a field-by-field
-presentation export from pinned, sanitized samples. Inspect the page locally
-before publication. Do not manually copy report or evidence files into
-`dist/dashboard-site`.
+The dashboard builder is the security gate that constructs the initial
+field-by-field presentation from pinned, sanitized samples. The publisher can
+later replace either slot only with an exact allowlisted, PostgreSQL-persisted
+public projection. The reviewed target/source/scope pins live in
+`dashboard/demo-policy-v1.json`; changing any pin automatically changes the
+stored policy fingerprint. Inspect the page locally before publication. Do not
+manually copy report or evidence files into `dist/dashboard-site`.
 
 The deploy command's local checks and usage text can be exercised without AWS
 access:
@@ -84,14 +87,16 @@ The dependency-free script:
    root user, before mutation;
 3. creates only an absent stack; an update requires the exact existing Stack ID
    and Forge ownership tags, then requires the exact reviewed output set;
-4. rejects versioning or unexpected keys, unconditionally puts only
-   `styles.css` and `index.html` with SSE-S3 and five-minute revalidation, then
-   lists, heads, downloads, and SHA-256 verifies the exact remote objects;
+4. rejects versioning or unexpected keys, puts only `styles.css` and
+   `index.html` with SSE-S3, immediate HTML revalidation, and a five-minute CSS
+   cache, then lists, heads, downloads, and SHA-256 verifies the exact remote
+   objects; content-only mode also binds each replacement to the object ETag
+   observed during preflight;
 5. invalidates `/*`, waits for completion, and only then prints the URL,
    identities, and verified hashes.
 
 CloudFront creation commonly takes several minutes. The first successful run
-prints the immutable Stack ID. To update, inspect that stack and repeat the
+prints the immutable Stack ID. A template/infrastructure update repeats the
 command with the additional exact value:
 
 ```bash
@@ -102,6 +107,39 @@ node scripts/deploy-dashboard.mjs \
   --region us-east-1 \
   --yes
 ```
+
+## Refresh published results without changing infrastructure
+
+After `publish-run --refresh-dashboard` reports `dashboard.status` as
+`refreshed`, inspect the local page. Then upload only the newly validated
+content to the existing exact stack:
+
+The local publisher demo exports fake MinIO credentials under AWS's standard
+environment-variable names. Use a fresh shell, or remove those demo-only values
+before touching AWS, and verify the intended non-root identity first:
+
+```bash
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_REGION
+aws sts get-caller-identity --region us-east-1
+```
+
+```bash
+node scripts/deploy-dashboard.mjs \
+  --account 123456789012 \
+  --stack forge-dashboard-demo \
+  --stack-id 'arn:aws:cloudformation:us-east-1:123456789012:stack/forge-dashboard-demo/<uuid>' \
+  --region us-east-1 \
+  --content-only \
+  --yes
+```
+
+This mode still validates the caller/account, refuses root credentials,
+requires the exact tagged stack and two-key bucket inventory, verifies local
+builder receipts and remote S3 checksums, and waits for the CloudFront
+invalidation. It skips the CloudFormation deploy because no infrastructure
+changed. HTML is uploaded with immediate revalidation so reloading an open demo
+tab shows the new snapshot. The evidence bucket and PostgreSQL are never
+website origins.
 
 If deployment fails after the stack is created, the stack remains billable and
 the two-object publication might be partial. Do not call the page complete;
@@ -166,14 +204,14 @@ All four public-access-block values must be `true`; default encryption must be
 - The CloudFront URL is public. Anyone with the URL can view and redistribute
   the synthetic presentation.
 - The S3 bucket is private, but privacy of the published page comes from the
-  build-time field allowlist—not from obscurity, encryption, or the URL.
+  presentation field allowlist—not from obscurity, encryption, or the URL.
 - OAC grants only this CloudFront distribution `s3:GetObject`; it grants no
   browser access to S3 and no database access.
 - The page is HTML and CSS only. The CSP disables JavaScript, connections,
   forms, frames, objects, and every unspecified resource type.
-- Results are a pinned snapshot and do not update until another validated
-  build is deployed. They are representative selected cases, not a universal
-  security verdict.
+- Results update only at the explicit publication and content-deployment
+  boundaries. They are representative selected cases, not a universal security
+  verdict.
 - This demo has no authentication, WAF, access-log pipeline, availability SLA,
   customer-data path, live query API, or raw-artifact drill-down.
 - CloudFront's generated hostname uses its default certificate; AWS fixes that

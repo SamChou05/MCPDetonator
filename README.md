@@ -94,6 +94,6 @@ Our goal is to measure your ability to make intelligent design choices and think
 - [`HardenedEvidenceInfrastructurePlan.md`](HardenedEvidenceInfrastructurePlan.md)
   separates that bounded integration slice from the remaining production
   hardening roadmap.
-- [`DashboardAwsDemo.md`](DashboardAwsDemo.md) builds and deploys the minimal,
-  script-free results report; [`DashboardArchitectureDecision.md`](DashboardArchitectureDecision.md)
-  records the alternatives, cost boundary, and replacement triggers.
+- [`DashboardAwsDemo.md`](DashboardAwsDemo.md) builds, publish-refreshes, and
+  deploys the minimal script-free results report; [`DashboardArchitectureDecision.md`](DashboardArchitectureDecision.md)
+  records the alternatives, database boundary, cost, and replacement triggers.

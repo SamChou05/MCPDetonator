@@ -64,6 +64,28 @@ const CAPABILITY_ORDER = staticCapabilitySchema.options;
 const COMPARED_CAPABILITY_ORDER = comparedCapabilitySchema.options;
 const EFFECT_KIND_ORDER = effectKindSchema.options;
 
+const CANONICAL_FINDING_TITLES: Readonly<Record<string, string>> = {
+  "runtime.file_scope_exceeded": "Tool accessed data outside its configured scope",
+  "runtime.initialization_file_scope_exceeded":
+    "Initialization accessed data outside its configured scope",
+  "runtime.initialization_sensitive_access":
+    "Initialization accessed a sensitive synthetic fixture",
+  "runtime.initialization_unexpected_network_attempt":
+    "Initialization attempted an unexpected network connection",
+  "runtime.initialization_unexpected_process_exec":
+    "Initialization launched an unexpected process",
+  "runtime.post_return_activity": "Process activity continued after tool return",
+  "runtime.unexpected_network_attempt":
+    "Tool attempted an unexpected network connection",
+  "runtime.unexpected_process_exec": "Tool launched an unexpected process",
+};
+
+const UNKNOWN_FINDING_TITLE = "Deterministic behavioral rule matched";
+const ALLOWED_FINDING_TITLES = new Set([
+  ...Object.values(CANONICAL_FINDING_TITLES),
+  UNKNOWN_FINDING_TITLE,
+]);
+
 export const DEMO_EXPORT_DISCLAIMER =
   "Zero findings means only that no deterministic findings were produced for the selected synthetic experiments and current rule coverage; it is not evidence of universal safety.";
 
@@ -153,8 +175,10 @@ const findingCountsSchema = z
 
 const findingCardSchema = z
   .object({
-    ruleId: publicIdentifierSchema,
-    title: publicTextSchema(160),
+    title: publicTextSchema(160).refine(
+      (value) => ALLOWED_FINDING_TITLES.has(value),
+      "must use a canonical public finding title",
+    ),
     severity: severitySchema,
     confidence: confidenceSchema,
   })
@@ -288,18 +312,31 @@ const runtimeSchema = z
     }
   });
 
-const demoRunSchema = z
+const presentationSchema = z.discriminatedUnion("source", [
+  z
+    .object({
+      source: z.literal("sample"),
+    })
+    .strict(),
+  z
+    .object({
+      source: z.literal("published"),
+      publishedAt: z.iso.datetime({ offset: true }),
+    })
+    .strict(),
+]);
+
+export const demoRunV1Schema = z
   .object({
     role: z.enum(["controlled", "reference"]),
-    reportSha256: z.string().regex(SHA256_PATTERN),
     target: z
       .object({
-        id: publicIdentifierSchema,
         displayName: publicTextSchema(80),
         description: publicTextSchema(320),
       })
       .strict(),
-    generatedAt: z.iso.datetime({ offset: true }),
+    analyzedAt: z.iso.datetime({ offset: true }),
+    presentation: presentationSchema,
     summary: publicTextSchema(512),
     counts: z
       .object({
@@ -317,6 +354,17 @@ const demoRunSchema = z
   })
   .strict()
   .superRefine((run, context) => {
+    const expectedSummary =
+      run.counts.findings === 0
+        ? "No deterministic findings were produced for the selected cases and current rule coverage."
+        : `${run.counts.findings} deterministic findings were produced for the selected cases and current rule coverage.`;
+    if (run.summary !== expectedSummary) {
+      context.addIssue({
+        code: "custom",
+        message: "summary must be derived from the bounded finding count",
+        path: ["summary"],
+      });
+    }
     if (run.counts.findings !== run.findings.length) {
       context.addIssue({
         code: "custom",
@@ -350,7 +398,7 @@ export const demoExportV1Schema = z
   .object({
     schema: z.literal("forge.demo-export/v1"),
     disclaimer: z.literal(DEMO_EXPORT_DISCLAIMER),
-    runs: z.array(demoRunSchema).length(2),
+    runs: z.array(demoRunV1Schema).length(2),
   })
   .strict()
   .superRefine((value, context) => {
@@ -366,20 +414,9 @@ export const demoExportV1Schema = z
         path: ["runs"],
       });
     }
-    if (
-      new Set(value.runs.map((run) => run.target.id)).size !==
-        value.runs.length ||
-      new Set(value.runs.map((run) => run.reportSha256)).size !==
-        value.runs.length
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "demo runs must identify distinct targets and reports",
-        path: ["runs"],
-      });
-    }
   });
 
+export type DemoRunV1 = z.infer<typeof demoRunV1Schema>;
 export type DemoExportV1 = z.infer<typeof demoExportV1Schema>;
 
 export interface DemoScopeLabel {
@@ -396,6 +433,9 @@ export interface DemoReportInput {
   readonly description: string;
   readonly scopeLabels: readonly DemoScopeLabel[];
   readonly limitations: readonly string[];
+  readonly presentation?:
+    | { readonly source: "sample" }
+    | { readonly source: "published"; readonly publishedAt: string };
 }
 
 export interface DemoExportBuildInput {
@@ -419,6 +459,7 @@ const reportInputSchema = z
     description: publicTextSchema(320),
     scopeLabels: z.array(scopeLabelInputSchema).max(MAX_SCOPES),
     limitations: z.array(publicTextSchema(400)).max(MAX_LIMITATIONS),
+    presentation: presentationSchema.optional(),
   })
   .strict();
 
@@ -719,8 +760,7 @@ function buildRuntime(report: ReportV1): DemoExportV1["runs"][number]["runtime"]
 function buildRun(
   input: z.infer<typeof reportInputSchema>,
   report: ReportV1,
-  reportSha256: string,
-): DemoExportV1["runs"][number] {
+): DemoRunV1 {
   assertReportBounds(report);
   const labelMap = buildScopeLabelMap(report, input.scopeLabels);
   const findingsBySeverity = { info: 0, low: 0, medium: 0, high: 0 };
@@ -730,14 +770,16 @@ function buildRun(
 
   return {
     role: input.role,
-    reportSha256,
     target: {
-      id: report.targetId,
       displayName: input.displayName,
       description: input.description,
     },
-    generatedAt: report.generatedAt,
-    summary: report.summary,
+    analyzedAt: report.generatedAt,
+    presentation: input.presentation ?? { source: "sample" },
+    summary:
+      report.findings.length === 0
+        ? "No deterministic findings were produced for the selected cases and current rule coverage."
+        : `${report.findings.length} deterministic findings were produced for the selected cases and current rule coverage.`,
     counts: {
       advertisedTools: report.advertisedTools.length,
       experiments: report.experiments.length,
@@ -746,8 +788,8 @@ function buildRun(
     },
     findings: report.findings
       .map((finding) => ({
-        ruleId: finding.ruleId,
-        title: finding.title,
+        title:
+          CANONICAL_FINDING_TITLES[finding.ruleId] ?? UNKNOWN_FINDING_TITLE,
         severity: finding.severity,
         confidence: finding.confidence,
       }))
@@ -757,7 +799,6 @@ function buildRun(
           orderedIndex(SEVERITY_ORDER, right.severity);
         return (
           severityDifference ||
-          compareStrings(left.ruleId, right.ruleId) ||
           compareStrings(left.title, right.title)
         );
       }),
@@ -787,6 +828,28 @@ function buildRun(
     runtime: buildRuntime(report),
     limitations: [...input.limitations],
   };
+}
+
+export function buildDemoRunV1(input: DemoReportInput): DemoRunV1 {
+  let trustedInput: z.infer<typeof reportInputSchema>;
+  try {
+    trustedInput = reportInputSchema.parse(input);
+  } catch (error) {
+    throw new DemoExportError("invalid public demo report input", {
+      cause: error,
+    });
+  }
+
+  const { report } = parsePinnedReport(trustedInput);
+  const candidate = buildRun(trustedInput, report);
+  assertEveryEmittedStringIsSafe(candidate);
+  try {
+    return demoRunV1Schema.parse(candidate);
+  } catch (error) {
+    throw new DemoExportError("generated public demo run is invalid", {
+      cause: error,
+    });
+  }
 }
 
 function assertEveryEmittedStringIsSafe(value: unknown, path = "$output"): void {
@@ -840,9 +903,7 @@ export function buildDemoExportV1(input: DemoExportBuildInput): DemoExportV1 {
   }
 
   const runs = parsed
-    .map(({ input: reportInput, report, reportSha256 }) =>
-      buildRun(reportInput, report, reportSha256),
-    )
+    .map(({ input: reportInput, report }) => buildRun(reportInput, report))
     .sort((left, right) =>
       left.role === right.role ? 0 : left.role === "controlled" ? -1 : 1,
     );

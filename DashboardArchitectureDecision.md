@@ -1,25 +1,31 @@
 # Dashboard architecture decision
 
-**Status:** accepted for the bounded demo
+**Status:** accepted for the bounded demo; amended for publish-driven refresh
 **Decision date:** 2026-08-30
 
 ## Decision
 
-Publish a script-free snapshot of explicitly allowlisted fields from pinned,
-sanitized Forge sample reports. Store only the generated `index.html` and `styles.css`
-in a separate private S3 bucket and serve them through one CloudFront
-distribution using Origin Access Control (OAC).
+Publish a script-free snapshot of an explicitly allowlisted presentation
+contract. Pinned sanitized reports provide the initial/fallback pair. An
+explicit successful `publish-run --refresh-dashboard` stores a separate safe
+projection in PostgreSQL and regenerates `index.html` from the latest published
+projection for each reviewed target. Store only generated `index.html` and
+`styles.css` in a separate private S3 bucket and serve them through one
+CloudFront distribution using Origin Access Control (OAC).
 
 The canonical evidence bucket and PostgreSQL publisher store are not origins,
 are not copied to the site bucket, and are not reachable from the browser.
 
 ```text
-pinned, sanitized sample reports
-        -> validated presentation export + private build receipt
-        -> index.html + styles.css
-        -> private S3 origin <- signed OAC <- CloudFront HTTPS URL -> viewer
+verified run -> evidence S3 -> PostgreSQL status=published
+                                  |
+                                  v
+                    allowlisted safe projection
+                                  |
+        pinned fallback ----------+-> generated index.html + styles.css
+                                      -> private site S3 <- OAC <- CloudFront
 
-raw evidence and PostgreSQL -----------------------------X (no connection)
+browser --------------------------X-> PostgreSQL / canonical evidence S3
 ```
 
 This is a public presentation artifact, not a public evidence store. The
@@ -34,7 +40,7 @@ accounts, customer data, or raw-artifact download.
 
 | Design | Demo goal | Privacy boundary | Result fidelity | Indicative cost | Delivery time / operations | Reversibility | Decision |
 |---|---|---|---|---|---|---|---|
-| **Private S3 + CloudFront, sanitized snapshot** | Direct fit: a stable public URL and purpose-built view | Strongest small design: only two validated presentation files enter a separate bucket | Exact for the pinned snapshot; intentionally not live | About **$0–$2/month** at demo traffic | Same-day; no server, database, VPC, runtime, or patching | High: preserve the presentation contract and replace its producer later | **Selected** |
+| **Private S3 + CloudFront, publish-generated snapshot** | Direct fit: a stable public URL and purpose-built view | Strongest small design: only two validated presentation files enter a separate bucket | Current at explicit publication/deployment boundaries; no runtime query path | About **$0–$2/month** at demo traffic | Same-day; no public server, API, VPC, or patching | High: preserve the presentation contract and replace its producer later | **Selected** |
 | API Gateway + Lambda + RDS PostgreSQL | Supports live filters and many runs, beyond current need | Can be strong, but requires API authorization, query allowlists, secrets, database networking, and abuse controls | Live and queryable | Roughly **$15–$40/month** for a tiny single-AZ database-backed demo; more with HA, NAT, or idle resources | Several days; schema/API lifecycle, database maintenance, observability, and failure modes | Medium-high if the API returns the same presentation contract | Defer until live querying is a real requirement |
 | Aurora Serverless v2 + Data API | Live relational data without application connection pooling | Still needs authorization, Secrets Manager, query constraints, and database governance | Live and queryable | If 0.5 ACU is active one hour/day at the posted $0.12/ACU-hour example: about **$1.80/month compute**, plus storage, I/O, secrets, API, and frontend; if it never pauses, about **$43.80/month compute** | More moving parts and a typical ~15-second resume after pause | Medium-high | Interesting later, unnecessarily subtle for this demo |
 | One container on App Runner, ECS/Fargate, or Lightsail | Flexible and can serve a live app | Adds a public runtime, dependency/patch surface, logs, and potentially network/database credentials | Live if implemented that way | **$5/month** is the current smallest Lightsail public-IPv4 bundle; managed container/networking combinations commonly reach the low tens monthly | Container builds, runtime health, scaling, logging, and patching | Medium; portable container, AWS-specific service wiring | Reject for a two-file site |
@@ -90,9 +96,23 @@ enrollment, WAF, and cancellation lifecycle sit outside this intentionally
 self-contained CloudFormation teardown. It is worth reconsidering if a hard
 traffic-cost ceiling matters more than keeping the demo stack minimal.
 
-The tradeoff is freshness: a changed Forge result requires a validated rebuild
-and redeploy. That is desirable for this public demo because publication is an
-explicit review event.
+The tradeoff is bounded freshness rather than live querying. A selected run
+refreshes the local snapshot only after PostgreSQL commits `published`; an AWS
+viewer sees it after the explicit content-only upload and CloudFront
+invalidation. That is desirable for this public demo because publication stays
+an explicit review event and the website has no database credential or runtime
+dependency.
+
+The `forge_dashboard_projections` table is deliberately separate from general
+publisher metadata. Eligibility is default-deny and pins target ID, target
+configuration digest, source/package identity, experiment/scope set, sandbox
+profile, and trusted public role in the validated
+`dashboard/demo-policy-v1.json`. The stored policy ID includes a canonical hash
+of every pin, so a policy change automatically stops selecting old rows. The
+projection omits report-authored summary and finding prose, IDs, hashes, paths,
+URLs, object metadata, inputs, and raw evidence. Known rule IDs map to
+code-owned titles; unknown rules use one fixed generic title. An older retry
+cannot replace a newer projection.
 
 The deployer also refuses AWS account root credentials before any mutation.
 AWS recommends using a federated identity or assumed role for ordinary work:
@@ -116,7 +136,7 @@ updates.
 Replace the snapshot producer with an authenticated API when at least one of
 these becomes true:
 
-- viewers need current runs within minutes rather than curated releases;
+- viewers need live queries rather than explicit publish-time refreshes;
 - the run set is too large to build and download as a bounded snapshot;
 - customers need private, tenant-scoped data or raw evidence downloads;
 - server-side search, pagination, audit logging, or per-user authorization is

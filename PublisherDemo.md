@@ -2,7 +2,9 @@
 
 This demo keeps `forge analyze` unchanged. It verifies one completed local run,
 streams its manifest-listed artifacts to an S3-compatible object store, writes
-queryable metadata to PostgreSQL, and publishes the exact `run.json` last.
+queryable metadata to PostgreSQL, and publishes the exact `run.json` last. For
+the two reviewed demo targets, it can also store a disclosure-safe projection
+and regenerate the script-free results page after publication succeeds.
 
 The bundled stack binds only to localhost and uses conspicuously non-production
 credentials. It is for demonstration and automated verification, not shared
@@ -48,20 +50,31 @@ checked-in deceptive fixture. The following captures the exact `runDirectory`
 printed by `analyze`, even when other runs already exist:
 
 ```bash
-npm run build
+npm run build:dashboard
 export FORGE_RUN_DIRECTORY="$(
   node dist/cli.js analyze fixtures/deceptive-mcp/target.yaml --output runs |
   node -e 'let s=""; process.stdin.on("data", c => s += c); process.stdin.on("end", () => process.stdout.write(JSON.parse(s).runDirectory));'
 )"
-node dist/cli.js publish-run "$FORGE_RUN_DIRECTORY"
+node dist/cli.js publish-run "$FORGE_RUN_DIRECTORY" --refresh-dashboard
 ```
 
 Success prints a JSON object containing the run ID, manifest digest, artifact
-count, finding count, and the final S3 manifest location.
+count, finding count, final S3 manifest location, and dashboard status. Reload
+the local page after the command completes: the controlled card should say
+`Published ...`; the unrefreshed reference card remains clearly labeled
+`Pinned sample`.
+
+```bash
+npm run serve:dashboard
+```
+
+Open `http://127.0.0.1:4173/`. The browser reads only generated HTML and CSS;
+it has no PostgreSQL or evidence-bucket credentials.
 
 Run the same command again. It should succeed idempotently: immutable S3
 objects are verified rather than overwritten, and PostgreSQL retains one
-logical set of run, artifact, and finding rows.
+logical set of run, artifact, finding, and public-projection rows. The
+dashboard result should report `unchanged`.
 
 ## 4. Inspect the result
 
@@ -82,6 +95,21 @@ authority for overall publication state.
 The object store holds the evidence bytes. PostgreSQL holds the searchable
 index and object references; it does not duplicate large traces or reports as
 database blobs.
+
+The separate `forge_dashboard_projections` table contains only the bounded,
+schema-validated presentation contract. It is populated only for exact
+allowlisted target/config/source/scope identities and only after the joined run
+is `published`:
+
+```bash
+docker compose -f compose.publisher-demo.yml exec -T postgres \
+  psql -U forge -d forge -c \
+  "select p.role, r.target_id, r.status, r.run_completed_at from forge_dashboard_projections p join forge_published_runs r on r.run_id = p.run_id order by r.run_completed_at desc;"
+```
+
+Report summaries, arbitrary finding text, paths, run/finding/event IDs, hashes,
+object keys, package-authored prose, and raw evidence are not copied into that
+projection.
 
 ## 5. Exercise the failure boundary
 
@@ -125,7 +153,8 @@ For an isolated automated check, run `npm run verify:publisher`. That verifier
 uses a unique Compose project, temporary ports and volumes, exercises first
 publication, exact retry, exact Postgres object references, service checksums,
 GET-and-hash verification of the manifest and every synthetic artifact, and
-pre-publication tamper rejection, then removes only the resources it created.
+publish-driven dashboard regeneration plus pre-publication tamper rejection,
+then removes only the resources it created.
 
 ## What this demo does not claim
 

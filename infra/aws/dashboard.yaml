@@ -121,7 +121,9 @@ Resources:
             Principal:
               Service: cloudfront.amazonaws.com
             Action: s3:GetObject
-            Resource: !Sub '${DashboardBucket.Arn}/*'
+            Resource:
+              - !Sub '${DashboardBucket.Arn}/index.html'
+              - !Sub '${DashboardBucket.Arn}/styles.css'
             Condition:
               StringEquals:
                 AWS:SourceArn: !Sub >-

@@ -72,6 +72,11 @@ program
     "Verify and publish a completed local run to S3-compatible storage and PostgreSQL",
   )
   .argument("<run-directory>", "path to a completed Forge run directory")
+  .option(
+    "--refresh-dashboard",
+    "refresh dist/dashboard-site from allowlisted published projections",
+    false,
+  )
   .addHelpText(
     "after",
     `
@@ -83,13 +88,20 @@ Optional S3 settings:
   FORGE_PUBLISH_S3_REGION, FORGE_PUBLISH_S3_PREFIX,
   FORGE_PUBLISH_S3_ENDPOINT, FORGE_PUBLISH_S3_FORCE_PATH_STYLE
 
+Optional presentation:
+  --refresh-dashboard updates the local script-free dashboard only after the
+  run is queryably published. Run npm run build:dashboard once first.
+
 See PublisherDemo.md for the synthetic localhost demo and safety boundary.
 `,
   )
-  .action(async (runDirectory: string) => {
+  .action(async (runDirectory: string, options: { refreshDashboard: boolean }) => {
     const result = await publishRunToConfiguredInfrastructure(
       resolve(runDirectory),
       loadPublishConfiguration(),
+      options.refreshDashboard
+        ? { dashboardRepositoryRoot: process.cwd() }
+        : undefined,
     );
     process.stdout.write(
       `${JSON.stringify(
@@ -105,11 +117,15 @@ See PublisherDemo.md for the synthetic localhost demo and safety boundary.
             begin: result.beginDisposition,
             finalize: result.finalizeDisposition,
           },
+          dashboard: result.dashboard,
         },
         null,
         2,
       )}\n`,
     );
+    if (result.dashboard.status === "failed") {
+      process.exitCode = 2;
+    }
   });
 
 program

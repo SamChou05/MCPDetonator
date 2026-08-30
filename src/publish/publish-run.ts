@@ -1,5 +1,6 @@
 import { S3Client } from "@aws-sdk/client-s3";
 
+import { LocalDashboardPublicationRefresher } from "../dashboard/publish-refresh.js";
 import {
   verifyRunBundle,
   type VerifiedRunArtifact,
@@ -14,6 +15,7 @@ import {
   type FinalizePublicationResult,
   type PublishedArtifactInput,
   type PublishedFindingInput,
+  type PublicationRun,
 } from "./postgres.js";
 import {
   S3ArtifactStore,
@@ -52,6 +54,28 @@ export interface PublishVerifiedRunOptions {
   artifactStore: PublicationArtifactStore;
   repository: PublicationRepository;
   artifactConcurrency?: number;
+  dashboardRefresher?: PublicationDashboardRefresher;
+}
+
+export type DashboardRefreshResult =
+  | { readonly status: "not_configured" }
+  | { readonly status: "not_selected" }
+  | {
+      readonly status: "refreshed";
+      readonly disposition: "changed" | "unchanged";
+    }
+  | {
+      readonly status: "failed";
+      readonly message: string;
+      readonly retryable: true;
+    };
+
+export interface PreparedDashboardRefresh {
+  execute(publication: PublicationRun): Promise<DashboardRefreshResult>;
+}
+
+export interface PublicationDashboardRefresher {
+  prepare(bundle: VerifiedRunBundle): PreparedDashboardRefresh;
 }
 
 export interface PublishRunResult {
@@ -64,6 +88,13 @@ export interface PublishRunResult {
   readonly findingCount: number;
   readonly beginDisposition: BeginPublicationResult["disposition"];
   readonly finalizeDisposition: FinalizePublicationResult["disposition"];
+  readonly dashboard: DashboardRefreshResult;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error && error.message.length > 0
+    ? error.message
+    : "dashboard refresh failed with an unknown error";
 }
 
 function artifactConcurrency(value: number | undefined): number {
@@ -222,6 +253,15 @@ export async function publishVerifiedRun(
   if (bundle.manifest.status !== "completed" || completedAt === undefined) {
     throw new Error("only a verified completed run can be published");
   }
+  let preparedDashboard: PreparedDashboardRefresh | undefined;
+  let dashboardPreparationError: unknown;
+  if (options.dashboardRefresher !== undefined) {
+    try {
+      preparedDashboard = options.dashboardRefresher.prepare(bundle);
+    } catch (error) {
+      dashboardPreparationError = error;
+    }
+  }
   const concurrency = artifactConcurrency(options.artifactConcurrency);
   const beginInput: BeginPublicationInput = {
     runId: bundle.manifest.runId,
@@ -338,6 +378,33 @@ export async function publishVerifiedRun(
     findings,
   });
 
+  let dashboard: DashboardRefreshResult;
+  if (options.dashboardRefresher === undefined) {
+    dashboard = { status: "not_configured" };
+  } else if (dashboardPreparationError !== undefined) {
+    dashboard = {
+      status: "failed",
+      message: errorMessage(dashboardPreparationError),
+      retryable: true,
+    };
+  } else if (preparedDashboard === undefined) {
+    dashboard = {
+      status: "failed",
+      message: "dashboard refresh preparation produced no plan",
+      retryable: true,
+    };
+  } else {
+    try {
+      dashboard = await preparedDashboard.execute(finalized.run);
+    } catch (error) {
+      dashboard = {
+        status: "failed",
+        message: errorMessage(error),
+        retryable: true,
+      };
+    }
+  }
+
   return {
     status: "published",
     runId: bundle.manifest.runId,
@@ -348,6 +415,7 @@ export async function publishVerifiedRun(
     findingCount: finalized.findingCount,
     beginDisposition: begun.disposition,
     finalizeDisposition: finalized.disposition,
+    dashboard,
   };
 }
 
@@ -380,6 +448,7 @@ export async function publishRun(
 export async function publishRunToConfiguredInfrastructure(
   runDirectory: string,
   configuration: PublishConfiguration,
+  options?: { readonly dashboardRepositoryRoot: string },
 ): Promise<PublishRunResult> {
   const s3Client = new S3Client({
     region: configuration.s3Region,
@@ -406,6 +475,14 @@ export async function publishRunToConfiguredInfrastructure(
         prefix: configuration.s3Prefix,
       }),
       repository,
+      ...(options === undefined
+        ? {}
+        : {
+            dashboardRefresher: new LocalDashboardPublicationRefresher({
+              repository,
+              repositoryRoot: options.dashboardRepositoryRoot,
+            }),
+          }),
     });
   } catch (error) {
     publicationError = error;

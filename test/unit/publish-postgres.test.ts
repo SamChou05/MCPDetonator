@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import {
   PostgresPublicationRepository,
   type BeginPublicationInput,
+  type DashboardProjectionInput,
   type PgClientLike,
   type PgPoolLike,
   type PgQueryResultLike,
@@ -85,6 +88,7 @@ class FakePool implements PgPoolLike {
 
 const manifestSha256 = "a".repeat(64);
 const artifactSha256 = "b".repeat(64);
+const dashboardPolicyId = "forge.dashboard-demo/v1";
 
 const beginInput: BeginPublicationInput = {
   runId: "run-20260830-test",
@@ -120,6 +124,25 @@ const finding: PublishedFindingInput = {
     eventIds: ["event-1"],
     limitations: ["selected-input evidence only"],
   },
+};
+
+const dashboardProjection = {
+  counts: { findings: 1 },
+  schema: "forge.demo-run/v1",
+  target: { id: beginInput.targetId },
+} as const;
+
+const dashboardProjectionSha256 = createHash("sha256")
+  .update(JSON.stringify(dashboardProjection), "utf8")
+  .digest("hex");
+
+const dashboardProjectionInput: DashboardProjectionInput = {
+  runId: beginInput.runId,
+  targetId: beginInput.targetId,
+  manifestSha256,
+  policyId: dashboardPolicyId,
+  role: "controlled",
+  projection: dashboardProjection,
 };
 
 function runRow(
@@ -176,6 +199,24 @@ function findingRow(
   };
 }
 
+function dashboardProjectionRow(
+  overrides: Readonly<Record<string, unknown>> = {},
+): Record<string, unknown> {
+  return {
+    runId: dashboardProjectionInput.runId,
+    targetId: dashboardProjectionInput.targetId,
+    manifestSha256: dashboardProjectionInput.manifestSha256,
+    policyId: dashboardProjectionInput.policyId,
+    role: dashboardProjectionInput.role,
+    projection: dashboardProjectionInput.projection,
+    projectionSha256: dashboardProjectionSha256,
+    runCompletedAt: beginInput.runCompletedAt,
+    createdAt: "2026-08-30T18:04:00.000Z",
+    publicationStatus: "published",
+    ...overrides,
+  };
+}
+
 describe("PostgresPublicationRepository", () => {
   it("initializes the bounded relational schema under a transaction and advisory lock", async () => {
     const client = new FakeClient(() => queryResult());
@@ -197,11 +238,16 @@ describe("PostgresPublicationRepository", () => {
     expect(ddl).toContain("CREATE TABLE IF NOT EXISTS forge_published_runs");
     expect(ddl).toContain("CREATE TABLE IF NOT EXISTS forge_published_artifacts");
     expect(ddl).toContain("CREATE TABLE IF NOT EXISTS forge_published_findings");
+    expect(ddl).toContain("CREATE TABLE IF NOT EXISTS forge_dashboard_projections");
     expect(ddl).toContain("REFERENCES forge_published_runs(run_id) ON DELETE CASCADE");
     expect(ddl).toContain("public_metadata JSONB");
+    expect(ddl).toContain("role IN ('controlled', 'reference')");
+    expect(ddl).toContain("projection JSONB NOT NULL");
+    expect(ddl).toContain("PRIMARY KEY (run_id, policy_id)");
     expect(ddl).toContain("status IN ('publishing', 'published')");
     expect(ddl).toContain("forge_published_runs_target_completed_idx");
     expect(ddl).toContain("forge_published_findings_rule_severity_idx");
+    expect(ddl).toContain("forge_dashboard_projections_policy_target_idx");
   });
 
   it("begins a new publication with parameterized SQL", async () => {
@@ -589,6 +635,273 @@ describe("PostgresPublicationRepository", () => {
     expect(
       client.calls.some((call) => call.text.includes("UPDATE forge_published_runs")),
     ).toBe(false);
+  });
+
+  it("stores a bounded dashboard projection only after locking a published run", async () => {
+    const client = new FakeClient((text) => {
+      if (text.includes("FROM forge_published_runs") && text.includes("FOR UPDATE")) {
+        return queryResult([runRow("published")]);
+      }
+      if (text.includes("INSERT INTO forge_dashboard_projections")) {
+        return queryResult([{ runId: dashboardProjectionInput.runId }]);
+      }
+      if (
+        text.includes("FROM forge_dashboard_projections p") &&
+        text.includes("JOIN forge_published_runs r")
+      ) {
+        return queryResult([
+          dashboardProjectionRow({
+            projection: {
+              target: { id: beginInput.targetId },
+              schema: "forge.demo-run/v1",
+              counts: { findings: 1 },
+            },
+          }),
+        ]);
+      }
+      throw new Error(`unexpected client query: ${text}`);
+    });
+    const repository = new PostgresPublicationRepository(new FakePool(client));
+
+    const result = await repository.storeDashboardProjection(
+      dashboardProjectionInput,
+    );
+
+    expect(result).toMatchObject({
+      disposition: "stored",
+      projection: {
+        runId: beginInput.runId,
+        targetId: beginInput.targetId,
+        manifestSha256,
+        policyId: dashboardPolicyId,
+        role: "controlled",
+        projectionSha256: dashboardProjectionSha256,
+        runCompletedAt: beginInput.runCompletedAt,
+      },
+    });
+    const statements = client.calls.map((call) => call.text);
+    expect(statements[0]).toBe("BEGIN");
+    expect(statements.findIndex((text) => text.includes("FOR UPDATE"))).toBeLessThan(
+      statements.findIndex((text) =>
+        text.includes("INSERT INTO forge_dashboard_projections"),
+      ),
+    );
+    expect(statements.at(-1)).toBe("COMMIT");
+    const insert = client.calls.find((call) =>
+      call.text.includes("INSERT INTO forge_dashboard_projections"),
+    );
+    expect(insert?.text).toContain("ON CONFLICT (run_id, policy_id) DO NOTHING");
+    expect(insert?.text).not.toContain(beginInput.runId);
+    expect(insert?.values).toEqual([
+      beginInput.runId,
+      beginInput.targetId,
+      manifestSha256,
+      dashboardPolicyId,
+      "controlled",
+      JSON.stringify(dashboardProjection),
+      dashboardProjectionSha256,
+    ]);
+    expect(client.releaseCount).toBe(1);
+  });
+
+  it("rejects dashboard projection storage for publishing or mismatched runs", async () => {
+    for (const row of [
+      runRow("publishing"),
+      runRow("published", { manifestSha256: "c".repeat(64) }),
+    ]) {
+      const client = new FakeClient((text) => {
+        if (text.includes("FOR UPDATE")) return queryResult([row]);
+        throw new Error(`unexpected client query: ${text}`);
+      });
+      const repository = new PostgresPublicationRepository(new FakePool(client));
+
+      await expect(
+        repository.storeDashboardProjection(dashboardProjectionInput),
+      ).rejects.toMatchObject({
+        code: row.status === "publishing" ? "not_found" : "identity_conflict",
+      });
+      expect(client.calls.at(-1)?.text).toBe("ROLLBACK");
+      expect(
+        client.calls.some((call) =>
+          call.text.includes("INSERT INTO forge_dashboard_projections"),
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("replays an identical dashboard projection and rejects a conflicting retry", async () => {
+    for (const conflict of [false, true]) {
+      const client = new FakeClient((text) => {
+        if (text.includes("FOR UPDATE")) {
+          return queryResult([runRow("published")]);
+        }
+        if (text.includes("INSERT INTO forge_dashboard_projections")) {
+          return queryResult();
+        }
+        if (text.includes("FROM forge_dashboard_projections p")) {
+          return queryResult([
+            dashboardProjectionRow(conflict ? { role: "reference" } : {}),
+          ]);
+        }
+        throw new Error(`unexpected client query: ${text}`);
+      });
+      const repository = new PostgresPublicationRepository(new FakePool(client));
+
+      if (conflict) {
+        await expect(
+          repository.storeDashboardProjection(dashboardProjectionInput),
+        ).rejects.toMatchObject({ code: "metadata_conflict" });
+        expect(client.calls.at(-1)?.text).toBe("ROLLBACK");
+      } else {
+        await expect(
+          repository.storeDashboardProjection(dashboardProjectionInput),
+        ).resolves.toMatchObject({ disposition: "already_stored" });
+        expect(client.calls.at(-1)?.text).toBe("COMMIT");
+      }
+    }
+  });
+
+  it("bounds dashboard projection JSON before connecting to Postgres", async () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const client = new FakeClient(() => queryResult());
+    const pool = new FakePool(client);
+    const repository = new PostgresPublicationRepository(pool);
+
+    await expect(
+      repository.storeDashboardProjection({
+        ...dashboardProjectionInput,
+        projection: cyclic as never,
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(client.calls).toHaveLength(0);
+    expect(pool.calls).toHaveLength(0);
+  });
+
+  it("returns at most the latest published dashboard projection for each target", async () => {
+    const referenceTarget = "official-filesystem";
+    const client = new FakeClient(() => queryResult());
+    const pool = new FakePool(client, (text) => {
+      if (!text.includes("WITH ranked AS")) {
+        throw new Error(`unexpected pool query: ${text}`);
+      }
+      return queryResult([
+        dashboardProjectionRow({
+          runId: "run-newest-controlled",
+          runCompletedAt: "2026-08-30T18:10:00.000Z",
+        }),
+        dashboardProjectionRow({
+          runId: "run-older-controlled",
+          runCompletedAt: "2026-08-30T18:09:00.000Z",
+        }),
+        dashboardProjectionRow({
+          runId: "run-reference",
+          targetId: referenceTarget,
+          role: "reference",
+          runCompletedAt: "2026-08-30T18:08:00.000Z",
+        }),
+      ]);
+    });
+    const repository = new PostgresPublicationRepository(pool);
+
+    const result = await repository.getLatestPublishedDashboardProjections({
+      policyId: dashboardPolicyId,
+      targetIds: [beginInput.targetId, referenceTarget],
+    });
+
+    expect(result.map((projection) => projection.runId)).toEqual([
+      "run-newest-controlled",
+      "run-reference",
+    ]);
+    const query = pool.calls[0];
+    expect(query?.text).toContain("WHERE r.status = 'published'");
+    expect(query?.text).toContain("WHERE target_rank <= 2");
+    expect(query?.text).toContain("r.target_id = ANY($2::text[])");
+    expect(query?.values).toEqual([
+      dashboardPolicyId,
+      [beginInput.targetId, referenceTarget],
+    ]);
+  });
+
+  it("rejects an ambiguous latest completion tie or a publishing query row", async () => {
+    for (const rows of [
+      [
+        dashboardProjectionRow({
+          runId: "run-tied-a",
+          runCompletedAt: "2026-08-30T18:10:00.000Z",
+        }),
+        dashboardProjectionRow({
+          runId: "run-tied-b",
+          runCompletedAt: "2026-08-30T18:10:00.000Z",
+        }),
+      ],
+      [dashboardProjectionRow({ publicationStatus: "publishing" })],
+    ]) {
+      const pool = new FakePool(
+        new FakeClient(() => queryResult()),
+        () => queryResult(rows),
+      );
+      const repository = new PostgresPublicationRepository(pool);
+
+      await expect(
+        repository.getLatestPublishedDashboardProjections({
+          policyId: dashboardPolicyId,
+          targetIds: [beginInput.targetId],
+        }),
+      ).rejects.toMatchObject({
+        code: rows.length === 2 ? "metadata_conflict" : "database_invariant",
+      });
+    }
+  });
+
+  it("serializes dashboard refresh work and releases its transaction lock", async () => {
+    const successClient = new FakeClient((text) => {
+      if (text.includes("pg_advisory_xact_lock")) return queryResult();
+      if (text.includes("WITH ranked AS")) return queryResult();
+      throw new Error(`unexpected client query: ${text}`);
+    });
+    const successPool = new FakePool(successClient, (text) => {
+      throw new Error(`refresh lock unexpectedly queried through pool: ${text}`);
+    });
+    const successRepository = new PostgresPublicationRepository(
+      successPool,
+    );
+
+    await expect(
+      successRepository.withDashboardRefreshLock(async (reader) => {
+        await expect(
+          reader.getLatestPublishedDashboardProjections({
+            policyId: dashboardPolicyId,
+            targetIds: [beginInput.targetId],
+          }),
+        ).resolves.toEqual([]);
+        return "refreshed";
+      }),
+    ).resolves.toBe("refreshed");
+    const advisory = successClient.calls.find((call) =>
+      call.text.includes("pg_advisory_xact_lock"),
+    );
+    expect(advisory?.values).toHaveLength(1);
+    expect(advisory?.values[0]).not.toBe(1_180_148_281);
+    expect(successPool.calls).toEqual([]);
+    expect(successClient.calls.at(-1)?.text).toBe("COMMIT");
+    expect(successClient.releaseCount).toBe(1);
+
+    const failureClient = new FakeClient((text) => {
+      if (text.includes("pg_advisory_xact_lock")) return queryResult();
+      throw new Error(`unexpected client query: ${text}`);
+    });
+    const failureRepository = new PostgresPublicationRepository(
+      new FakePool(failureClient),
+    );
+    await expect(
+      failureRepository.withDashboardRefreshLock(async () => {
+        throw new Error("synthetic dashboard sink failure");
+      }),
+    ).rejects.toThrow("synthetic dashboard sink failure");
+    expect(failureClient.calls.at(-1)?.text).toBe("ROLLBACK");
+    expect(failureClient.calls.some((call) => call.text === "COMMIT")).toBe(false);
+    expect(failureClient.releaseCount).toBe(1);
   });
 
   it("only closes pools explicitly owned by the repository", async () => {

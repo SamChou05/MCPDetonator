@@ -940,3 +940,81 @@ Completed: 2026-08-30
   assumed-role profile, after which the reviewed deploy command can continue.
 - Pre-existing `.gitignore`, `agent-runs/`, unseen-MCP holdout files, and their
   untracked test remained out of scope and uncommitted.
+
+## Active publish-driven dashboard wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `main` at `8182009`
+  (`docs: record AWS results demo milestone`).
+- Pre-existing out-of-scope paths remain the modified `.gitignore`, generated
+  untracked `agent-runs/`, and the untracked unseen-MCP holdout directory/test.
+  This wave must not edit, stage, or commit them.
+- User goal: keep the page visually plain while making it reflect newly
+  published runs instead of only the two checked-in sample report bytes.
+- Product boundary: a successful explicit `publish-run` may update a strict,
+  sanitized presentation snapshot. The browser must not connect to PostgreSQL
+  or the canonical evidence bucket, and arbitrary run fields must not become
+  public merely because they were persisted.
+- Root is the sole site owner and owns all checkout edits, preview, integration,
+  verification, Git coordination, and this ledger. Parallel agents are
+  read-only reviewers for publisher seams, data-boundary risks, and test scope;
+  they must not edit files, invoke Sites tooling, or mutate Git/AWS state.
+- The implementation should reuse the existing publisher truth boundary:
+  evidence S3 holds bytes, PostgreSQL `published` remains query authority, and
+  dashboard refresh happens only after successful finalization. Publication
+  remains valid if a later presentation refresh fails, and an identical retry
+  must be able to converge the presentation.
+- Status: completed; see the wave completion record below.
+
+## Publish-driven dashboard wave completion
+
+Completed: 2026-08-30
+
+- Implementation commit: pending final reviewed staging.
+- `publish-run --refresh-dashboard` now keeps canonical publication unchanged,
+  then stores a separate bounded projection only after PostgreSQL reports the
+  exact run as `published`. Presentation failure returns a retryable partial
+  failure and CLI exit code 2 without undoing the published evidence.
+- `forge_dashboard_projections` stores normalized JSONB plus a canonical
+  digest. Latest selection is restricted to published rows, serialized by a
+  transaction-scoped advisory lock, uses the same checked-out connection to
+  avoid pool starvation, rejects completion-time ambiguity, and prevents an
+  older retry from replacing a newer run.
+- The validated `dashboard/demo-policy-v1.json` owns the two reviewed
+  target/config/source/package/experiment/scope/sandbox pins outside the
+  generic engine. The stored policy ID includes a canonical SHA-256 of every
+  pin, so a policy change automatically stops selecting prior-policy rows.
+- The public projection omits run/target/finding/rule/event IDs, hashes, paths,
+  URLs, object keys, raw evidence, report summaries, and report-authored
+  finding prose. Counts and states are bounded; known rules map to fixed titles
+  and unknown rules receive one generic title.
+- Refresh atomically replaces the local HTML, repairs a stale private receipt
+  on identical retry, keeps scratch files outside the strict two-file site
+  directory, and falls back to the pinned sample for an unfilled slot. The
+  browser remains script-free and has no database or evidence-bucket access.
+- AWS delivery remains explicit. `--content-only` validates the exact non-root
+  account/stack and two-key inventory, conditionally replaces each object by
+  observed ETag, verifies remote checksums/downloaded bytes, and waits for
+  CloudFront invalidation. OAC can read only `index.html` and `styles.css`;
+  HTML revalidates immediately while CSS has a five-minute cache.
+- The runbook now warns that the local MinIO credentials shadow real AWS
+  profiles. No AWS resource was created because only an account-root identity
+  was available; a federated or assumed-role identity is still required.
+- Independent publisher, security, and delivery reviews completed with no
+  remaining actionable high- or medium-severity finding. Their findings drove
+  the lock-reader, crash-retry, policy-revocation, exact-object OAC, cache, and
+  fake-AWS failure-path hardening.
+- Final verification passed: `npm run typecheck`; full `npm test` (70 files,
+  566 tests); `npm run build`; `npm run verify:publisher`; `npm run verify:e2e`
+  with observer image
+  `sha256:a1bc830e88e9b44fb524718bf20a1a64477a039dcfbb0d2b8b48c7bf11ce6774`;
+  focused dashboard/publisher checks; fake-AWS success, ETag-conflict, and
+  invalidation-failure tests; Node syntax checks; and `git diff --check`.
+- The local page currently reflects the newest verified and published runs:
+  controlled `run-20260830211145-69b02a0b` (111 artifacts, five findings) and
+  reference `run-20260830211219-fe478a18` (108 artifacts, zero findings).
+  Both PostgreSQL rows are `published`; the generated page contains neither
+  run ID nor manifest digest and is available at `http://127.0.0.1:4173/`.
+- Pre-existing `.gitignore`, `agent-runs/`, unseen-MCP holdout files, and their
+  untracked test remained out of scope and must remain uncommitted.

@@ -10,6 +10,7 @@
   "scripts": {
     "build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json",
     "build:dashboard": "npm run build && node scripts/build-dashboard.mjs",
+    "serve:dashboard": "node scripts/serve-dashboard.mjs",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
     "test": "vitest run",

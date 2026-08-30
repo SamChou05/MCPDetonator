@@ -30,6 +30,20 @@ const officialReportPath = resolve(
   projectRoot,
   "examples/reports/official-filesystem.report.json",
 );
+const dashboardIndexPath = resolve(
+  projectRoot,
+  "dist/dashboard-site/index.html",
+);
+const targetConfigDigests = new Map([
+  [
+    "deceptive-document-summarizer",
+    "fa4839a21415c8990e5d0de59ba6c063755fd01f5b1d723445573b019647cd89",
+  ],
+  [
+    "official-filesystem",
+    "6f82c83aa0734dd7635397b42447bf2bfafc735692ed2980f949ebbddb099d20",
+  ],
+]);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -73,6 +87,8 @@ async function createRunFixture(root, reportPath, tamperEvidence = false) {
     JSON.parse(await readFile(reportPath, "utf8")),
   );
   const runId = report.runId;
+  const configSha256 = targetConfigDigests.get(report.targetId);
+  invariant(configSha256 !== undefined, "publisher fixture target is not allowlisted");
   const runDirectory = join(root, runId);
   await mkdir(runDirectory);
 
@@ -113,7 +129,7 @@ async function createRunFixture(root, reportPath, tamperEvidence = false) {
     schema: "forge.run/v1",
     runId,
     targetId: report.targetId,
-    configSha256: "c".repeat(64),
+    configSha256,
     status: "completed",
     createdAt: "2026-08-30T00:00:00.000Z",
     completedAt: "2026-08-30T00:00:01.000Z",
@@ -191,11 +207,21 @@ async function objectBytes(output, label) {
   return Buffer.concat(chunks);
 }
 
-async function runForgePublish(runDirectory, environment, expectSuccess = true) {
+async function runForgePublish(
+  runDirectory,
+  environment,
+  expectSuccess = true,
+  refreshDashboard = false,
+) {
   try {
     const result = await execFileAsync(
       process.execPath,
-      [resolve(projectRoot, "dist/cli.js"), "publish-run", runDirectory],
+      [
+        resolve(projectRoot, "dist/cli.js"),
+        "publish-run",
+        runDirectory,
+        ...(refreshDashboard ? ["--refresh-dashboard"] : []),
+      ],
       {
         cwd: projectRoot,
         env: { ...process.env, ...environment },
@@ -260,6 +286,16 @@ async function main() {
   let s3Client;
 
   try {
+    await execFileAsync(
+      process.execPath,
+      [resolve(projectRoot, "scripts/build-dashboard.mjs")],
+      { cwd: projectRoot, maxBuffer: 2 * 1_024 * 1_024 },
+    );
+    const initialDashboard = await readFile(dashboardIndexPath, "utf8");
+    invariant(
+      !initialDashboard.includes("Published 2026-"),
+      "dashboard verifier did not start from the pinned sample build",
+    );
     stackMayExist = true;
     await execFileAsync(
       "docker",
@@ -276,6 +312,8 @@ async function main() {
     const first = await runForgePublish(
       successful.runDirectory,
       publisherEnvironment,
+      true,
+      true,
     );
     invariant(first.status === "published", "first publication did not succeed");
     invariant(first.retry.begin === "created", "first publication was not new");
@@ -287,6 +325,23 @@ async function main() {
       first.manifestSha256 === successful.manifestSha256,
       "published manifest digest differs from the local bundle",
     );
+    invariant(
+      first.dashboard?.status === "refreshed" &&
+        first.dashboard?.disposition === "changed",
+      "first publication did not refresh the local dashboard",
+    );
+    const publishedDashboard = await readFile(dashboardIndexPath, "utf8");
+    invariant(
+      publishedDashboard !== initialDashboard &&
+        publishedDashboard.includes("Published 2026-") &&
+        publishedDashboard.includes("Pinned sample"),
+      "dashboard did not show the published run beside its sample fallback",
+    );
+    invariant(
+      !publishedDashboard.includes(successful.runId) &&
+        !publishedDashboard.includes(successful.manifestSha256),
+      "dashboard leaked a private publication identity",
+    );
     const expectedManifestKey = `verify/runs/${successful.runId}/run.json`;
     invariant(
       first.manifestObject?.key === expectedManifestKey,
@@ -296,12 +351,20 @@ async function main() {
     const retry = await runForgePublish(
       successful.runDirectory,
       publisherEnvironment,
+      true,
+      true,
     );
     invariant(
       retry.retry.begin === "already_published" &&
         retry.retry.finalize === "already_published" &&
         retry.manifestObject.created === false,
       "identical retry was not idempotent",
+    );
+    invariant(
+      retry.dashboard?.status === "refreshed" &&
+        retry.dashboard?.disposition === "unchanged" &&
+        (await readFile(dashboardIndexPath, "utf8")) === publishedDashboard,
+      "identical retry did not converge on the same dashboard bytes",
     );
 
     pool = new pg.Pool({ connectionString: databaseUrl });
@@ -351,6 +414,17 @@ async function main() {
     invariant(
       findingRows.rows[0]?.count === successful.findingCount,
       "Postgres finding count differs",
+    );
+    const dashboardRows = await pool.query(
+      `SELECT COUNT(*)::integer AS count
+       FROM forge_dashboard_projections p
+       JOIN forge_published_runs r ON r.run_id = p.run_id
+       WHERE p.run_id = $1 AND r.status = 'published'`,
+      [successful.runId],
+    );
+    invariant(
+      dashboardRows.rows[0]?.count === 1,
+      "Postgres is missing the sanitized published dashboard projection",
     );
 
     s3Client = new S3Client({
@@ -435,6 +509,10 @@ async function main() {
       tamperedRows.rows[0]?.count === 0,
       "tampered run created Postgres publication metadata",
     );
+    invariant(
+      (await readFile(dashboardIndexPath, "utf8")) === publishedDashboard,
+      "tampered publication changed the dashboard",
+    );
     try {
       await s3Client.send(
         new HeadObjectCommand({
@@ -455,6 +533,7 @@ async function main() {
           artifactCount: successful.artifacts.length,
           findingCount: successful.findingCount,
           retry: "idempotent",
+          dashboardRefresh: "publish-driven-and-idempotent",
           tamperRejection: "verified-before-publication",
         },
         null,
@@ -476,6 +555,11 @@ async function main() {
         },
       );
     }
+    await execFileAsync(
+      process.execPath,
+      [resolve(projectRoot, "scripts/build-dashboard.mjs")],
+      { cwd: projectRoot, maxBuffer: 2 * 1_024 * 1_024 },
+    ).catch(() => undefined);
   }
 }
 
