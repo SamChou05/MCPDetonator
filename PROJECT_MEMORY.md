@@ -952,8 +952,8 @@ Requested: 2026-08-30
 
 Implementation wave baseline:
 
-- Starting branch/commit remains `codex/v2-unseen-enrollment` at `d222c3d`;
-  this ledger is the only dirty path before its coordination commit.
+- Editing baseline was `codex/v2-unseen-enrollment` at `6428993`
+  (`docs: start unseen MCP enrollment wave`) with a clean worktree.
 - Contract task owns only `src/contracts/v2/enrollment.ts`, the matching V2
   barrel export, and `test/unit/audit-v2-enrollment-contracts.test.ts`.
 - Runtime/sandbox task owns only `src/audit/v2/enrolled-runtime.ts`,
@@ -963,3 +963,39 @@ Implementation wave baseline:
   fixtures, verifier, experiments/results, documentation, this ledger, all Git
   operations, and final verification.
 - Parallel agents must stop before editing any root-owned or overlapping path.
+
+Foundation implementation handoff:
+
+- Contract and runtime/sandbox agents completed their disjoint scopes without
+  Git writes. Root reconciled their shapes, retained the existing controlled
+  execution class unchanged, and added the target-independent compiler,
+  enrollment/review authority, result-observer adapter, and empty-resource
+  quarantine helpers.
+- Strict sidecars now distinguish admitted enrollment, bounded rejection, and
+  exact-call manual review. Records are non-bearer; WeakMap-backed candidate,
+  review, consumed-call, and dispatch claims are burned before validation and
+  reject copies, substitutions, replay, and expiry.
+- The retained prepared tree is bounded and freshly rehashed. Entrypoints must
+  be regular in-tree JavaScript files. Normalized Node invocation, exact image,
+  sandbox profile, mounts, catalog, plan, policy, resources, tool, and argument
+  digest are cross-bound immediately before dispatch.
+- The new compiler is package/tool-name independent. Its first alpha requires
+  process/filesystem/network sensors even though the result observer cannot
+  supply them, so successful result comparison remains overall `inconclusive`
+  rather than being mislabeled behaviorally safe.
+- The Docker profile is independently reconstructed from its frozen evidence:
+  network/IPC/logging disabled; read-only root/target/resources/message queue;
+  minimal reset environment; no provider or writable host bind; one call, no
+  retries/follow-up; bounded temporary storage, CPU, memory, processes, output,
+  file size, and open files.
+- Focused foundation verification passed: 6 files / 40 tests, including the
+  controlled-runtime regression. `npm run typecheck` and `git diff --check`
+  passed after root reconciled readonly runtime types.
+- Known retained limits: tree capture is not race-free `openat` traversal;
+  Docker is not a malware-grade VM; argument syntax cannot infer package-
+  specific meaning; schema records do not themselves authenticate reviewers or
+  recompute digests. The runtime authority performs digest checks and exact
+  in-memory capability validation.
+
+Suggested foundation commit subject:
+`feat: add reviewed V2 MCP enrollment foundation`.

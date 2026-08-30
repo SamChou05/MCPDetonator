@@ -13,7 +13,6 @@ import {
 import { MAX_MCP_JSONRPC_MESSAGE_BYTES } from "../../mcp/stdio.js";
 import { computeCatalogIdentity } from "./catalog.js";
 import { canonicalizeJson, digestCanonicalJson } from "./canonical.js";
-import type { ConsumedControlledExecution } from "./controlled-authority.js";
 import {
   type ExperimentPlanEnvelopeV2,
   verifyExperimentPlanEnvelope,
@@ -45,7 +44,22 @@ const SENSOR_ORDER: readonly SensorV2[] = [
   "cleanup",
 ];
 
-export interface BuildControlledOutcomeObservationInput {
+export interface ConsumedOutcomeExecutionBinding {
+  readonly consumedAt: string;
+  readonly authorization: {
+    readonly expiresAt: string;
+    readonly experiment: {
+      readonly experimentPlanDigest: string;
+      readonly policyDigest: string;
+      readonly hypothesisDigest: string;
+      readonly caseId: string;
+      readonly stepId: string;
+      readonly toolName: string;
+    };
+  };
+}
+
+export interface BuildOutcomeObservationInput {
   readonly observationId: string;
   readonly recordedAt: string;
   readonly envelope: ExperimentPlanEnvelopeV2;
@@ -54,7 +68,7 @@ export interface BuildControlledOutcomeObservationInput {
   readonly policy: unknown;
   readonly hypothesis: unknown;
   /** Produced inside the controller by consuming the one-use capability. */
-  readonly consumed: ConsumedControlledExecution;
+  readonly consumed: ConsumedOutcomeExecutionBinding;
   /** Detached MCP CallToolResult. Omit only when no result was returned. */
   readonly result?: unknown;
   readonly protocolOutcome: OutcomeProtocolV2;
@@ -67,6 +81,9 @@ export interface BuildControlledOutcomeObservationInput {
   };
 }
 
+export type BuildControlledOutcomeObservationInput =
+  BuildOutcomeObservationInput;
+
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -77,7 +94,7 @@ function assertCanonicalEqual(
   expected: unknown,
 ): void {
   if (canonicalizeJson(actual) !== canonicalizeJson(expected)) {
-    throw new Error(`controlled observation rejected: ${label} does not match`);
+    throw new Error(`outcome observation rejected: ${label} does not match`);
   }
 }
 
@@ -162,8 +179,8 @@ function buildCapture(
  * coverage are computed here rather than accepted from an agent or fixture.
  * The returned artifact intentionally contains no raw MCP result text.
  */
-export function buildControlledOutcomeObservation(
-  input: BuildControlledOutcomeObservationInput,
+export function buildOutcomeObservation(
+  input: BuildOutcomeObservationInput,
 ): Readonly<OutcomeObservationV2> {
   const envelope = verifyExperimentPlanEnvelope(input.envelope);
   const catalog = computeCatalogIdentity(input.catalog);
@@ -181,7 +198,7 @@ export function buildControlledOutcomeObservation(
   );
   const policyDigest = digestCanonicalJson("forge.audit-policy", "v2", policy);
   if (policyDigest !== envelope.plan.policyDigest) {
-    throw new Error("controlled observation rejected: policy digest changed");
+    throw new Error("outcome observation rejected: policy digest changed");
   }
   const hypothesis = outcomeHypothesisV2Schema.parse(
     cloneStrictBoundedJson(
@@ -206,7 +223,7 @@ export function buildControlledOutcomeObservation(
     authorization.experiment.toolName !== hypothesis.toolName
   ) {
     throw new Error(
-      "controlled observation rejected: consumed authorization bindings changed",
+      "outcome observation rejected: consumed authorization bindings changed",
     );
   }
   if (
@@ -214,7 +231,7 @@ export function buildControlledOutcomeObservation(
     Date.parse(input.recordedAt) >= Date.parse(authorization.expiresAt)
   ) {
     throw new Error(
-      "controlled observation rejected: observation time is outside the authorization window",
+      "outcome observation rejected: observation time is outside the authorization window",
     );
   }
   if (!Number.isSafeInteger(input.runtimeMs) || input.runtimeMs < 0) {
@@ -229,7 +246,7 @@ export function buildControlledOutcomeObservation(
       input.protocolOutcome !== "tool_error")
   ) {
     throw new Error(
-      "controlled observation rejected: protocol outcome and result availability disagree",
+      "outcome observation rejected: protocol outcome and result availability disagree",
     );
   }
 
@@ -244,7 +261,7 @@ export function buildControlledOutcomeObservation(
   );
   if (selectedCase === undefined || step === undefined || tool === undefined) {
     throw new Error(
-      "controlled observation rejected: selected plan step is unavailable",
+      "outcome observation rejected: selected plan step is unavailable",
     );
   }
 
@@ -348,7 +365,7 @@ export function buildControlledOutcomeObservation(
         status: "unavailable",
         evidenceReferences: [],
         limitations: [
-          `The controlled fixture observer does not implement the required '${required}' sensor.`,
+          `The result-channel observer does not implement the required '${required}' sensor.`,
         ],
       });
     }
@@ -406,4 +423,11 @@ export function buildControlledOutcomeObservation(
     },
   });
   return deepFreezeJson(observation);
+}
+
+/** Backwards-compatible controlled-fixture entrypoint. */
+export function buildControlledOutcomeObservation(
+  input: BuildControlledOutcomeObservationInput,
+): Readonly<OutcomeObservationV2> {
+  return buildOutcomeObservation(input);
 }

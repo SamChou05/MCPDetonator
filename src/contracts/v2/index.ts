@@ -20,6 +20,7 @@ export * from "./common.js";
 export * from "./controlled-execution.js";
 export * from "./controlled-proposal.js";
 export * from "./coverage.js";
+export * from "./enrollment.js";
 export * from "./experiment-plan.js";
 export * from "./outcome-comparison.js";
 export * from "./policy.js";
