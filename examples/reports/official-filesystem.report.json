@@ -1,0 +1,741 @@
+{
+  "schema": "forge.report/v1",
+  "runId": "run-20260829231608-9f39c017",
+  "targetId": "official-filesystem",
+  "generatedAt": "2026-08-29T23:16:36.669Z",
+  "summary": "Within the selected experiments and current rule coverage, Forge found no deterministic runtime findings.",
+  "artifactProvenance": {
+    "schema": "forge.target-provenance/v1",
+    "runId": "run-20260829231608-9f39c017",
+    "targetId": "official-filesystem",
+    "preparedAt": "2026-08-29T23:16:15.931Z",
+    "containerRoot": "/opt/target",
+    "containerPackageRoot": "/opt/target/node_modules/@modelcontextprotocol/server-filesystem",
+    "source": {
+      "type": "npm",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "requestedVersion": "2026.7.10",
+      "resolvedVersion": "2026.7.10",
+      "packageTreeSha256": "f8aa4720ccb5fa2279e22861bf26ea54a4172b2bc50d6b7cd618cebce98a5268",
+      "packageFileCount": 7,
+      "resolved": "https://registry.npmjs.org/@modelcontextprotocol/server-filesystem/-/server-filesystem-2026.7.10.tgz",
+      "integrity": "sha512-Mmjg4anFBD5OzbPnGJOA0jPPN8645ERhQk38HQLpSenx1ox9bfdPkmAzUnNjeQtqQGFLtKe13J20RtLBmUKMZA=="
+    },
+    "install": {
+      "strategy": "npm-install",
+      "lifecycleScripts": "disabled"
+    },
+    "packageManifestSha256": "6b2c11d4d348cace9c652636d602713c377ba59d868e013de69f3a9046d61244",
+    "packageLockSha256": "d6a23fb22b9728ee78f345bf47b73b816fa884282cc7d924b5652b6252db5ff4",
+    "runtimeSnapshot": {
+      "sourceExperimentId": "install-scripts-enabled",
+      "lifecycleScripts": "enabled",
+      "treeSha256": "9deccfe7633aecdb273690442fd9c77c7baf94dc3b0f18152d982917c5ea31f5",
+      "fileCount": 4274
+    },
+    "limitations": [
+      "Acquisition installs dependencies with lifecycle scripts disabled.",
+      "The prepared target is mounted read-only during runtime experiments."
+    ]
+  },
+  "sandboxPolicy": {
+    "profile": "developer-v1",
+    "network": "blocked"
+  },
+  "advertisedServer": {
+    "name": "secure-filesystem-server",
+    "version": "0.2.0"
+  },
+  "advertisedTools": [
+    {
+      "name": "read_file",
+      "description": "Read the complete contents of a file as text. DEPRECATED: Use read_text_file instead.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "tail": {
+            "description": "If provided, returns only the last N lines of the file",
+            "type": "number"
+          },
+          "head": {
+            "description": "If provided, returns only the first N lines of the file",
+            "type": "number"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "read_text_file",
+      "description": "Read the complete contents of a file from the file system as text. Handles various text encodings and provides detailed error messages if the file cannot be read. Use this tool when you need to examine the contents of a single file. Use the 'head' parameter to read only the first N lines of a file, or the 'tail' parameter to read only the last N lines of a file. Operates on the file as text regardless of extension. Only works within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "tail": {
+            "description": "If provided, returns only the last N lines of the file",
+            "type": "number"
+          },
+          "head": {
+            "description": "If provided, returns only the first N lines of the file",
+            "type": "number"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "read_media_file",
+      "description": "Read a file and return it as a base64-encoded content block with its MIME type. Image and audio files are returned as image/audio content; any other file type is returned as an embedded resource. Only works within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "read_multiple_files",
+      "description": "Read the contents of multiple files simultaneously. This is more efficient than reading files one by one when you need to analyze or compare multiple files. Each file's content is returned with its path as a reference. Failed reads for individual files won't stop the entire operation. Only works within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of file paths to read. Each path must be a string pointing to a valid file within allowed directories."
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "write_file",
+      "description": "Create a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning. Handles text content with proper encoding. Only works within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "edit_file",
+      "description": "Make line-based edits to a text file. Each edit replaces exact line sequences with new content. Returns a git-style diff showing the changes made. Only works within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "edits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "oldText": {
+                  "type": "string",
+                  "description": "Text to search for - must match exactly"
+                },
+                "newText": {
+                  "type": "string",
+                  "description": "Text to replace with"
+                }
+              },
+              "required": [
+                "oldText",
+                "newText"
+              ]
+            }
+          },
+          "dryRun": {
+            "default": false,
+            "description": "Preview changes using git-style diff format",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "edits"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "create_directory",
+      "description": "Create a new directory or ensure a directory exists. Can create multiple nested directories in one operation. If the directory already exists, this operation will succeed silently. Perfect for setting up directory structures for projects or ensuring required paths exist. Only works within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "list_directory",
+      "description": "Get a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is essential for understanding directory structure and finding specific files within a directory. Only works within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "list_directory_with_sizes",
+      "description": "Get a detailed listing of all files and directories in a specified path, including sizes. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is useful for understanding directory structure and finding specific files within a directory. Only works within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sortBy": {
+            "default": "name",
+            "description": "Sort entries by name or size",
+            "type": "string",
+            "enum": [
+              "name",
+              "size"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "directory_tree",
+      "description": "Get a recursive tree view of files and directories as a JSON structure. Each entry includes 'name', 'type' (file/directory), and 'children' for directories. Files have no children array, while directories always have a children array (which may be empty). The output is formatted with 2-space indentation for readability. Only works within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "excludePatterns": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "move_file",
+      "description": "Move or rename files and directories. Can move files between directories and rename them in a single operation. If the destination exists, the operation will fail. Works across different directories and can be used for simple renaming within the same directory. Both source and destination must be within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "destination"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "search_files",
+      "description": "Recursively search for files and directories matching a pattern. The patterns should be glob-style patterns that match paths relative to the working directory. Use pattern like '*.ext' to match files in current directory, and '**/*.ext' to match files in all subdirectories. Returns full paths to all matching items. Great for finding files when you don't know their exact location. Only searches within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "excludePatterns": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "path",
+          "pattern"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "get_file_info",
+      "description": "Retrieve detailed metadata about a file or directory. Returns comprehensive information including size, creation time, last modified time, permissions, and type. This tool is perfect for understanding file characteristics without reading the actual content. Only works within allowed directories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "list_allowed_directories",
+      "description": "Returns the list of directories that this server is allowed to access. Subdirectories within these allowed directories are also accessible. Use this to understand which directories and their nested paths are available before trying to access files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  ],
+  "staticAnalysis": {
+    "snapshot": {
+      "basis": "selected-runtime-snapshot",
+      "sourceExperimentId": "install-scripts-enabled",
+      "lifecycleScripts": "enabled",
+      "treeSha256": "9deccfe7633aecdb273690442fd9c77c7baf94dc3b0f18152d982917c5ea31f5",
+      "fileCount": 4274
+    },
+    "manifest": {
+      "status": "parsed",
+      "name": "@modelcontextprotocol/server-filesystem",
+      "version": "2026.7.10",
+      "evidence": {
+        "artifactPath": "raw/static/static-a9c34cfdbcf739a241eb32e7.json",
+        "targetPath": "package.json",
+        "sha256": "6b2c11d4d348cace9c652636d602713c377ba59d868e013de69f3a9046d61244"
+      }
+    },
+    "installLifecycleScripts": [
+      {
+        "name": "prepare",
+        "command": "npm run build",
+        "evidence": {
+          "artifactPath": "raw/static/static-a9c34cfdbcf739a241eb32e7.json",
+          "targetPath": "package.json",
+          "sha256": "6b2c11d4d348cace9c652636d602713c377ba59d868e013de69f3a9046d61244"
+        }
+      }
+    ],
+    "dependencyCounts": {
+      "runtime": 4,
+      "development": 7,
+      "optional": 0,
+      "peer": 0
+    },
+    "lockfiles": [],
+    "capabilitySignals": [
+      {
+        "capability": "filesystem_access",
+        "count": 4,
+        "signalIds": [
+          "signal-078ec97b0e26e60e2cb2376b",
+          "signal-50445a9d509d184834b914de",
+          "signal-50d7c7d5cefd0b4e3cad8642",
+          "signal-c4f3055c7d8d71f938341dbe"
+        ],
+        "evidence": [
+          {
+            "artifactPath": "raw/static/static-f354a4a5c754c6b21d719a6c.json",
+            "targetPath": "dist/roots-utils.js",
+            "sha256": "4074f48adb2a22d9d07792cbe0d8b8f59c63e499ef7b9722066fbb8d3d4d74b0",
+            "line": 1,
+            "column": 27
+          },
+          {
+            "artifactPath": "raw/static/static-3ef8af0a48c2e376ce352032.json",
+            "targetPath": "dist/lib.js",
+            "sha256": "e2f5648317613530f60b582b8b0ed10c1beddc10c2d0926213300d827f27208e",
+            "line": 1,
+            "column": 11
+          },
+          {
+            "artifactPath": "raw/static/static-0829c5c7c96f2d67c4372b2d.json",
+            "targetPath": "dist/index.js",
+            "sha256": "ac12c0307497ebd1c8e0b0fe4b057165cded007cd7c7afc9aeaa68fefe68eb15",
+            "line": 5,
+            "column": 11
+          },
+          {
+            "artifactPath": "raw/static/static-0829c5c7c96f2d67c4372b2d.json",
+            "targetPath": "dist/index.js",
+            "sha256": "ac12c0307497ebd1c8e0b0fe4b057165cded007cd7c7afc9aeaa68fefe68eb15",
+            "line": 6,
+            "column": 29
+          }
+        ]
+      }
+    ],
+    "sourceCoverage": {
+      "candidateFiles": 5,
+      "scannedFiles": 5,
+      "skippedFiles": 0
+    },
+    "limitations": [
+      "Package manifest fields and repository URLs are untrusted package-authored claims, not verified provenance.",
+      "Source signals are bounded lexical capability indicators, not whole-program reachability or data-flow proof.",
+      "Dependency source under node_modules is not scanned; dependencies are inventoried from the root manifest and available lock metadata."
+    ]
+  },
+  "staticRuntimeComparison": {
+    "scope": "Package-authored source signals compared with analyst-relevant effects from selected initialization, tool, and tool-originated cooldown phases.",
+    "rows": [
+      {
+        "capability": "filesystem_access",
+        "staticSignal": "found",
+        "runtimeObservation": "observed",
+        "staticSignalIds": [
+          "signal-078ec97b0e26e60e2cb2376b",
+          "signal-50445a9d509d184834b914de",
+          "signal-50d7c7d5cefd0b4e3cad8642",
+          "signal-c4f3055c7d8d71f938341dbe"
+        ],
+        "runtimeEventIds": [
+          "evt-read-synthetic-report-656",
+          "evt-write-synthetic-output-656"
+        ],
+        "interpretation": "Package-authored source contains matching capability signals and selected runtime phases observed the behavior."
+      },
+      {
+        "capability": "process_execution",
+        "staticSignal": "not_found",
+        "runtimeObservation": "not_observed",
+        "staticSignalIds": [],
+        "runtimeEventIds": [],
+        "interpretation": "Neither the bounded package-authored source scan nor the selected runtime phases produced matching evidence."
+      },
+      {
+        "capability": "network_access",
+        "staticSignal": "not_found",
+        "runtimeObservation": "not_observed",
+        "staticSignalIds": [],
+        "runtimeEventIds": [],
+        "interpretation": "Neither the bounded package-authored source scan nor the selected runtime phases produced matching evidence."
+      },
+      {
+        "capability": "environment_access",
+        "staticSignal": "not_found",
+        "runtimeObservation": "not_comparable",
+        "staticSignalIds": [],
+        "runtimeEventIds": [],
+        "interpretation": "The current syscall evidence does not directly confirm or refute this static capability."
+      },
+      {
+        "capability": "dynamic_code_execution",
+        "staticSignal": "not_found",
+        "runtimeObservation": "not_comparable",
+        "staticSignalIds": [],
+        "runtimeEventIds": [],
+        "interpretation": "The current syscall evidence does not directly confirm or refute this static capability."
+      },
+      {
+        "capability": "dynamic_module_loading",
+        "staticSignal": "not_found",
+        "runtimeObservation": "not_comparable",
+        "staticSignalIds": [],
+        "runtimeEventIds": [],
+        "interpretation": "The current syscall evidence does not directly confirm or refute this static capability."
+      },
+      {
+        "capability": "native_code_loading",
+        "staticSignal": "not_found",
+        "runtimeObservation": "not_comparable",
+        "staticSignalIds": [],
+        "runtimeEventIds": [],
+        "interpretation": "The current syscall evidence does not directly confirm or refute this static capability."
+      }
+    ],
+    "limitations": [
+      "The static scan is bounded lexical analysis of package-authored source and excludes dependency source.",
+      "Filesystem comparison is limited to normalized reads, writes, and deletes under the synthetic home/workspace roots, so open-only activity is excluded; process comparison excludes the root server exec; network comparison excludes Unix-domain sockets.",
+      "Environment, dynamic-code, dynamic-module, and native-code capabilities are not directly comparable with the current normalized runtime evidence.",
+      "Agreement or disagreement is evidence about selected inputs, not a verdict about intent or safety."
+    ]
+  },
+  "experiments": [
+    {
+      "experimentId": "install-scripts-disabled",
+      "kind": "install",
+      "lifecycleScripts": "disabled",
+      "status": "completed",
+      "eventCount": 12529
+    },
+    {
+      "experimentId": "install-scripts-enabled",
+      "kind": "install",
+      "lifecycleScripts": "enabled",
+      "status": "completed",
+      "eventCount": 12543
+    },
+    {
+      "experimentId": "baseline-initialization",
+      "kind": "initialization",
+      "eventCount": 655
+    },
+    {
+      "experimentId": "read-synthetic-report",
+      "kind": "tool",
+      "toolName": "read_text_file",
+      "input": {
+        "path": "/sandbox/workspace/report.txt"
+      },
+      "expected": {
+        "fileReads": [
+          "/sandbox/workspace/report.txt"
+        ],
+        "fileReadPrefixes": [],
+        "fileWrites": [],
+        "fileWritePrefixes": [],
+        "networkConnections": [],
+        "childExecutables": [],
+        "childExecutablePrefixes": []
+      },
+      "eventCount": 657
+    },
+    {
+      "experimentId": "write-synthetic-output",
+      "kind": "tool",
+      "toolName": "write_file",
+      "input": {
+        "path": "/sandbox/workspace/forge-output.txt",
+        "content": "Forge filesystem case-study output.\n"
+      },
+      "expected": {
+        "fileReads": [],
+        "fileReadPrefixes": [],
+        "fileWrites": [
+          "/sandbox/workspace/forge-output.txt"
+        ],
+        "fileWritePrefixes": [],
+        "networkConnections": [],
+        "childExecutables": [],
+        "childExecutablePrefixes": []
+      },
+      "eventCount": 657
+    }
+  ],
+  "runtimeObservations": [
+    {
+      "experimentId": "baseline-initialization",
+      "kind": "initialization",
+      "effectCounts": [
+        {
+          "effectKind": "file.open",
+          "count": 329
+        },
+        {
+          "effectKind": "file.read",
+          "count": 317
+        },
+        {
+          "effectKind": "network.connect_attempt",
+          "count": 4
+        },
+        {
+          "effectKind": "process.exec",
+          "count": 3
+        },
+        {
+          "effectKind": "process.start",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "experimentId": "read-synthetic-report",
+      "kind": "tool",
+      "toolName": "read_text_file",
+      "effectCounts": [
+        {
+          "effectKind": "file.open",
+          "count": 1
+        },
+        {
+          "effectKind": "file.read",
+          "count": 1
+        }
+      ],
+      "expectedScopeMatches": {
+        "eventCount": 1,
+        "examples": [
+          {
+            "eventId": "evt-read-synthetic-report-656",
+            "effect": {
+              "kind": "file.read",
+              "path": "/sandbox/workspace/report.txt",
+              "bytes": 106,
+              "outcome": {
+                "status": "succeeded"
+              }
+            },
+            "attributionConfidence": "medium",
+            "rawRef": "raw/read-synthetic-report/strace.19:3"
+          }
+        ],
+        "examplesTruncated": false
+      }
+    },
+    {
+      "experimentId": "write-synthetic-output",
+      "kind": "tool",
+      "toolName": "write_file",
+      "effectCounts": [
+        {
+          "effectKind": "file.open",
+          "count": 1
+        },
+        {
+          "effectKind": "file.write",
+          "count": 1
+        }
+      ],
+      "expectedScopeMatches": {
+        "eventCount": 1,
+        "examples": [
+          {
+            "eventId": "evt-write-synthetic-output-656",
+            "effect": {
+              "kind": "file.write",
+              "path": "/sandbox/workspace/forge-output.txt",
+              "bytes": 36,
+              "outcome": {
+                "status": "succeeded"
+              }
+            },
+            "attributionConfidence": "medium",
+            "rawRef": "raw/write-synthetic-output/strace.19:3"
+          }
+        ],
+        "examplesTruncated": false
+      }
+    }
+  ],
+  "installLifecycle": {
+    "status": "observed",
+    "experiments": [
+      {
+        "experimentId": "install-scripts-disabled",
+        "lifecycleScripts": "disabled",
+        "outcome": "completed",
+        "eventCount": 12529,
+        "metadata": "raw/install-scripts-disabled/install.json"
+      },
+      {
+        "experimentId": "install-scripts-enabled",
+        "lifecycleScripts": "enabled",
+        "outcome": "completed",
+        "eventCount": 12543,
+        "metadata": "raw/install-scripts-enabled/install.json"
+      }
+    ],
+    "comparisonStatus": "complete",
+    "delta": {
+      "controlExperimentId": "install-scripts-disabled",
+      "treatmentExperimentId": "install-scripts-enabled",
+      "treatmentOnly": {
+        "processExec": [],
+        "fileRead": [
+          "evt-install-scripts-enabled-11836",
+          "evt-install-scripts-enabled-11838",
+          "evt-install-scripts-enabled-11840",
+          "evt-install-scripts-enabled-11842",
+          "evt-install-scripts-enabled-11844",
+          "evt-install-scripts-enabled-11846",
+          "evt-install-scripts-enabled-11848"
+        ],
+        "fileWrite": [],
+        "fileDelete": [],
+        "network": []
+      },
+      "controlOnly": {
+        "processExec": [],
+        "fileRead": [],
+        "fileWrite": [],
+        "fileDelete": [],
+        "network": []
+      }
+    },
+    "limitations": [
+      "A/B differences are observations, not proof that an install script is malicious.",
+      "Package-manager nondeterminism can create differences unrelated to lifecycle scripts.",
+      "File deltas are limited to the prepared target and synthetic profile roots."
+    ]
+  },
+  "findings": [],
+  "evidence": {
+    "manifest": "run.json",
+    "events": "events.jsonl",
+    "phases": "phases.jsonl",
+    "attributions": "attributions.jsonl",
+    "findings": "findings.jsonl",
+    "targetProvenance": "target/provenance.json",
+    "staticInspection": "static/inspection.json",
+    "preInstallStaticInspection": "static/pre-install-inspection.json",
+    "installDelta": "install/delta.json"
+  },
+  "limitations": [
+    "The trusted strace supervisor shares the target container in this prototype.",
+    "Network evidence records socket behavior and destinations, not decrypted request contents.",
+    "Dependency acquisition runs with package lifecycle scripts disabled.",
+    "This run observes selected inputs and does not prove all possible target behavior."
+  ]
+}

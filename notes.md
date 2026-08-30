@@ -1,135 +1,210 @@
-# Forge: Technology Whiteboard
+# Forge technology whiteboard
+
+This page is the short, implementation-level map. `Design.md` holds the deeper
+reasoning and claim boundaries.
 
 ## Legend
 
 ```text
-[REUSE]  Existing technology we rely on
-[BUILD]  Small Forge-specific code we write
-[SAVE]   Evidence or artifact produced by the step
+[REUSE] existing technology
+[BUILD] Forge-specific code
+[SAVE] evidence produced by the step
 ```
 
-## End-to-end view
+## Deterministic core path
 
 ```text
-Exact npm package + version
-        |
-        v
-+-----------------------------+
-| 1. Get and lock package     |
-| REUSE: npm + Docker         |
-| BUILD: safe resolver        |
-| SAVE: tgz, hash, lock/cache |
-+-------------+---------------+
-              |
-              v
-+-----------------------------+
-| 2. Inspect package          |
-| REUSE: Semgrep + JSON       |
-| BUILD: Forge rules          |
-| SAVE: static-findings.json  |
-+-------------+---------------+
-              |
-              v
-+-----------------------------+
-| 3. Install it safely        |
-| REUSE: Docker + strace      |
-| BUILD: sandbox policy       |
-| SAVE: install evidence      |
-+-------------+---------------+
-              |
-              v
-+-----------------------------+
-| 4. Exercise the MCP         |
-| REUSE: official MCP client  |
-| BUILD: run plans + markers  |
-| SAVE: tools + results       |
-+-------------+---------------+
-              |
-              v
-+-----------------------------+
-| 5. Connect cause + behavior |
-| REUSE: strace + Docker      |
-| BUILD: event normalizer     |
-| SAVE: events.jsonl          |
-+-------------+---------------+
-              |
-              v
-+-----------------------------+
-| 6. Explain results          |
-| REUSE: Zod + Handlebars     |
-| BUILD: correlation + rules  |
-| SAVE: report.html/json      |
-+-----------------------------+
+Exact npm version or local snapshot + target.yaml
+                         |
+                         v
++------------------------------------------------+
+| 1. Acquire or snapshot                        |
+| REUSE: npm, Docker, SHA-256                   |
+| BUILD: source adapters, provenance, cleanup   |
+| SAVE: source identity + tree hash; lock/cache |
+|       and registry fields when available      |
++------------------------+-----------------------+
+                         |
+                         v
++------------------------------------------------+
+| 2. Inspect source                             |
+| REUSE: JSON/filesystem APIs                   |
+| BUILD: bounded Node manifest/lexical scanner  |
+| SAVE: pre-install and runtime-snapshot signals|
++------------------------+-----------------------+
+                         |
+                         v
++------------------------------------------------+
+| 3. Compare installation when npm cache exists |
+| REUSE: Docker, npm ci, strace                 |
+| BUILD: scripts-off/on experiments and delta  |
+| SAVE: logs, outcomes, traced events, snapshot|
++------------------------+-----------------------+
+                         |
+                         v
++------------------------------------------------+
+| 4. Exercise MCP                              |
+| REUSE: official MCP TypeScript SDK, Docker    |
+| BUILD: initialization/tool plans and markers  |
+| SAVE: tools/list, calls, results, raw traces  |
++------------------------+-----------------------+
+                         |
+                         v
++------------------------------------------------+
+| 5. Normalize and attribute                   |
+| REUSE: strace                                 |
+| BUILD: syscall parser, event model, correlator|
+| SAVE: events.jsonl and attributions.jsonl     |
++------------------------+-----------------------+
+                         |
+                         v
++------------------------------------------------+
+| 6. Decide and report                         |
+| REUSE: Zod, JSON/JSONL                        |
+| BUILD: expected-scope rules and report builder|
+| SAVE: findings.jsonl and report.json          |
++------------------------------------------------+
 ```
+
+Each initialization and selected tool input gets a fresh Docker environment.
+The sandbox uses fake developer files and blocked public networking. The
+observer follows process children and records focused process, file, and socket
+syscalls. This is prototype containment, not a guarantee that arbitrary hostile
+code is harmless.
 
 ## What each part uses
 
-| Part | Existing technology | What we create | Main output |
+| Part | Technology reused | Forge code | Main evidence |
 | --- | --- | --- | --- |
-| CLI and configuration | Node.js, TypeScript, Commander, YAML, Zod | `forge analyze` and strict config models | Validated run plan |
-| Package acquisition | Pinned npm CLI inside Docker | Resolver that disables scripts and records provenance | Tarball, hashes, lockfile, dependency cache |
-| Static inspection | Normal JSON parsing and Semgrep | Manifest reader and about 10–15 reusable Node signal extractors | Source and dependency findings |
-| Sandbox lifecycle | Docker | Restrictions, fake environment, canaries, timeouts, and exact cleanup | Disposable run container |
-| Install observation | `strace` plus before/after filesystem inventories | Scripts-off and scripts-on install experiments | Install timeline and installed snapshot |
-| MCP communication | Official MCP TypeScript client | Initialization, isolated-tool, and workflow experiment plans | Tool definitions, inputs, results, phase markers |
-| Process observation | `strace` following child processes | Process-tree normalizer | Process start, exec, parent, and exit events |
-| File observation | `strace`, hashes, and Docker filesystem information | File-descriptor correlation and path normalization | File open, read, write, create, and delete events |
-| Network observation | Docker network policy and `strace` socket events | Destination normalization and optional fake service logs | DNS/connect attempts and controlled requests |
-| Attribution | TypeScript data structures | Baseline comparison and tool/phase correlation | Evidence linked to install, startup, tool, or workflow |
-| Interpretation | Deterministic TypeScript rules; optional LLM | Mismatch rules and evidence-only LLM prompt | Findings with evidence IDs |
-| Report | Handlebars, HTML, JSON, JSONL | Report layout and summaries | `report.html`, `report.json`, `events.jsonl` |
-| Tests | Vitest, official Filesystem MCP, MCP Inspector | Deceptive fixture with known install/start/tool behavior | Repeatable ground-truth tests |
+| CLI/config | Node.js, TypeScript, Commander, YAML, Zod | `forge analyze` and strict schemas | Validated target plan |
+| Acquisition | npm in Docker, filesystem copy, SHA-256 | exact-version/local adapters and bounded cleanup | provenance and tree hash; lock/cache/registry fields when available |
+| Static inspection | JSON and filesystem APIs | bounded Node manifest, lockfile, and lexical signals | evidence-linked capability indicators |
+| Install | Docker, npm, `strace` | conditional scripts-disabled/enabled experiments and semantic delta | logs, outcomes, events, selected snapshot hash when the pair applies |
+| MCP | official MCP SDK | initialization and isolated tool experiments | advertised interface, inputs, results, phase markers |
+| Observation | Linux `strace -ff` | protected supervisor and raw evidence storage | raw process/file/socket traces |
+| Normalization | TypeScript | syscall parser, descriptor/path mapping, canonical event model | `events.jsonl` |
+| Attribution | TypeScript | active phase plus first-observed process-origin inference | `attributions.jsonl` |
+| Findings | TypeScript | deterministic expected-scope and lifecycle rules | `findings.jsonl` |
+| Report | Zod, JSON/JSONL | bounded evidence-linked summary | `report.json` |
+| Verification | Vitest, Docker | deceptive fixture and pinned Filesystem case study | unit and E2E gates |
 
 ## Are we building parsers?
 
-We are **not** building a JavaScript or TypeScript parser. Semgrep already understands the language syntax.
+We are not building a full JavaScript parser or whole-program analyzer. The
+static inspector performs bounded textual/manifest checks and records its
+coverage and limitations.
 
-We are building only small, purpose-specific readers:
+We do build two important small interpreters:
 
-- A JSON reader for `package.json` and lockfiles.
-- A `strace` normalizer that converts raw system calls into process, file, and network events.
-- A correlator that joins those events with MCP phase markers.
+- A `strace` parser/normalizer that converts selected syscalls into typed
+  process, file, and network events.
+- A correlator that records each event's active phase and infers process origin
+  from that process's first observed event. The normalizer preserves
+  parent/child lineage separately; neither fact proves unique causality.
 
-The second and third items are core Forge work because they create the useful security explanation.
+Those create the reusable evidence layer. They are independent of package and
+tool names.
 
 ## What is specific and what generalizes?
 
 ```text
 TARGET-SPECIFIC DATA
-  target.yaml, tool inputs, one workflow
+  target.yaml, runtime command, tool inputs, expected scope
 
 REPLACEABLE ADAPTERS
-  npm acquisition, Node static rules, STDIO, strace
+  npm/local acquisition, Node static scanner, STDIO, strace
 
-GENERAL CORE
-  sandbox phases, canaries, canonical events,
-  process lineage, attribution, rules, reports
+REUSABLE CORE
+  sandbox phases, fake profiles, canonical events,
+  process lineage, attribution, deterministic rules, reports
 ```
 
-Static signal extractors detect possible capabilities such as file access, subprocess execution, networking, environment access, and dynamic code. Separate runtime behavior rules operate on canonical observed events. Neither is written for one package name. The `strace` adapter maps Linux behavior into canonical events, so later observers such as Tracee can feed the same attribution and reporting code.
+The verified implementation is Node.js + Linux/Docker + local STDIO + exact npm
+or local-directory sources. Another Node STDIO MCP should normally need a
+configuration and meaningful inputs, not core package-name branches. A new
+language needs a new static inspector; a new local transport or observer needs
+a new adapter.
 
-Adding another Node STDIO MCP should require a config and meaningful tool inputs, not changes to the core engine.
+## Why normalize?
 
-## Are we using a database?
-
-Not in the first version. One analysis produces a small, self-contained evidence folder:
+Raw `strace` records are detailed but awkward and observer-specific. The
+normalizer turns them into stable typed facts such as:
 
 ```text
-reports/<run-id>/
-├── acquisition.json
-├── static-findings.json
-├── tools.json
-├── events.jsonl
-├── filesystem-diff.json
-├── findings.json
-├── report.json
-└── report.html
+process.start
+process.exec
+process.exit
+file.read
+file.write
+network.connect_attempt
+network.listen
 ```
 
-JSONL is a good append-only format for raw events, and JSON is enough for the final result. A database would add work without helping the first one or two deep case studies.
+Downstream code combines that event schema with separate phase records, target
+configuration, expected scope, and sandbox context. A future eBPF/Tracee
+observer could produce the same canonical events without rewriting those policy
+and report layers. Every canonical event keeps a raw evidence reference so an
+analyst can check the abstraction.
 
-Later, SQLite or Postgres could index many runs, compare package versions, and power a hosted UI. The evidence-file format should remain the source artifact even if we add a database.
+## Why no database or HTML yet?
+
+One run is stored as a self-contained evidence directory. JSONL works for raw
+and normalized streams; JSON works for validated summaries. The current
+prototype does not generate an HTML report and does not need a database.
+
+SQLite or Postgres could later index many immutable run folders for a registry
+or UI without replacing the evidence files as the source artifact.
 
 ## Observer placement
 
-For the take-home, a protected `strace` supervisor runs inside the disposable container and starts the MCP as an unprivileged user. In a stronger production design, an external eBPF observer such as Tracee would run outside the target container on a dedicated disposable Linux worker.
+For the take-home, a protected `strace` supervisor runs inside the disposable
+container and starts the MCP as a different unprivileged user. In a stronger
+production design, observation and containment would move outside the target
+container onto a dedicated disposable Linux worker or microVM, for example
+with eBPF/Tracee.
+
+## Separate optional Agent V1 path
+
+```text
+agent scenario + target config
+            |
+            v
+independent scripts-disabled target preparation
+            |
+            v
+discover target tools -> hash canonical provider-field projection
+            |
+        hash matches?
+         /       \
+       no         yes
+  stop locally    controlled model/tool loop
+                         |
+                         v
+              policy + utility + rates
+                         |
+                         v
+              forge.agent-report/v1
+```
+
+Agent V1 reuses preparation, Docker, fake-profile, MCP-session, and raw-trace
+primitives. It does not consume a completed core run's install comparison,
+static signals, normalized timeline, rules, or report. The target and
+Docker-backed filesystem tools receive separate profiles and distinct canaries;
+the receiver is an in-memory controller sink. Target results/errors stay local
+behind one identical provider-visible outcome marker; only controlled-tool
+results enter provider history. This provides a bounded way to evaluate metadata
+influence under one recorded model/scenario, not universal MCP safety. The
+offline gate uses a scripted poisoned trajectory and is not yet a causal
+clean-versus-poisoned model study.
+
+Agent-only containment keeps target home state read-only and places target
+workspace writes in a 16 MB / 2,048-inode tmpfs. A container-wide 4 MB process
+file-size limit applies to target and trace writers; linked raw traces and both
+synthetic profile domains share a live current-tree byte/entry monitor whose
+latest/peak usage and termination status are saved. The fixed controlled writer
+also caps path depth and cumulative write attempts. Utility facts identify the
+target, controlled, or receiver domain, and bounded target argument paths are
+observed before tmpfs cleanup. Those observations are final-state evidence, not
+proof of per-action causality. The aggregate `strace -ff` budget is still
+polling-based, so a production worker needs a hard whole-filesystem quota and
+out-of-band kill control.
