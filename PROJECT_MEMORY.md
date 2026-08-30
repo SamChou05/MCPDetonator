@@ -1019,3 +1019,79 @@ Completed: 2026-08-30
   run ID nor manifest digest and is available at `http://127.0.0.1:4173/`.
 - Pre-existing `.gitignore`, `agent-runs/`, unseen-MCP holdout files, and their
   untracked test remained out of scope and must remain uncommitted.
+
+## Active experiment-history dashboard wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `main` at `c7315c9`
+  (`docs: record publish-driven dashboard milestone`).
+- Pre-existing out-of-scope paths remain the modified `.gitignore`, generated
+  untracked `agent-runs/`, and the untracked unseen-MCP holdout directory/test.
+  This wave must not edit, stage, or commit them.
+- `ImplementationPlan.md` became modified by concurrent work after this wave's
+  baseline was recorded. It is unrelated and must also remain unstaged and
+  uncommitted by this wave.
+- User goal: make the plain results page explain its update boundary and expose
+  a simple selectable history of eligible published experiments rather than
+  only the latest controlled/reference pair.
+- Product boundary: keep a static HTML/CSS snapshot with no browser database
+  connection, frontend framework, account system, or raw-evidence exposure.
+  Use native HTML disclosure/navigation and a bounded recent-history query.
+- Claim boundary: replace the visually prominent interpretation-limits section
+  with one concise scope note; do not remove the selected-case qualification or
+  turn zero findings into a universal safety claim.
+- Root remains the sole site owner, editor, verifier, Git coordinator, and
+  ledger writer. Parallel agents are read-only reviewers and must not edit the
+  checkout, invoke Sites/hosting tools, mutate AWS, or mutate Git.
+- Hosted freshness remains explicit unless this wave deliberately adds and
+  verifies an authenticated AWS automation; local publication refresh and AWS
+  content upload must not be described as the same event.
+- Status: completed; see the wave completion record below.
+
+## Experiment-history dashboard wave completion
+
+Completed: 2026-08-30
+
+- The existing `forge_dashboard_projections` store now drives one bounded
+  recent-run query under the dashboard refresh lock. It selects only joined
+  PostgreSQL `published` rows for the exact current policy, returns at most five
+  per reviewed target, and orders deterministically by run completion,
+  publication, then a private run-ID tie-breaker. No new table, public API, or
+  browser database connection was added.
+- The newest row per target drives the current summary; pinned samples are used
+  only for an empty target group and never appear in published history. The
+  stored publication timestamp is cross-checked against the schema-validated
+  projection before rendering.
+- The script-free page now exposes `Recent published runs` with native
+  `details`/`summary` controls. The newest row for each target starts open;
+  expanded rows show bounded counts, up to eight canonical findings, aggregate
+  evidence, and reviewed behavioral-scope labels. Run IDs, hashes, paths, raw
+  evidence, arbitrary report prose, and storage details remain absent.
+- The prominent interpretation-limits section was replaced by one concise
+  visible scope note. It still states that selected synthetic cases and current
+  deterministic rules are not a general safety verdict or malware attribution.
+- Update boundaries are now explicit in the page and runbooks: `analyze`
+  uploads nothing; `publish-run` writes canonical evidence/metadata;
+  `--refresh-dashboard` additionally regenerates the local website snapshot;
+  and the public AWS copy changes only after a separate authenticated
+  content-only deployment. No AWS resource was created or changed in this wave.
+- Final verification passed: `npm run typecheck`; full `npm test` (70 files,
+  568 tests); `npm run build`; `npm run verify:publisher`; focused dashboard,
+  repository, export, and deploy tests; `git diff --check`; local HTTP and
+  disclosure/privacy checks; and an isolated `npm run verify:e2e` with observer
+  image `sha256:0121fdda09b3048b0422c63fb407e495c53087da57ad2855c8cdf76fe82b6a84`.
+  An earlier E2E attempt overlapped another verifier and preserved one failed
+  transport-cleanup run; the isolated rerun passed with deceptive run
+  `run-20260830214124-9fd2822c` and reference run
+  `run-20260830214202-f8dcb0fd`.
+- The local page at `http://127.0.0.1:4173/` is refreshed from the existing
+  synthetic publisher state and currently shows two published rows per target.
+  Its generated HTML contains no run ID, SHA-256 digest, script, JavaScript URL,
+  or former interpretation-limits heading.
+- Independent data, UX, delivery, and final implementation reviews completed
+  with no remaining blocking or material finding after query consolidation,
+  timestamp-source, accessibility, privacy, and runbook wording fixes.
+- The modified `.gitignore`, concurrent `ImplementationPlan.md`, generated
+  `agent-runs/`, unseen-MCP holdout directory, and its untracked test remain
+  out of scope and must remain unstaged and uncommitted.

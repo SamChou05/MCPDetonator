@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   demoExportV1Schema,
+  demoRunV1Schema,
   type DemoExportV1,
   type DemoRunV1,
 } from "./demo-export.js";
@@ -9,6 +10,11 @@ import {
 export const DASHBOARD_TEMPLATE_MARKER = "<!-- FORGE_DASHBOARD_CONTENT -->";
 export const DASHBOARD_INDEX_MAX_BYTES = 128 * 1_024;
 export const DASHBOARD_STYLES_MAX_BYTES = 64 * 1_024;
+export const DASHBOARD_HISTORY_LIMIT_PER_TARGET = 5;
+
+const DASHBOARD_HISTORY_FINDING_LIMIT = 8;
+const DASHBOARD_SCOPE_NOTE =
+  "Results cover only the selected synthetic cases, tools, inputs, and current deterministic rules. Zero findings is not a general safety verdict; the deceptive control is a purpose-built test fixture, not malware attribution.";
 
 const CAPABILITY_ORDER = [
   "filesystem_access",
@@ -101,15 +107,11 @@ function outsideScopeText(run: DemoRunV1): string {
     .join(" · ");
 }
 
-function renderState(state: string, value: string): string {
-  return `<span class="state" data-state="${escapeHtml(state)}">${escapeHtml(value)}</span>`;
-}
-
 function presentationText(run: DemoRunV1): string {
-  const analyzed = `analyzed ${formatTimestamp(run.analyzedAt)}`;
+  const generated = `report generated ${formatTimestamp(run.analyzedAt)}`;
   return run.presentation.source === "published"
-    ? `Published ${formatTimestamp(run.presentation.publishedAt)} · ${analyzed}`
-    : `Pinned sample · ${analyzed}`;
+    ? `Published ${formatTimestamp(run.presentation.publishedAt)} · ${generated}`
+    : `Pinned sample · ${generated}`;
 }
 
 function renderRunCard(run: DemoRunV1): string {
@@ -147,113 +149,161 @@ function renderFinding(finding: DemoRunV1["findings"][number]): string {
           <li class="finding" role="listitem">
             <span class="severity" data-severity="${escapeHtml(finding.severity)}">${escapeHtml(finding.severity)}</span>
             <div>
-              <h3>${escapeHtml(finding.title)}</h3>
+              <strong class="finding-title">${escapeHtml(finding.title)}</strong>
               <p>${escapeHtml(`${capitalize(finding.confidence)} confidence`)}</p>
             </div>
           </li>`;
 }
 
-function renderFindingGroup(run: DemoRunV1): string {
+function advertisedText(run: DemoRunV1): string {
+  return capabilityText(
+    selectedCapabilities(run, (row) => row.advertisedState === "claimed"),
+  );
+}
+
+function foundText(run: DemoRunV1): string {
+  return capabilityText(
+    selectedCapabilities(run, (row) => row.staticState === "found"),
+  );
+}
+
+function observedText(run: DemoRunV1): string {
+  return capabilityText(
+    selectedCapabilities(run, (row) => row.runtimeState === "observed"),
+  );
+}
+
+function historyFindingList(run: DemoRunV1): string {
+  if (run.findings.length === 0) {
+    return '<p class="meta finding-empty">No deterministic findings in the selected cases.</p>';
+  }
+  const visible = run.findings.slice(0, DASHBOARD_HISTORY_FINDING_LIMIT);
+  const remainder = run.findings.length - visible.length;
+  return `<ol class="findings-list">\n${visible.map(renderFinding).join("\n")}\n          </ol>${
+    remainder === 0
+      ? ""
+      : `\n          <p class="meta history-truncation">Showing ${visible.length} of ${run.findings.length} findings in this bounded view.</p>`
+  }`;
+}
+
+function renderHistoryRun(run: DemoRunV1, open: boolean): string {
+  if (run.presentation.source !== "published") {
+    throw new Error("dashboard history cannot contain a pinned sample");
+  }
+  const publishedAt = formatTimestamp(run.presentation.publishedAt);
+  const scopes = run.behaviorScopes.map((scope) => scope.label).join(" · ");
   return `
-        <section class="finding-group" aria-label="${escapeHtml(`${run.target.displayName} findings`)}">
-          <h3>${escapeHtml(run.target.displayName)}</h3>
-          ${
-            run.findings.length === 0
-              ? '<p class="meta finding-empty">No deterministic findings in the selected cases.</p>'
-              : `<ol class="findings-list">\n${run.findings
-                  .map(renderFinding)
-                  .join("\n")}\n          </ol>`
-          }
+          <details class="history-run"${open ? " open" : ""}>
+            <summary>
+              <time datetime="${escapeHtml(run.analyzedAt)}">Report generated ${escapeHtml(formatTimestamp(run.analyzedAt))}</time>
+              <span>Published ${escapeHtml(publishedAt)} · ${run.counts.findings} findings · ${run.counts.experiments} experiments</span>
+            </summary>
+            <div class="history-result">
+              <p>${escapeHtml(run.summary)}</p>
+              <p class="meta">Published ${escapeHtml(publishedAt)}</p>
+              <dl class="stats history-stats">
+                <div><dt>Advertised tools</dt><dd>${run.counts.advertisedTools}</dd></div>
+                <div><dt>Static callsites</dt><dd>${run.semantic.callsiteCount}<span class="stat-status">${escapeHtml(run.semantic.status)}</span></dd></div>
+                <div><dt>Outside scope</dt><dd>${escapeHtml(outsideScopeText(run))}</dd></div>
+              </dl>
+              <h4>Deterministic findings</h4>
+${historyFindingList(run)}
+              <h4>Evidence summary</h4>
+              <dl class="history-evidence">
+                <div><dt>Advertised</dt><dd>${escapeHtml(advertisedText(run))}</dd></div>
+                <div><dt>Found in captured source</dt><dd>${escapeHtml(foundText(run))}</dd></div>
+                <div><dt>Observed in selected tests</dt><dd>${escapeHtml(observedText(run))}</dd></div>
+              </dl>
+              <p class="meta"><strong>Selected behavioral scopes:</strong> ${escapeHtml(scopes)}</p>
+            </div>
+          </details>`;
+}
+
+function validateHistory(
+  exported: DemoExportV1,
+  input: readonly DemoRunV1[],
+): readonly DemoRunV1[] {
+  if (!Array.isArray(input)) throw new Error("dashboard history must be an array");
+  const history = input.map((run) => demoRunV1Schema.parse(run));
+  let referenceGroupStarted = false;
+  for (const run of history) {
+    if (run.role === "reference") referenceGroupStarted = true;
+    if (run.role === "controlled" && referenceGroupStarted) {
+      throw new Error("dashboard history target groups are not canonical");
+    }
+  }
+  for (const role of ["controlled", "reference"] as const) {
+    const runs = history.filter((run) => run.role === role);
+    if (runs.length > DASHBOARD_HISTORY_LIMIT_PER_TARGET) {
+      throw new Error("dashboard history exceeded its per-target limit");
+    }
+    const current = exported.runs.find((run) => run.role === role);
+    if (current === undefined) throw new Error("dashboard current selection is incomplete");
+    if (runs.length === 0) {
+      if (current.presentation.source !== "sample") {
+        throw new Error("dashboard current selection lacks its published history");
+      }
+      continue;
+    }
+    if (JSON.stringify(runs[0]) !== JSON.stringify(current)) {
+      throw new Error("dashboard current selection is not the newest history row");
+    }
+    for (const run of runs) {
+      if (run.presentation.source !== "published") {
+        throw new Error("dashboard history cannot contain pinned samples");
+      }
+    }
+  }
+  return history;
+}
+
+function renderHistoryGroup(
+  current: DemoRunV1,
+  history: readonly DemoRunV1[],
+): string {
+  const runs = history.filter((run) => run.role === current.role);
+  return `
+        <section class="history-group" aria-label="${escapeHtml(`${current.target.displayName} published runs`)}">
+          <div class="history-group-heading">
+            <h3>${escapeHtml(current.target.displayName)}</h3>
+            <span class="meta">${runs.length} published ${runs.length === 1 ? "run" : "runs"}</span>
+          </div>
+${
+  runs.length === 0
+    ? '          <p class="meta history-empty">No eligible published runs yet; the current card uses a pinned sample.</p>'
+    : runs.map((run, index) => renderHistoryRun(run, index === 0)).join("\n")
+}
         </section>`;
 }
 
-function renderMatrixRow(
-  label: string,
-  state: string,
-  controlledText: string,
-  referenceText: string,
+export function renderDashboardContent(
+  input: DemoExportV1,
+  historyInput: readonly DemoRunV1[] = [],
 ): string {
-  return `
-            <tr>
-              <th scope="row">${escapeHtml(label)}</th>
-              <td>${renderState(state, controlledText)}</td>
-              <td>${renderState(state, referenceText)}</td>
-            </tr>`;
-}
-
-export function renderDashboardContent(input: DemoExportV1): string {
   const exported = demoExportV1Schema.parse(input);
+  const history = validateHistory(exported, historyInput);
   const [controlled, reference] = exported.runs;
   if (controlled?.role !== "controlled" || reference?.role !== "reference") {
     throw new Error("demo export did not contain the canonical run pair");
   }
 
-  const advertised = (run: DemoRunV1): string =>
-    capabilityText(
-      selectedCapabilities(run, (row) => row.advertisedState === "claimed"),
-    );
-  const found = (run: DemoRunV1): string =>
-    capabilityText(
-      selectedCapabilities(run, (row) => row.staticState === "found"),
-    );
-  const observed = (run: DemoRunV1): string =>
-    capabilityText(
-      selectedCapabilities(run, (row) => row.runtimeState === "observed"),
-    );
-
   return `
-      <section class="comparison-grid" aria-label="Run comparison">
+      <p class="scope-note"><strong>Scope:</strong> ${escapeHtml(DASHBOARD_SCOPE_NOTE)}</p>
+      <p class="snapshot-note"><strong>Snapshot freshness:</strong> Eligible local publications appear after dashboard refresh; the hosted AWS copy changes only after a separate content deployment.</p>
+
+      <section class="comparison-grid" aria-label="Latest result by selected target">
 ${exported.runs.map(renderRunCard).join("\n")}
       </section>
 
-      <section class="section" aria-labelledby="findings-title">
+      <section class="section" aria-labelledby="history-title">
         <div class="section-heading">
           <div>
             <p class="eyebrow">Results</p>
-            <h2 id="findings-title">Deterministic findings</h2>
+            <h2 id="history-title">Recent published runs</h2>
           </div>
-          <p class="section-note">Each list reflects only the selected tools, inputs, and current deterministic rules.</p>
+          <p class="section-note">Up to five eligible publications per selected target. Open a row to view its result.</p>
         </div>
-${exported.runs.map(renderFindingGroup).join("\n")}
-      </section>
-
-      <section class="section" aria-labelledby="matrix-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Comparison</p>
-            <h2 id="matrix-title">Claims and evidence</h2>
-          </div>
-          <p class="section-note">Capabilities are aggregated across the displayed initialization and tool experiments.</p>
-        </div>
-        <div class="matrix-wrap" role="region" aria-label="Scrollable claims and evidence comparison" tabindex="0">
-          <table class="matrix">
-            <caption>Advertised, static, runtime, and operator-scope results by target</caption>
-            <thead>
-              <tr>
-                <th scope="col">Evidence layer</th>
-                <th scope="col">${escapeHtml(controlled.target.displayName)}</th>
-                <th scope="col">${escapeHtml(reference.target.displayName)}</th>
-              </tr>
-            </thead>
-            <tbody>
-${renderMatrixRow("Advertised capability", "claimed", advertised(controlled), advertised(reference))}
-${renderMatrixRow("Found in captured source", "found", found(controlled), found(reference))}
-${renderMatrixRow("Observed in selected tests", "observed", observed(controlled), observed(reference))}
-${renderMatrixRow("Outside configured scope", "outside", outsideScopeText(controlled), outsideScopeText(reference))}
-            </tbody>
-          </table>
-        </div>
-        <p class="meta matrix-key">Advertised claims are untrusted. Static signals do not prove reachability. Runtime observations cover only selected inputs. Scope is operator-authored.</p>
-      </section>
-
-      <section class="section" aria-labelledby="limits-title">
-        <p class="eyebrow">Method</p>
-        <h2 id="limits-title">Interpretation limits</h2>
-        <ul class="limitations">
-          <li>${escapeHtml(exported.disclaimer)}</li>
-          <li>${escapeHtml(controlled.limitations[0])}</li>
-          <li>${escapeHtml(reference.limitations[0])}</li>
-        </ul>
+${exported.runs.map((run) => renderHistoryGroup(run, history)).join("\n")}
       </section>
 
       <p class="footer-note">Generated from schema-validated, allowlisted public projections. Raw reports, traces, transcripts, paths, source snapshots, and private storage remain unpublished.</p>`;
@@ -263,10 +313,13 @@ export function assertSafeDashboardOutput(
   html: string,
   stylesheet: string,
   exported: DemoExportV1,
+  history: readonly DemoRunV1[] = [],
 ): void {
   const combined = `${html}\n${stylesheet}`;
   const forbidden = [
     { pattern: /<script\b/iu, label: "script element" },
+    { pattern: /\bon[a-z]+\s*=/iu, label: "inline event handler" },
+    { pattern: /\bjavascript:/iu, label: "JavaScript URL" },
     { pattern: /\bhttps?:\/\//iu, label: "external URL" },
     { pattern: /\bfile:\/\//iu, label: "file URL" },
     {
@@ -297,6 +350,11 @@ export function assertSafeDashboardOutput(
       throw new Error("dashboard output is missing an expected comparison target");
     }
   }
+  for (const run of history) {
+    if (!html.includes(escapeHtml(formatTimestamp(run.analyzedAt)))) {
+      throw new Error("dashboard output is missing an expected history row");
+    }
+  }
   if (Buffer.byteLength(html) > DASHBOARD_INDEX_MAX_BYTES) {
     throw new Error("dashboard HTML exceeds its size limit");
   }
@@ -309,19 +367,24 @@ export function buildDashboardDocument(input: {
   readonly template: string;
   readonly stylesheet: string;
   readonly exported: DemoExportV1;
+  readonly history?: readonly DemoRunV1[];
 }): {
   readonly html: string;
   readonly stylesheet: string;
   readonly manifest: DashboardBuildManifestV1;
 } {
   const exported = demoExportV1Schema.parse(input.exported);
+  const history = validateHistory(exported, input.history ?? []);
   if (input.template.split(DASHBOARD_TEMPLATE_MARKER).length !== 2) {
     throw new Error("dashboard template must contain exactly one content marker");
   }
   const html = `${input.template
-    .replace(DASHBOARD_TEMPLATE_MARKER, renderDashboardContent(exported))
+    .replace(
+      DASHBOARD_TEMPLATE_MARKER,
+      renderDashboardContent(exported, history),
+    )
     .trimEnd()}\n`;
-  assertSafeDashboardOutput(html, input.stylesheet, exported);
+  assertSafeDashboardOutput(html, input.stylesheet, exported, history);
   return {
     html,
     stylesheet: input.stylesheet,

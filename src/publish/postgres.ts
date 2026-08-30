@@ -15,6 +15,7 @@ const PUBLIC_METADATA_MAX_STRING_CHARACTERS = 32_768;
 const POSTGRES_SCHEMA_LOCK_KEY = 1_180_148_281;
 const POSTGRES_DASHBOARD_REFRESH_LOCK_KEY = 1_180_148_282;
 const MAX_DASHBOARD_TARGET_COUNT = 64;
+const MAX_DASHBOARD_HISTORY_PER_TARGET = 5;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const TRANSACTION_GUARDS_SQL = `SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '120s';
@@ -153,6 +154,7 @@ export interface DashboardProjectionInput {
 export interface StoredDashboardProjection extends DashboardProjectionInput {
   readonly projectionSha256: string;
   readonly runCompletedAt: string;
+  readonly publishedAt: string;
   readonly createdAt: string;
 }
 
@@ -161,14 +163,19 @@ export interface StoreDashboardProjectionResult {
   readonly projection: StoredDashboardProjection;
 }
 
-export interface LatestDashboardProjectionQuery {
+interface DashboardProjectionSelectionQuery {
   readonly policyId: string;
   readonly targetIds: readonly string[];
 }
 
+export interface RecentDashboardProjectionQuery
+  extends DashboardProjectionSelectionQuery {
+  readonly limitPerTarget: number;
+}
+
 export interface DashboardProjectionReader {
-  getLatestPublishedDashboardProjections(
-    input: LatestDashboardProjectionQuery,
+  getRecentPublishedDashboardProjections(
+    input: RecentDashboardProjectionQuery,
   ): Promise<readonly StoredDashboardProjection[]>;
 }
 
@@ -250,6 +257,7 @@ const DASHBOARD_PROJECTION_COLUMNS = `
   p.projection,
   p.projection_sha256 AS "projectionSha256",
   r.run_completed_at AS "runCompletedAt",
+  r.published_at AS "publishedAt",
   p.created_at AS "createdAt",
   r.status AS "publicationStatus"
 `;
@@ -558,9 +566,9 @@ function validateDashboardProjectionInput(
   };
 }
 
-function validateLatestDashboardProjectionQuery(
-  input: LatestDashboardProjectionQuery,
-): LatestDashboardProjectionQuery {
+function validateDashboardProjectionSelectionQuery(
+  input: DashboardProjectionSelectionQuery,
+): DashboardProjectionSelectionQuery {
   const policyId = validateText(input.policyId, "policyId", 256);
   if (
     !Array.isArray(input.targetIds) ||
@@ -578,6 +586,22 @@ function validateLatestDashboardProjectionQuery(
     return invalidInput("targetIds must not contain duplicates");
   }
   return { policyId, targetIds };
+}
+
+function validateRecentDashboardProjectionQuery(
+  input: RecentDashboardProjectionQuery,
+): RecentDashboardProjectionQuery {
+  const validated = validateDashboardProjectionSelectionQuery(input);
+  if (
+    !Number.isSafeInteger(input.limitPerTarget) ||
+    input.limitPerTarget < 1 ||
+    input.limitPerTarget > MAX_DASHBOARD_HISTORY_PER_TARGET
+  ) {
+    return invalidInput(
+      `limitPerTarget must be a safe integer from 1 to ${MAX_DASHBOARD_HISTORY_PER_TARGET}`,
+    );
+  }
+  return { ...validated, limitPerTarget: input.limitPerTarget };
 }
 
 function validateBeginInput(
@@ -888,8 +912,13 @@ function rowToDashboardProjection(
     );
   }
   const runCompletedAt = databaseTimestamp(row, "runCompletedAt");
+  const publishedAt = databaseTimestamp(row, "publishedAt");
   const createdAt = databaseTimestamp(row, "createdAt");
-  if (runCompletedAt === undefined || createdAt === undefined) {
+  if (
+    runCompletedAt === undefined ||
+    publishedAt === undefined ||
+    createdAt === undefined
+  ) {
     throw new PublicationRepositoryError(
       "database_invariant",
       "database returned incomplete dashboard projection timestamps",
@@ -916,6 +945,7 @@ function rowToDashboardProjection(
     projection: projection.value,
     projectionSha256,
     runCompletedAt,
+    publishedAt,
     createdAt,
   };
 }
@@ -933,6 +963,7 @@ function dashboardProjectionMatches(
     actual.role === expected.role &&
     actual.projectionSha256 === expected.projectionSha256 &&
     actual.runCompletedAt === run.runCompletedAt &&
+    actual.publishedAt === run.publishedAt &&
     normalizedMetadataJson(
       actual.projection,
       "stored dashboard projection",
@@ -1716,11 +1747,11 @@ export class PostgresPublicationRepository {
     }
   }
 
-  private async queryLatestPublishedDashboardProjections(
+  private async queryRecentPublishedDashboardProjections(
     queryable: PgQueryableLike,
-    input: LatestDashboardProjectionQuery,
+    input: RecentDashboardProjectionQuery,
   ): Promise<readonly StoredDashboardProjection[]> {
-    const validated = validateLatestDashboardProjectionQuery(input);
+    const validated = validateRecentDashboardProjectionQuery(input);
     const result = await queryable.query(
       `WITH ranked AS (
          SELECT
@@ -1732,11 +1763,12 @@ export class PostgresPublicationRepository {
            p.projection,
            p.projection_sha256 AS "projectionSha256",
            r.run_completed_at AS "runCompletedAt",
+           r.published_at AS "publishedAt",
            p.created_at AS "createdAt",
            r.status AS "publicationStatus",
            ROW_NUMBER() OVER (
              PARTITION BY r.target_id
-             ORDER BY r.run_completed_at DESC, r.run_id ASC
+             ORDER BY r.run_completed_at DESC, r.published_at DESC, r.run_id ASC
            ) AS target_rank
          FROM forge_published_runs r
          JOIN forge_dashboard_projections p
@@ -1749,23 +1781,28 @@ export class PostgresPublicationRepository {
        )
        SELECT
          "runId", "targetId", "manifestSha256", "policyId", role,
-         projection, "projectionSha256", "runCompletedAt", "createdAt",
-         "publicationStatus"
+         projection, "projectionSha256", "runCompletedAt", "publishedAt",
+         "createdAt", "publicationStatus"
        FROM ranked
-       WHERE target_rank <= 2
-       ORDER BY "targetId" ASC, "runCompletedAt" DESC, "runId" ASC`,
-      [validated.policyId, [...validated.targetIds]],
+       WHERE target_rank <= $3
+       ORDER BY "targetId" ASC, "runCompletedAt" DESC, "publishedAt" DESC,
+                "runId" ASC`,
+      [
+        validated.policyId,
+        [...validated.targetIds],
+        validated.limitPerTarget,
+      ],
     );
     if (result.rowCount !== result.rows.length) {
       throw new PublicationRepositoryError(
         "database_invariant",
-        "latest dashboard projection query returned an ambiguous row count",
+        "recent dashboard projection query returned an ambiguous row count",
       );
     }
-    if (result.rows.length > validated.targetIds.length * 2) {
+    if (result.rows.length > validated.targetIds.length * validated.limitPerTarget) {
       throw new PublicationRepositoryError(
         "database_invariant",
-        "latest dashboard projection query exceeded its bounded result count",
+        "recent dashboard projection query exceeded its bounded result count",
       );
     }
 
@@ -1780,23 +1817,23 @@ export class PostgresPublicationRepository {
       ) {
         throw new PublicationRepositoryError(
           "database_invariant",
-          "latest dashboard projection query returned an unrequested identity",
+          "recent dashboard projection query returned an unrequested identity",
         );
       }
       const identity = `${projection.runId}\0${projection.policyId}`;
       if (seenRuns.has(identity)) {
         throw new PublicationRepositoryError(
           "database_invariant",
-          "latest dashboard projection query returned a duplicate row",
+          "recent dashboard projection query returned a duplicate row",
         );
       }
       seenRuns.add(identity);
       const entries = byTarget.get(projection.targetId) ?? [];
       entries.push(projection);
-      if (entries.length > 2) {
+      if (entries.length > validated.limitPerTarget) {
         throw new PublicationRepositoryError(
           "database_invariant",
-          "latest dashboard projection query returned too many rows for a target",
+          "recent dashboard projection query returned too many rows for a target",
         );
       }
       byTarget.set(projection.targetId, entries);
@@ -1809,30 +1846,22 @@ export class PostgresPublicationRepository {
         const completionDifference =
           Date.parse(right.runCompletedAt) - Date.parse(left.runCompletedAt);
         if (completionDifference !== 0) return completionDifference;
+        const publicationDifference =
+          Date.parse(right.publishedAt) - Date.parse(left.publishedAt);
+        if (publicationDifference !== 0) return publicationDifference;
         if (left.runId === right.runId) return 0;
         return left.runId < right.runId ? -1 : 1;
       });
-      const latest = entries[0];
-      if (latest === undefined) continue;
-      if (
-        entries[1] !== undefined &&
-        entries[1].runCompletedAt === latest.runCompletedAt
-      ) {
-        throw new PublicationRepositoryError(
-          "metadata_conflict",
-          `published dashboard projections for target ${targetId} have an ambiguous latest completion time`,
-        );
-      }
-      selected.push(latest);
+      selected.push(...entries);
     }
     return selected;
   }
 
-  public async getLatestPublishedDashboardProjections(
-    input: LatestDashboardProjectionQuery,
+  public async getRecentPublishedDashboardProjections(
+    input: RecentDashboardProjectionQuery,
   ): Promise<readonly StoredDashboardProjection[]> {
     this.assertOpen();
-    return await this.queryLatestPublishedDashboardProjections(this.pool, input);
+    return await this.queryRecentPublishedDashboardProjections(this.pool, input);
   }
 
   public async withDashboardRefreshLock<T>(
@@ -1853,8 +1882,8 @@ export class PostgresPublicationRepository {
         POSTGRES_DASHBOARD_REFRESH_LOCK_KEY,
       ]);
       const reader: DashboardProjectionReader = {
-        getLatestPublishedDashboardProjections: async (input) =>
-          await this.queryLatestPublishedDashboardProjections(client, input),
+        getRecentPublishedDashboardProjections: async (input) =>
+          await this.queryRecentPublishedDashboardProjections(client, input),
       };
       const result = await operation(reader);
       await client.query("COMMIT");

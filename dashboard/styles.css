@@ -102,6 +102,18 @@ h3 {
   margin-bottom: 0;
 }
 
+.scope-note,
+.snapshot-note {
+  max-width: 54rem;
+  margin: 0 0 0.45rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.snapshot-note {
+  margin-bottom: 1.4rem;
+}
+
 .comparison-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -203,14 +215,8 @@ h3 {
   list-style: none;
 }
 
-.finding-group + .finding-group {
-  margin-top: 1.25rem;
-}
-
 .finding-empty {
   padding: 0.75rem 0;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
 }
 
 .finding {
@@ -240,69 +246,99 @@ h3 {
   color: var(--medium);
 }
 
-.finding p {
+.finding p,
+.finding-title {
   margin-bottom: 0;
+}
+
+.finding p {
   color: var(--muted);
   font-size: 0.82rem;
 }
 
-.matrix-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--border);
+.history-group + .history-group {
+  margin-top: 1.5rem;
 }
 
-.matrix-wrap:focus-visible {
+.history-group-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.history-group-heading h3 {
+  margin-bottom: 0;
+  font-size: 1rem;
+}
+
+.history-run {
+  border-top: 1px solid var(--border);
+}
+
+.history-run:last-child {
+  border-bottom: 1px solid var(--border);
+}
+
+.history-run summary {
+  padding: 0.7rem 0.25rem;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-run summary:focus-visible {
   outline: 2px solid #1a73e8;
   outline-offset: 2px;
 }
 
-.matrix {
-  width: 100%;
-  min-width: 42rem;
-  border-collapse: collapse;
-}
-
-.matrix caption {
-  padding: 0.65rem;
+.history-run summary span {
+  margin-left: 0.75rem;
   color: var(--muted);
-  font-size: 0.75rem;
-  text-align: left;
+  font-size: 0.82rem;
 }
 
-.matrix th,
-.matrix td {
-  padding: 0.65rem;
+.history-result {
+  padding: 0.2rem 1.25rem 1rem;
+}
+
+.history-result > p:first-child {
+  margin-bottom: 0.25rem;
+}
+
+.history-result h4 {
+  margin: 1rem 0 0.35rem;
+  font-size: 0.82rem;
+}
+
+.history-stats {
+  margin-top: 0.75rem;
+}
+
+.history-evidence {
+  margin: 0;
   border-top: 1px solid var(--border);
-  text-align: left;
-  vertical-align: top;
 }
 
-.matrix thead th {
-  background: var(--subtle);
-  font-size: 0.75rem;
-  font-weight: 700;
+.history-evidence div {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.8fr) minmax(0, 2fr);
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
 }
 
-.matrix tbody th {
-  font-weight: 600;
-}
-
-.state {
-  display: inline;
-}
-
-.matrix-key {
-  margin-top: 0.65rem;
-}
-
-.limitations {
-  margin: 0.65rem 0 0;
-  padding-left: 1.2rem;
+.history-evidence dt {
   color: var(--muted);
 }
 
-.limitations li + li {
-  margin-top: 0.4rem;
+.history-evidence dd {
+  margin: 0;
+}
+
+.history-truncation,
+.history-empty {
+  padding: 0.55rem 0;
 }
 
 .footer-note {
@@ -328,6 +364,11 @@ h3 {
     margin-top: 0.4rem;
     text-align: left;
   }
+
+  .history-run summary span {
+    display: block;
+    margin: 0.15rem 0 0 1rem;
+  }
 }
 
 @media (max-width: 31rem) {
@@ -347,5 +388,15 @@ h3 {
   .finding {
     grid-template-columns: 1fr;
     gap: 0.3rem;
+  }
+
+  .history-result {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .history-evidence div {
+    grid-template-columns: 1fr;
+    gap: 0.1rem;
   }
 }

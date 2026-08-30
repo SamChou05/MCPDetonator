@@ -15,6 +15,7 @@ import { reportV1Schema, type RunManifestV1 } from "../../src/contracts/v1.js";
 import {
   buildDemoExportV1,
   buildDemoRunV1,
+  demoRunV1Schema,
 } from "../../src/dashboard/demo-export.js";
 import {
   DEMO_TARGET_POLICIES,
@@ -29,7 +30,7 @@ import type { VerifiedRunBundle } from "../../src/publish/bundle.js";
 import type {
   DashboardProjectionReader,
   DashboardProjectionInput,
-  LatestDashboardProjectionQuery,
+  RecentDashboardProjectionQuery,
   PostgresPublicationRepository,
   PublicationRun,
   StoreDashboardProjectionResult,
@@ -59,31 +60,41 @@ class FakeProjectionRepository {
     if (existing !== undefined) {
       return { disposition: "already_stored", projection: existing };
     }
+    const parsed = demoRunV1Schema.parse(input.projection);
+    if (parsed.presentation.source !== "published") {
+      throw new Error("fake repository requires a published projection");
+    }
     const projection: StoredDashboardProjection = {
       ...input,
       projectionSha256: "f".repeat(64),
       runCompletedAt: this.completedAtByRun.get(input.runId)!,
+      publishedAt: parsed.presentation.publishedAt,
       createdAt: "2026-08-30T22:00:00.000Z",
     };
     this.projections.set(key, projection);
     return { disposition: "stored", projection };
   }
 
-  public async getLatestPublishedDashboardProjections(
-    input: LatestDashboardProjectionQuery,
+  public async getRecentPublishedDashboardProjections(
+    input: RecentDashboardProjectionQuery,
   ): Promise<readonly StoredDashboardProjection[]> {
-    return input.targetIds.flatMap((targetId) => {
-      const entries = [...this.projections.values()]
+    return input.targetIds.flatMap((targetId) =>
+      [...this.projections.values()]
         .filter(
           (entry) =>
             entry.policyId === input.policyId && entry.targetId === targetId,
         )
-        .sort(
-          (left, right) =>
-            Date.parse(right.runCompletedAt) - Date.parse(left.runCompletedAt),
-        );
-      return entries[0] === undefined ? [] : [entries[0]];
-    });
+        .sort((left, right) => {
+          const completionDifference =
+            Date.parse(right.runCompletedAt) - Date.parse(left.runCompletedAt);
+          if (completionDifference !== 0) return completionDifference;
+          const publicationDifference =
+            Date.parse(right.publishedAt) - Date.parse(left.publishedAt);
+          if (publicationDifference !== 0) return publicationDifference;
+          return left.runId.localeCompare(right.runId);
+        })
+        .slice(0, input.limitPerTarget),
+    );
   }
 
   public async withDashboardRefreshLock<T>(
@@ -250,6 +261,11 @@ describe("publish-driven local dashboard refresh", () => {
     );
     expect(firstHtml).toContain("Published 2026-08-30T22:11:00Z");
     expect(firstHtml).toContain("Pinned sample");
+    expect(firstHtml).toContain("Recent published runs");
+    expect(firstHtml).toContain("1 published run");
+    expect(firstHtml).toContain('<details class="history-run" open>');
+    expect(firstHtml).toContain("<strong>Scope:</strong>");
+    expect(firstHtml).not.toContain("Interpretation limits");
     expect(firstHtml).not.toContain(bundle.manifest.runId);
     expect(firstHtml).not.toContain(bundle.manifestSha256);
     expect(firstHtml).not.toContain("/private/");
@@ -317,9 +333,49 @@ describe("publish-driven local dashboard refresh", () => {
       join(repositoryRoot, "dist", "dashboard-site", "index.html"),
       "utf8",
     );
-    expect(afterRetry).toBe(current);
+    expect(afterRetry).not.toBe(current);
     expect(afterRetry).toContain("Published 2026-08-30T23:01:00Z");
-    expect(afterRetry).not.toContain("2026-08-30T23:02:00Z");
+    expect(afterRetry).toContain("Published 2026-08-30T23:02:00Z");
+    expect(afterRetry).toContain("2 published runs");
+  });
+
+  it("keeps at most five published history rows per selected target", async () => {
+    const repository = new FakeProjectionRepository();
+    const policy = DEMO_TARGET_POLICIES[0];
+    const timestamps: string[] = [];
+    for (let index = 0; index < 6; index += 1) {
+      const completedAt = new Date(
+        Date.UTC(2026, 7, 31, index, 0, 0),
+      ).toISOString();
+      const publishedAt = new Date(
+        Date.UTC(2026, 7, 31, index, 1, 0),
+      ).toISOString();
+      timestamps.push(completedAt.replace(/\.000Z$/u, "Z"));
+      const bundle = await bundleForPolicy(
+        policy,
+        `dashboard-history-${index}`,
+        completedAt,
+      );
+      repository.register(bundle);
+      const refresher = new LocalDashboardPublicationRefresher({
+        repository: repository as unknown as PostgresPublicationRepository,
+        repositoryRoot,
+      });
+      await refresher.prepare(bundle).execute(publicationFor(bundle, publishedAt));
+    }
+
+    const html = await readFile(
+      join(repositoryRoot, "dist", "dashboard-site", "index.html"),
+      "utf8",
+    );
+    expect(html).toContain("5 published runs");
+    expect(html.match(/<details class="history-run"/gu)).toHaveLength(5);
+    expect(html.match(/<details class="history-run" open>/gu)).toHaveLength(1);
+    expect(html).not.toContain(`Report generated ${timestamps[0]}`);
+    for (const timestamp of timestamps.slice(1)) {
+      expect(html).toContain(`Report generated ${timestamp}`);
+    }
+    expect(html).not.toContain("dashboard-history-");
   });
 
   it("leaves the page intact when the reviewed stylesheet does not match", async () => {

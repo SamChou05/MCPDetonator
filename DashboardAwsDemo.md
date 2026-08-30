@@ -50,9 +50,10 @@ SHA-256 of both files. The receipt sits outside the site directory and is never
 uploaded.
 
 The dashboard builder is the security gate that constructs the initial
-field-by-field presentation from pinned, sanitized samples. The publisher can
-later replace either slot only with an exact allowlisted, PostgreSQL-persisted
-public projection. The reviewed target/source/scope pins live in
+field-by-field presentation from pinned, sanitized samples. Its published-run
+history is initially empty. The publisher can later replace either latest slot
+and add up to five history rows per target only with exact allowlisted,
+PostgreSQL-persisted public projections. The reviewed target/source/scope pins live in
 `dashboard/demo-policy-v1.json`; changing any pin automatically changes the
 stored policy fingerprint. Inspect the page locally before publication. Do not
 manually copy report or evidence files into `dist/dashboard-site`.
@@ -111,8 +112,10 @@ node scripts/deploy-dashboard.mjs \
 ## Refresh published results without changing infrastructure
 
 After `publish-run --refresh-dashboard` reports `dashboard.status` as
-`refreshed`, inspect the local page. Then upload only the newly validated
-content to the existing exact stack:
+`refreshed`, inspect the local page. The newest eligible result becomes the
+current card and appears in the expandable `Recent published runs` section;
+older eligible results remain available up to the five-per-target bound. Then
+upload only the newly validated content to the existing exact stack:
 
 The local publisher demo exports fake MinIO credentials under AWS's standard
 environment-variable names. Use a fresh shell, or remove those demo-only values
@@ -133,7 +136,10 @@ node scripts/deploy-dashboard.mjs \
   --yes
 ```
 
-This mode still validates the caller/account, refuses root credentials,
+This deployment is not automatic. `forge analyze` uploads nothing, and
+`publish-run --refresh-dashboard` regenerates the website only as a local
+snapshot; it does not deploy the website to AWS. This mode still validates the
+caller/account, refuses root credentials,
 requires the exact tagged stack and two-key bucket inventory, verifies local
 builder receipts and remote S3 checksums, and waits for the CloudFront
 invalidation. It skips the CloudFormation deploy because no infrastructure
@@ -209,9 +215,10 @@ All four public-access-block values must be `true`; default encryption must be
   browser access to S3 and no database access.
 - The page is HTML and CSS only. The CSP disables JavaScript, connections,
   forms, frames, objects, and every unspecified resource type.
-- Results update only at the explicit publication and content-deployment
-  boundaries. They are representative selected cases, not a universal security
-  verdict.
+- Results update locally at the explicit publication/refresh boundary and on
+  AWS at the separate content-deployment boundary. The history is capped at
+  five eligible runs per selected target. These are representative selected
+  cases, not a universal security verdict.
 - This demo has no authentication, WAF, access-log pipeline, availability SLA,
   customer-data path, live query API, or raw-artifact drill-down.
 - CloudFront's generated hostname uses its default certificate; AWS fixes that

@@ -211,6 +211,7 @@ function dashboardProjectionRow(
     projection: dashboardProjectionInput.projection,
     projectionSha256: dashboardProjectionSha256,
     runCompletedAt: beginInput.runCompletedAt,
+    publishedAt: "2026-08-30T18:03:00.000Z",
     createdAt: "2026-08-30T18:04:00.000Z",
     publicationStatus: "published",
     ...overrides,
@@ -778,79 +779,114 @@ describe("PostgresPublicationRepository", () => {
     expect(pool.calls).toHaveLength(0);
   });
 
-  it("returns at most the latest published dashboard projection for each target", async () => {
+  it("returns bounded recent dashboard projections in caller target order", async () => {
     const referenceTarget = "official-filesystem";
     const client = new FakeClient(() => queryResult());
     const pool = new FakePool(client, (text) => {
-      if (!text.includes("WITH ranked AS")) {
+      if (!text.includes("WHERE target_rank <= $3")) {
         throw new Error(`unexpected pool query: ${text}`);
       }
       return queryResult([
         dashboardProjectionRow({
-          runId: "run-newest-controlled",
-          runCompletedAt: "2026-08-30T18:10:00.000Z",
-        }),
-        dashboardProjectionRow({
-          runId: "run-older-controlled",
-          runCompletedAt: "2026-08-30T18:09:00.000Z",
+          runId: "run-controlled-older",
+          runCompletedAt: "2026-08-30T18:08:00.000Z",
+          publishedAt: "2026-08-30T18:11:00.000Z",
         }),
         dashboardProjectionRow({
           runId: "run-reference",
           targetId: referenceTarget,
           role: "reference",
-          runCompletedAt: "2026-08-30T18:08:00.000Z",
+          runCompletedAt: "2026-08-30T18:09:00.000Z",
+          publishedAt: "2026-08-30T18:10:00.000Z",
+        }),
+        dashboardProjectionRow({
+          runId: "run-controlled-newer",
+          runCompletedAt: "2026-08-30T18:10:00.000Z",
+          publishedAt: "2026-08-30T18:10:30.000Z",
+        }),
+        dashboardProjectionRow({
+          runId: "run-controlled-tied-later-publication",
+          runCompletedAt: "2026-08-30T18:10:00.000Z",
+          publishedAt: "2026-08-30T18:10:45.000Z",
         }),
       ]);
     });
     const repository = new PostgresPublicationRepository(pool);
 
-    const result = await repository.getLatestPublishedDashboardProjections({
+    const result = await repository.getRecentPublishedDashboardProjections({
       policyId: dashboardPolicyId,
-      targetIds: [beginInput.targetId, referenceTarget],
+      targetIds: [referenceTarget, beginInput.targetId],
+      limitPerTarget: 3,
     });
 
     expect(result.map((projection) => projection.runId)).toEqual([
-      "run-newest-controlled",
       "run-reference",
+      "run-controlled-tied-later-publication",
+      "run-controlled-newer",
+      "run-controlled-older",
     ]);
     const query = pool.calls[0];
     expect(query?.text).toContain("WHERE r.status = 'published'");
-    expect(query?.text).toContain("WHERE target_rank <= 2");
-    expect(query?.text).toContain("r.target_id = ANY($2::text[])");
+    expect(query?.text).toContain(
+      "ORDER BY r.run_completed_at DESC, r.published_at DESC, r.run_id ASC",
+    );
     expect(query?.values).toEqual([
       dashboardPolicyId,
-      [beginInput.targetId, referenceTarget],
+      [referenceTarget, beginInput.targetId],
+      3,
     ]);
   });
 
-  it("rejects an ambiguous latest completion tie or a publishing query row", async () => {
-    for (const rows of [
-      [
-        dashboardProjectionRow({
-          runId: "run-tied-a",
-          runCompletedAt: "2026-08-30T18:10:00.000Z",
-        }),
-        dashboardProjectionRow({
-          runId: "run-tied-b",
-          runCompletedAt: "2026-08-30T18:10:00.000Z",
-        }),
-      ],
-      [dashboardProjectionRow({ publicationStatus: "publishing" })],
-    ]) {
-      const pool = new FakePool(
-        new FakeClient(() => queryResult()),
-        () => queryResult(rows),
-      );
-      const repository = new PostgresPublicationRepository(pool);
+  it("validates and enforces the recent dashboard projection bound", async () => {
+    const client = new FakeClient(() => queryResult());
+    const pool = new FakePool(client, () =>
+      queryResult([
+        dashboardProjectionRow({ runId: "run-history-a" }),
+        dashboardProjectionRow({ runId: "run-history-b" }),
+      ]),
+    );
+    const repository = new PostgresPublicationRepository(pool);
 
+    for (const limitPerTarget of [0, 6, 1.5]) {
       await expect(
-        repository.getLatestPublishedDashboardProjections({
+        repository.getRecentPublishedDashboardProjections({
           policyId: dashboardPolicyId,
           targetIds: [beginInput.targetId],
+          limitPerTarget,
         }),
-      ).rejects.toMatchObject({
-        code: rows.length === 2 ? "metadata_conflict" : "database_invariant",
-      });
+      ).rejects.toMatchObject({ code: "invalid_input" });
+    }
+    expect(pool.calls).toHaveLength(0);
+
+    await expect(
+      repository.getRecentPublishedDashboardProjections({
+        policyId: dashboardPolicyId,
+        targetIds: [beginInput.targetId],
+        limitPerTarget: 1,
+      }),
+    ).rejects.toMatchObject({ code: "database_invariant" });
+  });
+
+  it("rejects invalid recent dashboard projection result rows", async () => {
+    for (const rows of [
+      [dashboardProjectionRow({ publicationStatus: "publishing" })],
+      [
+        dashboardProjectionRow({ runId: "run-duplicate" }),
+        dashboardProjectionRow({ runId: "run-duplicate" }),
+      ],
+      [dashboardProjectionRow({ targetId: "unrequested-target" })],
+    ]) {
+      const repository = new PostgresPublicationRepository(
+        new FakePool(new FakeClient(() => queryResult()), () => queryResult(rows)),
+      );
+
+      await expect(
+        repository.getRecentPublishedDashboardProjections({
+          policyId: dashboardPolicyId,
+          targetIds: [beginInput.targetId],
+          limitPerTarget: 2,
+        }),
+      ).rejects.toMatchObject({ code: "database_invariant" });
     }
   });
 
@@ -870,9 +906,10 @@ describe("PostgresPublicationRepository", () => {
     await expect(
       successRepository.withDashboardRefreshLock(async (reader) => {
         await expect(
-          reader.getLatestPublishedDashboardProjections({
+          reader.getRecentPublishedDashboardProjections({
             policyId: dashboardPolicyId,
             targetIds: [beginInput.targetId],
+            limitPerTarget: 5,
           }),
         ).resolves.toEqual([]);
         return "refreshed";

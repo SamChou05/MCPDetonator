@@ -28,7 +28,10 @@ import {
   type DemoTargetPolicy,
 } from "./demo-policy.js";
 import { replaceDashboardIndex } from "./local-site.js";
-import { buildDashboardDocument } from "./render.js";
+import {
+  buildDashboardDocument,
+  DASHBOARD_HISTORY_LIMIT_PER_TARGET,
+} from "./render.js";
 
 export interface LocalDashboardPublicationRefresherOptions {
   readonly repository: PostgresPublicationRepository;
@@ -56,6 +59,7 @@ function publishedProjectionForPolicy(
   if (
     parsed.role !== policy.role ||
     parsed.presentation.source !== "published" ||
+    parsed.presentation.publishedAt !== stored.publishedAt ||
     parsed.target.displayName !== policy.displayName ||
     parsed.target.description !== policy.description ||
     JSON.stringify(parsed.limitations) !== JSON.stringify(policy.limitations) ||
@@ -130,19 +134,35 @@ class PreparedLocalDashboardRefresh implements PreparedDashboardRefresh {
 
     return await this.options.repository.withDashboardRefreshLock(
       async (reader) => {
-        const stored = await reader.getLatestPublishedDashboardProjections({
+        const stored = await reader.getRecentPublishedDashboardProjections({
           policyId: DEMO_DASHBOARD_POLICY_ID,
           targetIds: DEMO_TARGET_POLICIES.map((policy) => policy.targetId),
+          limitPerTarget: DASHBOARD_HISTORY_LIMIT_PER_TARGET,
         });
-        const storedByTarget = new Map(
-          stored.map((entry) => [entry.targetId, entry] as const),
-        );
+        const published = stored.map((entry) => {
+          const policy = DEMO_TARGET_POLICIES.find(
+            (candidate) => candidate.targetId === entry.targetId,
+          );
+          if (policy === undefined) {
+            throw new Error("dashboard history contains an unexpected target");
+          }
+          return {
+            targetId: entry.targetId,
+            run: publishedProjectionForPolicy(entry, policy),
+          };
+        });
+        const latestByTarget = new Map<string, DemoRunV1>();
+        for (const entry of published) {
+          if (!latestByTarget.has(entry.targetId)) {
+            latestByTarget.set(entry.targetId, entry.run);
+          }
+        }
         const runs = await Promise.all(
           DEMO_TARGET_POLICIES.map(async (policy) => {
-            const entry = storedByTarget.get(policy.targetId);
-            return entry === undefined
+            const run = latestByTarget.get(policy.targetId);
+            return run === undefined
               ? await sampleProjection(this.options.repositoryRoot, policy)
-              : publishedProjectionForPolicy(entry, policy);
+              : run;
           }),
         );
         const [controlled, reference] = runs;
@@ -170,6 +190,7 @@ class PreparedLocalDashboardRefresh implements PreparedDashboardRefresh {
           template,
           stylesheet,
           exported,
+          history: published.map((entry) => entry.run),
         });
         const disposition = await replaceDashboardIndex({
           outputDirectory: join(

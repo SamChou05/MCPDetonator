@@ -8,10 +8,12 @@
 Publish a script-free snapshot of an explicitly allowlisted presentation
 contract. Pinned sanitized reports provide the initial/fallback pair. An
 explicit successful `publish-run --refresh-dashboard` stores a separate safe
-projection in PostgreSQL and regenerates `index.html` from the latest published
-projection for each reviewed target. Store only generated `index.html` and
-`styles.css` in a separate private S3 bucket and serve them through one
-CloudFront distribution using Origin Access Control (OAC).
+projection in PostgreSQL and regenerates `index.html` from up to five recent
+published projections per reviewed target. The first row becomes that target's
+latest summary; the remaining rows form a native expandable history. Store only
+generated `index.html` and `styles.css` in a separate private S3 bucket and
+serve them through one CloudFront distribution using Origin Access Control
+(OAC).
 
 The canonical evidence bucket and PostgreSQL publisher store are not origins,
 are not copied to the site bucket, and are not reachable from the browser.
@@ -20,9 +22,10 @@ are not copied to the site bucket, and are not reachable from the browser.
 verified run -> evidence S3 -> PostgreSQL status=published
                                   |
                                   v
-                    allowlisted safe projection
+                 bounded allowlisted safe projections
                                   |
-        pinned fallback ----------+-> generated index.html + styles.css
+        pinned fallback ----------+-> latest summary + recent-run history
+                                      -> generated index.html + styles.css
                                       -> private site S3 <- OAC <- CloudFront
 
 browser --------------------------X-> PostgreSQL / canonical evidence S3
@@ -40,7 +43,7 @@ accounts, customer data, or raw-artifact download.
 
 | Design | Demo goal | Privacy boundary | Result fidelity | Indicative cost | Delivery time / operations | Reversibility | Decision |
 |---|---|---|---|---|---|---|---|
-| **Private S3 + CloudFront, publish-generated snapshot** | Direct fit: a stable public URL and purpose-built view | Strongest small design: only two validated presentation files enter a separate bucket | Current at explicit publication/deployment boundaries; no runtime query path | About **$0–$2/month** at demo traffic | Same-day; no public server, API, VPC, or patching | High: preserve the presentation contract and replace its producer later | **Selected** |
+| **Private S3 + CloudFront, publish-generated snapshot** | Direct fit: a stable public URL, latest summaries, and bounded run history | Strongest small design: only two validated presentation files enter a separate bucket | Current at explicit publication/deployment boundaries; no runtime query path | About **$0–$2/month** at demo traffic | Same-day; no public server, API, VPC, or patching | High: preserve the presentation contract and replace its producer later | **Selected** |
 | API Gateway + Lambda + RDS PostgreSQL | Supports live filters and many runs, beyond current need | Can be strong, but requires API authorization, query allowlists, secrets, database networking, and abuse controls | Live and queryable | Roughly **$15–$40/month** for a tiny single-AZ database-backed demo; more with HA, NAT, or idle resources | Several days; schema/API lifecycle, database maintenance, observability, and failure modes | Medium-high if the API returns the same presentation contract | Defer until live querying is a real requirement |
 | Aurora Serverless v2 + Data API | Live relational data without application connection pooling | Still needs authorization, Secrets Manager, query constraints, and database governance | Live and queryable | If 0.5 ACU is active one hour/day at the posted $0.12/ACU-hour example: about **$1.80/month compute**, plus storage, I/O, secrets, API, and frontend; if it never pauses, about **$43.80/month compute** | More moving parts and a typical ~15-second resume after pause | Medium-high | Interesting later, unnecessarily subtle for this demo |
 | One container on App Runner, ECS/Fargate, or Lightsail | Flexible and can serve a live app | Adds a public runtime, dependency/patch surface, logs, and potentially network/database credentials | Live if implemented that way | **$5/month** is the current smallest Lightsail public-IPv4 bundle; managed container/networking combinations commonly reach the low tens monthly | Container builds, runtime health, scaling, logging, and patching | Medium; portable container, AWS-specific service wiring | Reject for a two-file site |
@@ -97,11 +100,11 @@ self-contained CloudFormation teardown. It is worth reconsidering if a hard
 traffic-cost ceiling matters more than keeping the demo stack minimal.
 
 The tradeoff is bounded freshness rather than live querying. A selected run
-refreshes the local snapshot only after PostgreSQL commits `published`; an AWS
-viewer sees it after the explicit content-only upload and CloudFront
-invalidation. That is desirable for this public demo because publication stays
-an explicit review event and the website has no database credential or runtime
-dependency.
+refreshes the local latest summary and five-per-target history only after
+PostgreSQL commits `published`; an AWS viewer sees that snapshot after the
+explicit content-only upload and CloudFront invalidation. That is desirable for
+this public demo because publication stays an explicit review event and the
+website has no database credential or runtime dependency.
 
 The `forge_dashboard_projections` table is deliberately separate from general
 publisher metadata. Eligibility is default-deny and pins target ID, target

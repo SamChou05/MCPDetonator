@@ -334,8 +334,12 @@ async function main() {
     invariant(
       publishedDashboard !== initialDashboard &&
         publishedDashboard.includes("Published 2026-") &&
-        publishedDashboard.includes("Pinned sample"),
-      "dashboard did not show the published run beside its sample fallback",
+        publishedDashboard.includes("Pinned sample") &&
+        publishedDashboard.includes("Recent published runs") &&
+        publishedDashboard.includes("1 published run") &&
+        publishedDashboard.includes('<details class="history-run" open>') &&
+        !publishedDashboard.includes("Interpretation limits"),
+      "dashboard did not show the published run, history, and sample fallback",
     );
     invariant(
       !publishedDashboard.includes(successful.runId) &&

@@ -218,10 +218,11 @@ service checksums and exact published metadata sets.
 
 For the two exact reviewed demo identities, `publish-run --refresh-dashboard`
 also stores a separate disclosure-safe projection after finalization and
-regenerates the local script-free results page from the latest published row per
-target. The browser never reaches PostgreSQL or the canonical evidence bucket;
-an explicit content-only deploy moves only validated HTML/CSS to the AWS site
-bucket.
+regenerates the local script-free results page from up to five recent published
+rows per target. The newest row drives the current summary and every retained
+row can be expanded in the published-run history. The browser never reaches
+PostgreSQL or the canonical evidence bucket; an explicit content-only deploy
+moves only validated HTML/CSS to the AWS site bucket.
 
 The S3 `run.json` is an artifact-completeness marker, not a cross-store atomic
 commit. PostgreSQL `status = 'published'` is query authority; hosted use still
