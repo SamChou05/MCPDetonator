@@ -971,7 +971,8 @@ Requested: 2026-08-30
 
 Completed: 2026-08-30
 
-- Implementation commit: pending final reviewed staging.
+- Implementation commit: `783c4ed`
+  (`feat: refresh dashboard from published runs`).
 - `publish-run --refresh-dashboard` now keeps canonical publication unchanged,
   then stores a separate bounded projection only after PostgreSQL reports the
   exact run as `published`. Presentation failure returns a retryable partial
