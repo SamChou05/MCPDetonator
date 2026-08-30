@@ -494,8 +494,7 @@ Requested: 2026-08-30
 - Root owns the fixed study fixture, live runner, bounded results, analysis,
   tests, documentation, verification, and Git coordination. No parallel agents
   were used.
-- Status: ten live trials completed, evidence and analysis written, focused
-  verification passed, and final review is in progress.
+- Status: completed and synchronized in commit `810ab27`.
 
 Frozen study design:
 
@@ -563,3 +562,14 @@ Evidence and verification:
 
 Suggested commit subject:
 `experiment: record live V2 agent proposal study`.
+
+Completed live Evidence-First V2 agent proposal study milestone:
+
+- Commit `810ab27` contains the reviewed fixed study fixture, live runner,
+  matched ten-trial evidence, cross-arm analysis, regression tests, and prompt
+  contract guidance.
+- Final staged review passed `git diff --cached --check`; all staged files
+  matched the reviewed worktree contents, and the credential scan passed for
+  all five tracked study-result files.
+- The only remaining dirty paths are the preserved out-of-scope `.gitignore`,
+  `src/static/node-package.ts`, and untracked `agent-runs/`.
