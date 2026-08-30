@@ -19,6 +19,11 @@ import {
   resolveLocalSourcePath,
   TargetConfigError,
 } from "./config.js";
+import {
+  loadPublishConfiguration,
+  PublishConfigurationError,
+} from "./publish/config.js";
+import { publishRunToConfiguredInfrastructure } from "./publish/publish-run.js";
 import { defaultSandboxImage } from "./sandbox/docker.js";
 
 const program = new Command();
@@ -60,6 +65,52 @@ program
       );
     },
   );
+
+program
+  .command("publish-run")
+  .description(
+    "Verify and publish a completed local run to S3-compatible storage and PostgreSQL",
+  )
+  .argument("<run-directory>", "path to a completed Forge run directory")
+  .addHelpText(
+    "after",
+    `
+Required environment:
+  FORGE_PUBLISH_DATABASE_URL
+  FORGE_PUBLISH_S3_BUCKET
+
+Optional S3 settings:
+  FORGE_PUBLISH_S3_REGION, FORGE_PUBLISH_S3_PREFIX,
+  FORGE_PUBLISH_S3_ENDPOINT, FORGE_PUBLISH_S3_FORCE_PATH_STYLE
+
+See PublisherDemo.md for the synthetic localhost demo and safety boundary.
+`,
+  )
+  .action(async (runDirectory: string) => {
+    const result = await publishRunToConfiguredInfrastructure(
+      resolve(runDirectory),
+      loadPublishConfiguration(),
+    );
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          status: result.status,
+          runId: result.runId,
+          targetId: result.targetId,
+          manifestSha256: result.manifestSha256,
+          artifactCount: result.artifactCount,
+          findingCount: result.findingCount,
+          manifestObject: result.manifestObject,
+          retry: {
+            begin: result.beginDisposition,
+            finalize: result.finalizeDisposition,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  });
 
 program
   .command("validate")
@@ -136,6 +187,8 @@ program
 
 program.parseAsync().catch((error: unknown) => {
   if (error instanceof TargetConfigError) {
+    process.stderr.write(`forge: ${error.message}\n`);
+  } else if (error instanceof PublishConfigurationError) {
     process.stderr.write(`forge: ${error.message}\n`);
   } else if (error instanceof AgentScenarioError) {
     process.stderr.write(`forge: ${error.message}\n`);

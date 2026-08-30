@@ -765,3 +765,99 @@ Milestones and verification:
   `npm run verify:e2e` returned `status: verified`; and
   `npm run verify:agent` returned `status: passed` with all 14 named checks
   true.
+
+## Completed S3/Postgres run-publisher wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `main` at `a2b0516`
+  (`docs: record malicious MCP study milestone`).
+- Baseline state was intentionally dirty because a concurrent Node semantic
+  sidecar wave was active. That wave was reconciled and committed first as
+  `51a473f` (`feat: add bounded Node semantic callsite evidence`), then
+  hardened at the final coordination gate in `27f7deb`
+  (`fix: harden semantic mutation resolution`). The
+  pre-existing `.gitignore`, generated `agent-runs/`, and the unseen-MCP
+  holdout paths (committed separately on `codex/unseen-mcp-holdout` and still
+  untracked on `main`) remain outside this wave.
+- `HardenedEvidenceInfrastructurePlan.md` began as an untracked draft and was
+  explicitly adopted into this wave after the user requested the plan and then
+  authorized the bounded S3/PostgreSQL implementation in parallel.
+- This wave is additive. It must not alter the live `forge analyze` persistence
+  path: it adds a post-run publisher for completed, locally verified bundles.
+- Root owns `PROJECT_MEMORY.md`, Git coordination, dependency/CLI integration,
+  orchestration, documentation, and shared verification.
+- Initial parallel ownership was disjoint:
+  - bundle-verification agent: `src/publish/bundle.ts` and
+    `test/unit/publish-bundle.test.ts`;
+  - S3 agent: `src/publish/s3.ts` and `test/unit/publish-s3.test.ts`;
+  - Postgres agent: `src/publish/postgres.ts` and
+    `test/unit/publish-postgres.test.ts`.
+- Initial delivery boundary: verify an immutable completed run, publish
+  manifest-listed artifacts to S3-compatible storage with the manifest last,
+  record queryable run/artifact/finding metadata in Postgres, and make retries
+  idempotent. Live event streaming, multi-tenancy, retention automation, KMS
+  key administration, and cross-region replication remain follow-up work.
+- Status: complete and independently reviewed. All editing agents handed off;
+  three read-only adversarial passes found and drove fixes for mutable-path
+  TOCTOU, checksum-less S3 retries, late Postgres validation, malformed Unicode,
+  mutable published retry sets, unbounded cardinality/bytes, and unmanifested
+  report evidence references. No blocking finding remains.
+
+Implemented behavior and decisions:
+
+- `forge analyze` is unchanged. `forge publish-run <run-directory>` is a
+  separate post-run command configured through controller-only S3/PostgreSQL
+  environment variables.
+- Completed V1 bundles are schema/identity/path/symlink/hash verified under
+  explicit count, byte, and cooperative time limits. Every report evidence
+  path is cross-bound to the manifest. Artifact bytes are copied while hashed
+  into private read-only anonymous snapshots, so later replacement of the run
+  pathname cannot change or disclose different upload bytes.
+- S3 artifacts are content addressed and conditionally created. Existing
+  objects are accepted only when length, Forge digest metadata, and the service
+  SHA-256 checksum all match. The exact `run.json` is the final object-store
+  write and is an artifact-completeness marker, not a cross-store atomic commit.
+- All deterministic S3 keys plus every value destined for PostgreSQL are
+  preflighted before schema, intent, or object writes. PostgreSQL begin/finalize
+  transactions have lock/statement/idle guards; inserted rows are round-trip
+  checked; published retries perform a read-only exact-set comparison.
+  PostgreSQL `status = 'published'` is query authority.
+- The synchronous safety ceilings are 2,048 artifacts, 4,096 findings,
+  256 MiB per artifact, 1 GiB total artifact bytes, five minutes of cooperative
+  local verification, 60 KiB compact public metadata, bounded metadata shape,
+  and four concurrent artifact uploads by default (maximum 16).
+- `compose.publisher-demo.yml`, `PublisherDemo.md`, and
+  `npm run verify:publisher` provide a pinned, localhost-only synthetic demo.
+  The verifier uses a full UUID Compose project, exact retry, Postgres/S3 key
+  cross-checks, service checksums, GET-and-hash checks for the exact manifest
+  and all 19 referenced artifacts, tamper rejection, and project-scoped cleanup.
+- Production work remains explicit: reliable producer/spool semantics, stable
+  storage-backend identity, versioned migrations and restricted runtime roles,
+  S3 request deadlines/Object Lock, cross-store reconciliation, KMS signing,
+  TLS policy, tenant authorization, retention/deletion, backups, monitoring,
+  failure injection, and disaster recovery.
+
+Verification for this milestone:
+
+- `npm run typecheck`: passed.
+- Focused publisher suite: 5 files / 49 tests passed.
+- `npm test`: passed in the shared worktree, 66 files / 522 tests. This count
+  includes the out-of-scope untracked unseen-holdout test, which remains
+  unstaged.
+- `npm run build`: passed.
+- `npm run verify:publisher`: passed against real pinned MinIO/PostgreSQL with
+  19 artifacts, 5 findings, idempotent retry, exact remote bytes/checksums, and
+  rejection before publication for a tampered second run.
+- `npm run verify:e2e`: passed after publisher integration.
+  - Observer image:
+    `sha256:1b2156ef65e8bac8977cc86d51310a6862d337887ac3beadeb34aab403cec295`
+  - Deceptive run: `runs/run-20260830191448-b42b4d30`
+  - Filesystem run: `runs/run-20260830191529-705903c6`
+- Review-only live PostgreSQL 16 probes passed eight-way concurrent begin and
+  finalize convergence, malformed-Unicode rejection with zero rows, and the
+  60 KiB client/64 KiB JSONB ceiling.
+- `npm audit --omit=dev`: passed with 0 vulnerabilities.
+- `git diff --check`: passed before the final staging gate.
+
+Suggested commit subject: `feat: publish verified runs to S3 and Postgres`.

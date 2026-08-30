@@ -82,3 +82,15 @@ By the end of the day on Sunday, we'd like to see:
 - [ ] If time permits: your answer to the agent-behavior question above, either as a design proposal or prototype for automatically evaluating what additional information can be learned from agent rollouts.
 
 Our goal is to measure your ability to make intelligent design choices and think through a largely unexplored systems and security problem. There are interesting considerations here around sandbox infrastructure, runtime instrumentation, static analysis, behavioral attribution, and, optionally, agent evals.
+
+---
+
+# Repository implementation
+
+- [`Prototype.md`](Prototype.md) explains the implemented architecture,
+  evidence model, verified cases, limitations, and core demo.
+- [`PublisherDemo.md`](PublisherDemo.md) runs the optional synthetic
+  S3/PostgreSQL completed-run publisher locally.
+- [`HardenedEvidenceInfrastructurePlan.md`](HardenedEvidenceInfrastructurePlan.md)
+  separates that bounded integration slice from the remaining production
+  hardening roadmap.

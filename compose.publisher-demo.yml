@@ -1,0 +1,55 @@
+name: forge-publisher-demo
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: forge
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: forge-demo-only
+    ports:
+      - "127.0.0.1:${FORGE_PUBLISH_DEMO_POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - forge-publisher-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forge -d forge"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: forge_demo
+      MINIO_ROOT_PASSWORD: forge-demo-secret
+    ports:
+      - "127.0.0.1:${FORGE_PUBLISH_DEMO_S3_PORT:-59000}:9000"
+      - "127.0.0.1:${FORGE_PUBLISH_DEMO_CONSOLE_PORT:-59001}:9001"
+    volumes:
+      - forge-publisher-minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  create-bucket:
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: forge_demo
+      MINIO_ROOT_PASSWORD: forge-demo-secret
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000
+        "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc mb --ignore-existing local/forge-evidence
+    restart: "no"
+
+volumes:
+  forge-publisher-postgres:
+  forge-publisher-minio:

@@ -206,6 +206,23 @@ themselves identify the responsible process, phase, or source line. Comparison
 rows separately expose events whose association with a tool is temporal overlap
 rather than matching process origin.
 
+## Optional durable publisher demo
+
+`forge analyze` still completes into the self-contained local directory above.
+The separate `forge publish-run <run-directory>` command verifies a completed
+bundle, snapshots its manifest-listed bytes away from mutable run paths,
+uploads content-addressed objects to S3-compatible storage, and indexes bounded
+run/artifact/finding metadata in PostgreSQL. All deterministic S3 keys and
+PostgreSQL values are preflighted before remote writes; identical retries verify
+service checksums and exact published metadata sets.
+
+The S3 `run.json` is an artifact-completeness marker, not a cross-store atomic
+commit. PostgreSQL `status = 'published'` is query authority; hosted use still
+needs reconciliation for a database failure after manifest upload. See
+[`PublisherDemo.md`](PublisherDemo.md) for the synthetic localhost walkthrough
+and [`HardenedEvidenceInfrastructurePlan.md`](HardenedEvidenceInfrastructurePlan.md)
+for the production sequencing and remaining controls.
+
 ## Containment model
 
 Runtime and install experiments use disposable Docker containers with blocked networking, read-only container roots, synthetic home/workspace data, bounded CPU/memory/processes/time, `no_new_privs`, and exact label-checked cleanup. Runtime cleanup fails closed on ambiguous Docker responses and requires repeated verified absence before Forge scans host-mounted profile state. The runtime target runs as UID/GID 65534 with all target capabilities cleared and cannot write the observer-owned trace directory. Each run manifest records both the configured observer-image reference and the resolved immutable image ID.
