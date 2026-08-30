@@ -10,7 +10,7 @@
     "routingMatch": true,
     "prompt": {
       "id": "forge-agent-proposal-prompt",
-      "version": "1alpha1"
+      "version": "1alpha2"
     },
     "usage": {
       "promptTokens": 900,

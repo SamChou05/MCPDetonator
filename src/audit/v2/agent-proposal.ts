@@ -69,7 +69,7 @@ import type {
 
 export const AGENT_PROPOSAL_PROMPT_IDENTITY = Object.freeze({
   id: "forge-agent-proposal-prompt",
-  version: "1alpha1",
+  version: "1alpha2",
 });
 
 const SUBMISSION_TOOL_NAME = "submit_experiment_proposals";
@@ -88,6 +88,10 @@ const SYSTEM_PROMPT = [
   "Use only exact tool names and exact {$forgeResource: alias} symbolic resources from the context.",
   "Return exactly one submit_experiment_proposals tool call and no target-tool calls.",
   "Every predicted effect must use origin=model_inference and model_output evidence.",
+  "Each proposal has only proposalId, case, rationale, and ambiguities; include ambiguities even when it is empty.",
+  "Each case has only caseId, kind, description, steps, predictedEffects, assertions, and minimumApprovalClass.",
+  "Each predictedEffects item has predictionId, origin, action, resourceClass, phase, confidence, evidenceBasis, optional selector, and limitations; never place those fields on the case itself.",
+  "Each assertion has assertionId, kind, subject, expected, and required.",
   "Do not claim approval, dispatch, execution, observations, safety, or severity.",
   "Prefer cases that add semantic coverage beyond existingCases and list uncertainty in ambiguities.",
 ].join(" ");

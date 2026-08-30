@@ -184,3 +184,14 @@ The next useful examples are:
 Until then, `accepted_novel` means exactly “statically valid, policy-eligible,
 and absent from this baseline semantic set.” It does not mean useful, correct,
 safe, exploitable, or executed.
+
+## First live study
+
+The first matched live study is recorded in
+[agent-proposal-live-study-summary-2026-08-30.md](experiments/evidence-first-v2/agent-proposal-live-study-summary-2026-08-30.md).
+With the same five-tool context, model, temperature, and budget, five
+schema-only trials produced 0/26 valid candidates, while five trials with
+neutral field-placement guidance produced 27/27 valid candidates, 14 unique
+semantics, and union coverage of all six fixed metadata opportunities. This is
+strong evidence that prose-level contract narration matters for this provider
+route; it is not evidence of runtime finding quality.

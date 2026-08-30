@@ -478,3 +478,88 @@ Completed experimental V2 agent proposal milestone:
 - Final staged review passed `git diff --cached --check`; the only remaining
   dirty paths are the preserved out-of-scope `.gitignore`,
   `src/static/node-package.ts`, and untracked `agent-runs/`.
+
+## Live Evidence-First V2 agent proposal study wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `main` at `ef96ab6`
+  (`docs: record V2 agent proposal milestone`).
+- Pre-existing out-of-scope dirty paths remain `.gitignore`,
+  `src/static/node-package.ts`, and untracked `agent-runs/`; none is owned or
+  staged by this wave.
+- `.env` is ignored and was loaded only with Node's non-executing
+  `--env-file=.env` parser. No credential value was printed, persisted, or
+  staged; a post-run scan of all five study files passed.
+- Root owns the fixed study fixture, live runner, bounded results, analysis,
+  tests, documentation, verification, and Git coordination. No parallel agents
+  were used.
+- Status: ten live trials completed, evidence and analysis written, focused
+  verification passed, and final review is in progress.
+
+Frozen study design:
+
+- Requested and returned model in all trials: `openai/gpt-5.6-luna` through
+  OpenRouter; no routing mismatch occurred.
+- Five exact tools, five deterministic baseline cases, four symbolic resources,
+  six candidates, twelve total proposed steps, temperature zero, and 4,096
+  maximum completion tokens per trial.
+- Context digest:
+  `b0c12ee790b97c879c983a7fb5e5d227f03b6dbd32f2b1c1dab7bc1954493a6d`.
+- Baseline digest:
+  `76f3220b85d43f62298240cb5260dd861e58f9e47121b2a3eb230a2b74980711`.
+- Six operator-authored metadata opportunities were frozen before generation:
+  sensitive-resource probe, lower/upper numeric boundaries, non-baseline enum,
+  boolean toggle, and sensitive multi-resource combination.
+- No target was called, no fresh ExperimentPlan was compiled from a proposal,
+  and no approval or runtime finding was created.
+
+Matched live results:
+
+- Schema-only prompt `1alpha1`: 5/5 provider trials completed; all 26
+  candidates were rejected as `contract_invalid`. Dominant failures were
+  flattened prediction fields on `case`, missing nested prediction fields,
+  missing `ambiguities`, and missing `caseId`.
+- Guided prompt `1alpha2`: only neutral contract field-placement instructions
+  changed. 5/5 provider trials completed; all 27 candidates passed deterministic
+  candidate-local validation and were accepted as novel relative to the fixed
+  baseline.
+- The guided arm produced 14 unique tool-and-argument semantics from 27
+  accepted occurrences and union coverage of all 6 fixed opportunities.
+  Sensitive-resource, upper-boundary, enum, and boolean opportunities appeared
+  in 5/5 trials; lower-boundary and sensitive-combination opportunities appeared
+  in 2/5.
+- The guided results covered every tool but repeated JSON conversion with
+  metadata and semantic comparison with whitespace ignored in all five trials,
+  so accepted counts materially overstate diversity.
+- Combined usage: 56,261 tokens. Estimated cost from the OpenRouter model-catalog
+  prices observed on the run date: `$0.034978`.
+- Conclusion is deliberately narrow: prose contract narration was decisive for
+  structural validity on this route, and the guided agent added statically novel
+  metadata-derived cases. This does not establish useful findings or improved
+  runtime recall.
+
+Evidence and verification:
+
+- Cross-arm report:
+  `experiments/evidence-first-v2/agent-proposal-live-study-summary-2026-08-30.md`.
+- Both bounded JSON records retain the exact provider context, typed submissions,
+  deterministic comparisons, usage, timing, digests, and false authority flags;
+  raw free-form provider content is not retained.
+- Focused proposal/study evidence tests: 2 files / 16 tests passed; the full V2
+  plus shared-schema suite passed with 12 files / 197 tests.
+- Isolated strict TypeScript for V2, provider adapters, study runner, and proposal
+  tests: passed.
+- Offline scripted proposal example still reproduces its checked-in comparison
+  after prompt identity advanced to `1alpha2`.
+- `npm test`: 55 suites / 433 tests passed; only
+  `static-node-package.test.ts` and `report-static-snapshot.test.ts` failed to
+  transform at the preserved `src/static/node-package.ts:65` syntax edit.
+- `npm run typecheck`, `npm run build`, `npm run verify:e2e`, and
+  `npm run verify:agent` each stopped at the same pre-existing
+  `src/static/node-package.ts(65,15) TS1005` error before substantive gate
+  execution. Root did not alter that user-owned path.
+- `git diff --check`: passed; rerun at the staged review gate.
+
+Suggested commit subject:
+`experiment: record live V2 agent proposal study`.

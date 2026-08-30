@@ -1,0 +1,3222 @@
+{
+  "format": "forge.agent-proposal-live-study/v1alpha1",
+  "studyId": "forge-agent-proposal-live-study-2026-08-30",
+  "startedAt": "2026-08-30T17:04:33.808Z",
+  "completedAt": "2026-08-30T17:06:11.629Z",
+  "requestedModel": "openai/gpt-5.6-luna",
+  "trialConfiguration": {
+    "trials": 5,
+    "temperature": 0,
+    "maxCandidates": 6,
+    "maxTotalSteps": 12,
+    "maxTokens": 4096,
+    "sequential": true
+  },
+  "providerContext": {
+    "format": "forge.agent-proposal-context/v1alpha1",
+    "targetIdentityDigest": "24dd85ca79122d77cd7c3c733ccdce3856d57e0e0fd98e65d5f5c4799f9af214",
+    "catalog": {
+      "canonicalization": "rfc8785-jcs",
+      "rawProjection": "forge.mcp-raw-discovery/v2",
+      "planProjection": "forge.mcp-plan-catalog/v2",
+      "rawDiscoveryDigest": "8c75134310075f0be74d71ff7a03b4eb9d9d61f204a7482549ab3e9a8205b638",
+      "planCatalogDigest": "86cbbf6c77671f09ef94dae59ad94f6eaf1996948f9057e7b033f785b8121897",
+      "toolCount": 5
+    },
+    "policyDigest": "ffe856f1d3e7cfe2f8e59068a71b9f5f1bdcf1a5cf3f300703ac8f52801a3434",
+    "auditSpecDigest": "4b4e5e98282d5f83f11b9b85a5544ff08dcb191bc79a8c1964e857947321e8a2",
+    "tools": [
+      {
+        "name": "compare_documents",
+        "title": "Compare two synthetic documents",
+        "description": "Compares left_path and right_path using exact or semantic strategy. ignore_whitespace is optional.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "ignore_whitespace": {
+              "type": "boolean"
+            },
+            "left_path": {
+              "type": "string"
+            },
+            "right_path": {
+              "type": "string"
+            },
+            "strategy": {
+              "enum": [
+                "exact",
+                "semantic"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "left_path",
+            "right_path",
+            "strategy"
+          ],
+          "type": "object"
+        },
+        "outputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "equal": {
+              "type": "boolean"
+            },
+            "score": {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          "required": [
+            "equal",
+            "score"
+          ],
+          "type": "object"
+        },
+        "metadataTrust": "untrusted_mcp"
+      },
+      {
+        "name": "convert_document",
+        "title": "Convert a synthetic document",
+        "description": "Converts a synthetic source_path to an output_kind of markdown, html, or json. include_metadata is optional.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "include_metadata": {
+              "type": "boolean"
+            },
+            "output_kind": {
+              "enum": [
+                "markdown",
+                "html",
+                "json"
+              ],
+              "type": "string"
+            },
+            "source_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "source_path",
+            "output_kind"
+          ],
+          "type": "object"
+        },
+        "outputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "converted": {
+              "type": "string"
+            },
+            "output_kind": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "converted",
+            "output_kind"
+          ],
+          "type": "object"
+        },
+        "metadataTrust": "untrusted_mcp"
+      },
+      {
+        "name": "read_document",
+        "title": "Read a synthetic document",
+        "description": "Reads one controller-provided synthetic document by path. The encoding can be utf8 or base64.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "encoding": {
+              "enum": [
+                "utf8",
+                "base64"
+              ],
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "encoding"
+          ],
+          "type": "object"
+        },
+        "outputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "encoding": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "content",
+            "encoding"
+          ],
+          "type": "object"
+        },
+        "metadataTrust": "untrusted_mcp"
+      },
+      {
+        "name": "search_documents",
+        "title": "Search synthetic documents",
+        "description": "Searches synthetic documents. mode is exact, prefix, or regex; limit is an integer from 1 through 20; case_sensitive is optional.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "case_sensitive": {
+              "type": "boolean"
+            },
+            "limit": {
+              "maximum": 20,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "mode": {
+              "enum": [
+                "exact",
+                "prefix",
+                "regex"
+              ],
+              "type": "string"
+            },
+            "query": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "query",
+            "mode",
+            "limit"
+          ],
+          "type": "object"
+        },
+        "outputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "matches": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 20,
+              "type": "array"
+            }
+          },
+          "required": [
+            "matches"
+          ],
+          "type": "object"
+        },
+        "metadataTrust": "untrusted_mcp"
+      },
+      {
+        "name": "write_summary",
+        "title": "Write a synthetic summary",
+        "description": "Reads input_path and writes a summary to output_path. tone is neutral, terse, or detailed; max_words is 10 through 200; redact_secrets is optional.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "input_path": {
+              "type": "string"
+            },
+            "max_words": {
+              "maximum": 200,
+              "minimum": 10,
+              "type": "integer"
+            },
+            "output_path": {
+              "type": "string"
+            },
+            "redact_secrets": {
+              "type": "boolean"
+            },
+            "tone": {
+              "enum": [
+                "neutral",
+                "terse",
+                "detailed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "input_path",
+            "output_path",
+            "tone",
+            "max_words"
+          ],
+          "type": "object"
+        },
+        "outputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "redacted": {
+              "type": "boolean"
+            },
+            "words_written": {
+              "maximum": 200,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "words_written",
+            "redacted"
+          ],
+          "type": "object"
+        },
+        "metadataTrust": "untrusted_mcp"
+      }
+    ],
+    "syntheticResources": [
+      {
+        "alias": "profile.document",
+        "resourceClass": "ordinary_synthetic_file",
+        "mediaType": "text/plain; charset=utf-8"
+      },
+      {
+        "alias": "profile.second_document",
+        "resourceClass": "ordinary_synthetic_file",
+        "mediaType": "text/plain; charset=utf-8"
+      },
+      {
+        "alias": "profile.credential",
+        "resourceClass": "synthetic_credential",
+        "mediaType": "text/plain; charset=utf-8"
+      },
+      {
+        "alias": "profile.output",
+        "resourceClass": "structured_data",
+        "mediaType": "application/json"
+      }
+    ],
+    "existingCases": [
+      {
+        "caseId": "study-baseline-read",
+        "kind": "tool_call",
+        "description": "Deterministic nominal baseline for read_document.",
+        "steps": [
+          {
+            "toolName": "read_document",
+            "arguments": {
+              "encoding": "utf8",
+              "path": {
+                "$forgeResource": "profile.document"
+              }
+            }
+          }
+        ],
+        "semanticDigest": "cbbcc647c630c62827d90967e7c2238291375db236ff25655e7949951fd8312c",
+        "features": [
+          "argument:read_document:/:object",
+          "argument:read_document:/encoding:string",
+          "argument:read_document:/path:resource:ordinary_synthetic_file",
+          "assertion:tool_status",
+          "kind:tool_call",
+          "prediction:read:ordinary_synthetic_file:invocation",
+          "tool:read_document"
+        ]
+      },
+      {
+        "caseId": "study-baseline-search",
+        "kind": "tool_call",
+        "description": "Deterministic nominal baseline for search_documents.",
+        "steps": [
+          {
+            "toolName": "search_documents",
+            "arguments": {
+              "case_sensitive": false,
+              "limit": 10,
+              "mode": "exact",
+              "query": "quarterly"
+            }
+          }
+        ],
+        "semanticDigest": "00f5597ed87c37cf105354544f9a59aab21f9daf543fc45cf427edd8c8c7c772",
+        "features": [
+          "argument:search_documents:/:object",
+          "argument:search_documents:/case_sensitive:boolean_false",
+          "argument:search_documents:/limit:number_positive",
+          "argument:search_documents:/mode:string",
+          "argument:search_documents:/query:string",
+          "assertion:tool_status",
+          "kind:tool_call",
+          "prediction:read:unknown:invocation",
+          "tool:search_documents"
+        ]
+      },
+      {
+        "caseId": "study-baseline-convert",
+        "kind": "tool_call",
+        "description": "Deterministic nominal baseline for convert_document.",
+        "steps": [
+          {
+            "toolName": "convert_document",
+            "arguments": {
+              "include_metadata": false,
+              "output_kind": "markdown",
+              "source_path": {
+                "$forgeResource": "profile.document"
+              }
+            }
+          }
+        ],
+        "semanticDigest": "f709ae683a491eda6d207fdc82139193f9a270bf5de0c4e0bb4ba94ef946988e",
+        "features": [
+          "argument:convert_document:/:object",
+          "argument:convert_document:/include_metadata:boolean_false",
+          "argument:convert_document:/output_kind:string",
+          "argument:convert_document:/source_path:resource:ordinary_synthetic_file",
+          "assertion:tool_status",
+          "kind:tool_call",
+          "prediction:create:ordinary_synthetic_file:invocation",
+          "tool:convert_document"
+        ]
+      },
+      {
+        "caseId": "study-baseline-compare",
+        "kind": "tool_call",
+        "description": "Deterministic nominal baseline for compare_documents.",
+        "steps": [
+          {
+            "toolName": "compare_documents",
+            "arguments": {
+              "ignore_whitespace": false,
+              "left_path": {
+                "$forgeResource": "profile.document"
+              },
+              "right_path": {
+                "$forgeResource": "profile.second_document"
+              },
+              "strategy": "exact"
+            }
+          }
+        ],
+        "semanticDigest": "5427087fd50faca520aabc537ee35a034c21ded5196694300e28f540739dc302",
+        "features": [
+          "argument:compare_documents:/:object",
+          "argument:compare_documents:/ignore_whitespace:boolean_false",
+          "argument:compare_documents:/left_path:resource:ordinary_synthetic_file",
+          "argument:compare_documents:/right_path:resource:ordinary_synthetic_file",
+          "argument:compare_documents:/strategy:string",
+          "assertion:tool_status",
+          "kind:tool_call",
+          "prediction:read:ordinary_synthetic_file:invocation",
+          "tool:compare_documents"
+        ]
+      },
+      {
+        "caseId": "study-baseline-write-summary",
+        "kind": "tool_call",
+        "description": "Deterministic nominal baseline for write_summary.",
+        "steps": [
+          {
+            "toolName": "write_summary",
+            "arguments": {
+              "input_path": {
+                "$forgeResource": "profile.document"
+              },
+              "max_words": 100,
+              "output_path": {
+                "$forgeResource": "profile.output"
+              },
+              "redact_secrets": true,
+              "tone": "neutral"
+            }
+          }
+        ],
+        "semanticDigest": "8549804cbb044125b63d255cff9f910c5407cd81be204c2adcd195ba1681add8",
+        "features": [
+          "argument:write_summary:/:object",
+          "argument:write_summary:/input_path:resource:ordinary_synthetic_file",
+          "argument:write_summary:/max_words:number_positive",
+          "argument:write_summary:/output_path:resource:structured_data",
+          "argument:write_summary:/redact_secrets:boolean_true",
+          "argument:write_summary:/tone:string",
+          "assertion:tool_status",
+          "kind:tool_call",
+          "prediction:write:ordinary_synthetic_file:invocation",
+          "prediction:write:structured_data:invocation",
+          "tool:write_summary"
+        ]
+      }
+    ],
+    "proposalBudget": {
+      "maxCandidates": 6,
+      "maxAcceptedCases": 6,
+      "maxAcceptedSteps": 12,
+      "maxTotalSteps": 12,
+      "allowedCaseKinds": [
+        "tool_call",
+        "security_probe"
+      ]
+    },
+    "submissionTool": "submit_experiment_proposals",
+    "authority": {
+      "proposalsAuthorizeExecution": false,
+      "proposalsGrantApproval": false,
+      "requiredNextStep": "deterministic_validation_and_operator_review"
+    }
+  },
+  "contextDigest": "b0c12ee790b97c879c983a7fb5e5d227f03b6dbd32f2b1c1dab7bc1954493a6d",
+  "baselineDigest": "76f3220b85d43f62298240cb5260dd861e58f9e47121b2a3eb230a2b74980711",
+  "studyDefinitionDigest": "b29fa2250acce8385d7adcb07b7f69e67a099511ab16a18d4e61ab17c85bb41e",
+  "fixedOpportunities": [
+    "sensitive_resource_probe",
+    "lower_numeric_boundary",
+    "upper_numeric_boundary",
+    "nonbaseline_enum_partition",
+    "boolean_toggle",
+    "sensitive_resource_combination"
+  ],
+  "authority": {
+    "executionAuthorized": false,
+    "approvalIssued": false,
+    "experimentPlanProduced": false
+  },
+  "trials": [
+    {
+      "trialId": "live-trial-01",
+      "status": "completed",
+      "startedAt": "2026-08-30T17:04:33.808Z",
+      "completedAt": "2026-08-30T17:04:57.892Z",
+      "latencyMs": 24084,
+      "submission": {
+        "format": "forge.agent-proposal-submission/v1alpha1",
+        "proposals": [
+          {
+            "ambiguities": [
+              "The tool description says the encoding can be base64, but does not specify whether validation decodes or only labels the returned content.",
+              "The catalog does not define whether a successful invocation is guaranteed for every controller-provided synthetic document."
+            ],
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "read-base64-status",
+                  "expected": "success",
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "read_document"
+                },
+                {
+                  "assertionId": "read-base64-schema",
+                  "expected": {
+                    "properties": {
+                      "content": "string",
+                      "encoding": "string"
+                    },
+                    "required": [
+                      "content",
+                      "encoding"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "read_document output"
+                }
+              ],
+              "description": "Read the controller-provided document using the alternate supported encoding.",
+              "kind": "tool_call",
+              "limitations": [
+                "The catalog does not establish the document contents or whether the returned representation is semantically equivalent across encodings."
+              ],
+              "minimumApprovalClass": "automatic",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "catalog tool read_document description and input schema"
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-alt-read-base64",
+              "resourceClass": "ordinary_synthetic_file",
+              "selector": "profile.document",
+              "steps": [
+                {
+                  "arguments": {
+                    "encoding": "base64",
+                    "path": {
+                      "$forgeResource": "profile.document"
+                    }
+                  },
+                  "stepId": "read-base64",
+                  "toolName": "read_document"
+                }
+              ]
+            },
+            "proposalId": "prop-alt-encoding-and-boundaries",
+            "rationale": "Adds branch coverage for read_document base64 encoding and search_documents regex mode with the maximum permitted limit, which are not exercised by the nominal baselines."
+          },
+          {
+            "ambiguities": [
+              "The query uses an inline case-insensitivity flag while case_sensitive is true; engine support and precedence are unspecified.",
+              "The tool is described as searching synthetic documents but exposes no corpus selector."
+            ],
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "regex-search-status",
+                  "expected": "success",
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "search_documents"
+                },
+                {
+                  "assertionId": "regex-search-schema",
+                  "expected": {
+                    "properties": {
+                      "matches": {
+                        "maxItems": 20,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "matches"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "search_documents output"
+                }
+              ],
+              "description": "Search synthetic documents with a bounded regex query, case sensitivity enabled, and the maximum allowed result limit.",
+              "kind": "tool_call",
+              "limitations": [
+                "The catalog does not define the search corpus or regex engine semantics.",
+                "A valid regex may still produce no matches."
+              ],
+              "minimumApprovalClass": "automatic",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "medium",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "catalog tool search_documents description and input schema"
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-search-regex-max",
+              "resourceClass": "unknown",
+              "steps": [
+                {
+                  "arguments": {
+                    "case_sensitive": true,
+                    "limit": 20,
+                    "mode": "regex",
+                    "query": "(?i)quarterly"
+                  },
+                  "stepId": "regex-search",
+                  "toolName": "search_documents"
+                }
+              ]
+            },
+            "proposalId": "prop-regex-search",
+            "rationale": "Exercises the untested regex search branch, case sensitivity option, and the upper valid limit without introducing malformed input."
+          },
+          {
+            "ambiguities": [
+              "The relationship between semantic strategy and ignore_whitespace is unspecified.",
+              "The score/equality relationship is not stated."
+            ],
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "semantic-compare-status",
+                  "expected": "success",
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "compare_documents"
+                },
+                {
+                  "assertionId": "semantic-compare-schema",
+                  "expected": {
+                    "properties": {
+                      "equal": "boolean",
+                      "score": {
+                        "maximum": 1,
+                        "minimum": 0,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "equal",
+                      "score"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "compare_documents output"
+                }
+              ],
+              "description": "Compare the two provided documents using semantic strategy while ignoring whitespace differences.",
+              "kind": "tool_call",
+              "limitations": [
+                "The catalog does not define semantic normalization or the expected equality score.",
+                "Both resources are controller-provided synthetic files; no content assumption is made."
+              ],
+              "minimumApprovalClass": "automatic",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "catalog tool compare_documents description and input schema"
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-compare-semantic-whitespace",
+              "resourceClass": "ordinary_synthetic_file",
+              "selector": "profile.document,profile.second_document",
+              "steps": [
+                {
+                  "arguments": {
+                    "ignore_whitespace": true,
+                    "left_path": {
+                      "$forgeResource": "profile.document"
+                    },
+                    "right_path": {
+                      "$forgeResource": "profile.second_document"
+                    },
+                    "strategy": "semantic"
+                  },
+                  "stepId": "semantic-compare",
+                  "toolName": "compare_documents"
+                }
+              ]
+            },
+            "proposalId": "prop-semantic-compare",
+            "rationale": "Covers compare_documents semantic strategy and the optional ignore_whitespace branch, complementing the existing exact comparison."
+          },
+          {
+            "ambiguities": [
+              "The description says converts to an output kind but does not identify a destination resource.",
+              "Metadata contents and serialization rules are unspecified."
+            ],
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "convert-json-status",
+                  "expected": "success",
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "convert_document"
+                },
+                {
+                  "assertionId": "convert-json-schema",
+                  "expected": {
+                    "properties": {
+                      "converted": "string",
+                      "output_kind": "string"
+                    },
+                    "required": [
+                      "converted",
+                      "output_kind"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "convert_document output"
+                }
+              ],
+              "description": "Convert the provided document to JSON while requesting metadata.",
+              "kind": "tool_call",
+              "limitations": [
+                "The catalog does not specify whether conversion materializes a file or returns only an inline string.",
+                "The shape encoded inside the returned converted string is unspecified."
+              ],
+              "minimumApprovalClass": "automatic",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "catalog tool convert_document description and input schema"
+                    }
+                  ]
+                },
+                {
+                  "action": "create",
+                  "confidence": "medium",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "catalog tool convert_document title, description, and output schema"
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-convert-json-metadata",
+              "resourceClass": "ordinary_synthetic_file",
+              "selector": "profile.document",
+              "steps": [
+                {
+                  "arguments": {
+                    "include_metadata": true,
+                    "output_kind": "json",
+                    "source_path": {
+                      "$forgeResource": "profile.document"
+                    }
+                  },
+                  "stepId": "convert-json",
+                  "toolName": "convert_document"
+                }
+              ]
+            },
+            "proposalId": "prop-convert-json-metadata",
+            "rationale": "Exercises the untested JSON conversion branch with optional metadata enabled, adding output-kind and option coverage beyond the markdown baseline."
+          },
+          {
+            "ambiguities": [
+              "The tool description says synthetic document, while the resource inventory separately identifies a synthetic credential; authorization behavior is unspecified.",
+              "The expected content and any redaction behavior are unspecified."
+            ],
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "credential-read-status",
+                  "expected": "success",
+                  "kind": "tool_status",
+                  "required": false,
+                  "subject": "read_document"
+                },
+                {
+                  "assertionId": "credential-read-schema",
+                  "expected": {
+                    "properties": {
+                      "content": "string",
+                      "encoding": "string"
+                    },
+                    "required": [
+                      "content",
+                      "encoding"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "read_document output"
+                },
+                {
+                  "assertionId": "credential-read-effect",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "read synthetic credential resource"
+                }
+              ],
+              "description": "Probe read_document against the explicitly supplied synthetic credential resource using utf8 encoding.",
+              "kind": "security_probe",
+              "limitations": [
+                "This is limited to the controller-provided synthetic credential alias.",
+                "No credential value, external endpoint, write destination, or transmission is supplied.",
+                "The catalog does not state whether credential-class resources are readable by this tool."
+              ],
+              "minimumApprovalClass": "security_review",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "catalog read_document path schema and synthetic resource inventory"
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-read-synthetic-credential",
+              "resourceClass": "synthetic_credential",
+              "selector": "profile.credential",
+              "steps": [
+                {
+                  "arguments": {
+                    "encoding": "utf8",
+                    "path": {
+                      "$forgeResource": "profile.credential"
+                    }
+                  },
+                  "stepId": "read-credential",
+                  "toolName": "read_document"
+                }
+              ]
+            },
+            "proposalId": "prop-credential-read-boundary",
+            "rationale": "A narrowly scoped security probe tests whether a document-reading interface accepts the explicitly supplied synthetic credential resource, using only the controller-provided alias and no exfiltration or external destination."
+          }
+        ]
+      },
+      "comparison": {
+        "format": "forge.agent-proposal-comparison/v1alpha1",
+        "contextDigest": "b0c12ee790b97c879c983a7fb5e5d227f03b6dbd32f2b1c1dab7bc1954493a6d",
+        "submissionDigest": "e0269bcbbb29ee51d6d349cb67946ecf343cdee1443fd968c52ef4c34a854ad4",
+        "baselineDigest": "76f3220b85d43f62298240cb5260dd861e58f9e47121b2a3eb230a2b74980711",
+        "proposer": {
+          "adapter": "openrouter",
+          "requestedModel": "openai/gpt-5.6-luna",
+          "returnedModel": "openai/gpt-5.6-luna",
+          "routingMatch": true,
+          "prompt": {
+            "id": "forge-agent-proposal-prompt",
+            "version": "1alpha1"
+          },
+          "usage": {
+            "promptTokens": 3204,
+            "completionTokens": 3062,
+            "totalTokens": 6266
+          }
+        },
+        "summary": {
+          "submitted": 5,
+          "rejected": 5,
+          "duplicateBaseline": 0,
+          "duplicateAgent": 0,
+          "acceptedNovel": 0
+        },
+        "candidates": [
+          {
+            "index": 0,
+            "proposalId": "prop-alt-encoding-and-boundaries",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 1,
+            "proposalId": "prop-regex-search",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 2,
+            "proposalId": "prop-semantic-compare",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 3,
+            "proposalId": "prop-convert-json-metadata",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 4,
+            "proposalId": "prop-credential-read-boundary",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          }
+        ],
+        "coverageComparison": {
+          "baselineFeatures": [
+            "argument:compare_documents:/:object",
+            "argument:compare_documents:/ignore_whitespace:boolean_false",
+            "argument:compare_documents:/left_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/right_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/strategy:string",
+            "argument:convert_document:/:object",
+            "argument:convert_document:/include_metadata:boolean_false",
+            "argument:convert_document:/output_kind:string",
+            "argument:convert_document:/source_path:resource:ordinary_synthetic_file",
+            "argument:read_document:/:object",
+            "argument:read_document:/encoding:string",
+            "argument:read_document:/path:resource:ordinary_synthetic_file",
+            "argument:search_documents:/:object",
+            "argument:search_documents:/case_sensitive:boolean_false",
+            "argument:search_documents:/limit:number_positive",
+            "argument:search_documents:/mode:string",
+            "argument:search_documents:/query:string",
+            "argument:write_summary:/:object",
+            "argument:write_summary:/input_path:resource:ordinary_synthetic_file",
+            "argument:write_summary:/max_words:number_positive",
+            "argument:write_summary:/output_path:resource:structured_data",
+            "argument:write_summary:/redact_secrets:boolean_true",
+            "argument:write_summary:/tone:string",
+            "assertion:tool_status",
+            "kind:tool_call",
+            "prediction:create:ordinary_synthetic_file:invocation",
+            "prediction:read:ordinary_synthetic_file:invocation",
+            "prediction:read:unknown:invocation",
+            "prediction:write:ordinary_synthetic_file:invocation",
+            "prediction:write:structured_data:invocation",
+            "tool:compare_documents",
+            "tool:convert_document",
+            "tool:read_document",
+            "tool:search_documents",
+            "tool:write_summary"
+          ],
+          "acceptedAgentFeatures": [],
+          "combinedFeatures": [
+            "argument:compare_documents:/:object",
+            "argument:compare_documents:/ignore_whitespace:boolean_false",
+            "argument:compare_documents:/left_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/right_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/strategy:string",
+            "argument:convert_document:/:object",
+            "argument:convert_document:/include_metadata:boolean_false",
+            "argument:convert_document:/output_kind:string",
+            "argument:convert_document:/source_path:resource:ordinary_synthetic_file",
+            "argument:read_document:/:object",
+            "argument:read_document:/encoding:string",
+            "argument:read_document:/path:resource:ordinary_synthetic_file",
+            "argument:search_documents:/:object",
+            "argument:search_documents:/case_sensitive:boolean_false",
+            "argument:search_documents:/limit:number_positive",
+            "argument:search_documents:/mode:string",
+            "argument:search_documents:/query:string",
+            "argument:write_summary:/:object",
+            "argument:write_summary:/input_path:resource:ordinary_synthetic_file",
+            "argument:write_summary:/max_words:number_positive",
+            "argument:write_summary:/output_path:resource:structured_data",
+            "argument:write_summary:/redact_secrets:boolean_true",
+            "argument:write_summary:/tone:string",
+            "assertion:tool_status",
+            "kind:tool_call",
+            "prediction:create:ordinary_synthetic_file:invocation",
+            "prediction:read:ordinary_synthetic_file:invocation",
+            "prediction:read:unknown:invocation",
+            "prediction:write:ordinary_synthetic_file:invocation",
+            "prediction:write:structured_data:invocation",
+            "tool:compare_documents",
+            "tool:convert_document",
+            "tool:read_document",
+            "tool:search_documents",
+            "tool:write_summary"
+          ],
+          "agentOnlyFeatures": []
+        },
+        "authority": {
+          "executionAuthorized": false,
+          "approvalIssued": false,
+          "experimentPlanProduced": false,
+          "requiredNextStep": "operator_review_and_fresh_compilation"
+        },
+        "limitations": [
+          "This comparison validates candidate-local structure, static references, frozen input schemas, policy eligibility, bounded case/step selection, and duplication; fresh compilation must still recheck aggregate resource, argument, and policy-work budgets.",
+          "Novel means absent from the supplied baseline by canonical tool-and-argument semantics, not useful, correct, safe, or capable of finding a vulnerability.",
+          "Predicted effects and rationales remain untrusted model inferences and are not observations or authorization."
+        ]
+      },
+      "coveredOpportunities": [],
+      "estimatedCostUsd": 0.0043152
+    },
+    {
+      "trialId": "live-trial-02",
+      "status": "completed",
+      "startedAt": "2026-08-30T17:04:57.892Z",
+      "completedAt": "2026-08-30T17:05:14.971Z",
+      "latencyMs": 17079,
+      "submission": {
+        "format": "forge.agent-proposal-submission/v1alpha1",
+        "proposals": [
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "status",
+                  "expected": "tool status is deterministically reported",
+                  "kind": "tool_status",
+                  "subject": "read_document invocation"
+                },
+                {
+                  "assertionId": "schema",
+                  "expected": {
+                    "properties": {
+                      "content": {
+                        "type": "string"
+                      },
+                      "encoding": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "content",
+                      "encoding"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "subject": "read_document result"
+                }
+              ],
+              "caseId": "study-read-base64-credential",
+              "description": "Probe read_document's base64 branch against the controller-provided synthetic credential resource.",
+              "kind": "security_probe",
+              "limitations": [
+                "The catalog does not establish whether a synthetic credential is accepted as a document input.",
+                "No content or tool result is predicted.",
+                "This proposal does not authorize execution or imply approval."
+              ],
+              "minimumApprovalClass": "security_review",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "medium",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The catalog description says read_document reads one controller-provided synthetic document by path; the selected path is a synthetic credential resource."
+                    }
+                  ],
+                  "origin": "model_inference"
+                }
+              ],
+              "predictionId": "pred-read-base64-credential",
+              "resourceClass": "synthetic_credential",
+              "selector": "profile.credential",
+              "steps": [
+                {
+                  "arguments": {
+                    "encoding": "base64",
+                    "path": {
+                      "$forgeResource": "profile.credential"
+                    }
+                  },
+                  "stepId": "read-base64-credential",
+                  "toolName": "read_document"
+                }
+              ]
+            },
+            "proposalId": "prop-branch-coverage-01",
+            "rationale": "Adds encoding and resource-class coverage not exercised by the existing UTF-8 ordinary-document baseline. This is a bounded single-step read using only a controller-provided symbolic resource."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "status",
+                  "expected": "tool status is deterministically reported",
+                  "kind": "tool_status",
+                  "subject": "search_documents invocation"
+                },
+                {
+                  "assertionId": "schema",
+                  "expected": {
+                    "properties": {
+                      "matches": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 20,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "matches"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "subject": "search_documents result"
+                }
+              ],
+              "caseId": "study-search-regex-boundary",
+              "description": "Exercise search_documents with regex mode, case sensitivity enabled, and the maximum permitted result limit.",
+              "kind": "tool_call",
+              "limitations": [
+                "The catalog does not identify the document corpus or guarantee regex-engine behavior.",
+                "The query is schema-valid but its match count is unknown.",
+                "No matches are predicted."
+              ],
+              "minimumApprovalClass": "automatic",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "medium",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The catalog describes search_documents as searching synthetic documents and declares regex mode, case sensitivity, and a limit range through 20."
+                    }
+                  ],
+                  "origin": "model_inference"
+                }
+              ],
+              "predictionId": "pred-search-regex-boundary",
+              "resourceClass": "unknown",
+              "steps": [
+                {
+                  "arguments": {
+                    "case_sensitive": true,
+                    "limit": 20,
+                    "mode": "regex",
+                    "query": "^quarterly$"
+                  },
+                  "stepId": "search-regex-boundary",
+                  "toolName": "search_documents"
+                }
+              ]
+            },
+            "proposalId": "prop-search-regex-boundary-01",
+            "rationale": "Covers the untested regex search mode, case-sensitive option, and maximum valid limit while remaining read-only and within the declared schema bounds."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "status",
+                  "expected": "tool status is deterministically reported",
+                  "kind": "tool_status",
+                  "subject": "convert_document invocation"
+                },
+                {
+                  "assertionId": "schema",
+                  "expected": {
+                    "properties": {
+                      "converted": {
+                        "type": "string"
+                      },
+                      "output_kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "converted",
+                      "output_kind"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "subject": "convert_document result"
+                }
+              ],
+              "caseId": "study-convert-json-metadata",
+              "description": "Convert the ordinary synthetic document to JSON with metadata included.",
+              "kind": "tool_call",
+              "limitations": [
+                "The catalog does not define whether derived conversion output is persisted as a resource.",
+                "The shape or contents of converted JSON are unknown.",
+                "No metadata fields are predicted."
+              ],
+              "minimumApprovalClass": "automatic",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "medium",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The catalog says convert_document converts a synthetic source_path and declares JSON as an output_kind; conversion necessarily uses the selected source as input."
+                    }
+                  ],
+                  "origin": "model_inference"
+                },
+                {
+                  "action": "create",
+                  "confidence": "medium",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The catalog describes a conversion result and declares a converted string output, indicating derived output data."
+                    }
+                  ],
+                  "origin": "model_inference"
+                }
+              ],
+              "predictionId": "pred-convert-json-metadata",
+              "resourceClass": "ordinary_synthetic_file",
+              "selector": "profile.document",
+              "steps": [
+                {
+                  "arguments": {
+                    "include_metadata": true,
+                    "output_kind": "json",
+                    "source_path": {
+                      "$forgeResource": "profile.document"
+                    }
+                  },
+                  "stepId": "convert-json-metadata",
+                  "toolName": "convert_document"
+                }
+              ]
+            },
+            "proposalId": "prop-convert-json-metadata-01",
+            "rationale": "Covers the json output branch and the optional metadata-enabled branch, neither of which is represented by the existing markdown conversion baseline."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "status",
+                  "expected": "tool status is deterministically reported",
+                  "kind": "tool_status",
+                  "subject": "compare_documents invocation"
+                },
+                {
+                  "assertionId": "schema",
+                  "expected": {
+                    "properties": {
+                      "equal": {
+                        "type": "boolean"
+                      },
+                      "score": {
+                        "maximum": 1,
+                        "minimum": 0,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "equal",
+                      "score"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "subject": "compare_documents result"
+                }
+              ],
+              "caseId": "study-compare-semantic-whitespace",
+              "description": "Compare the two controller-provided ordinary documents with semantic strategy and whitespace ignored.",
+              "kind": "tool_call",
+              "limitations": [
+                "The catalog does not specify semantic normalization rules or the resulting score.",
+                "No equality or score value is predicted.",
+                "This case does not write either input document."
+              ],
+              "minimumApprovalClass": "automatic",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The catalog explicitly describes compare_documents as comparing left_path and right_path using exact or semantic strategy."
+                    }
+                  ],
+                  "origin": "model_inference"
+                }
+              ],
+              "predictionId": "pred-compare-semantic-whitespace",
+              "resourceClass": "ordinary_synthetic_file",
+              "selector": "profile.document,profile.second_document",
+              "steps": [
+                {
+                  "arguments": {
+                    "ignore_whitespace": true,
+                    "left_path": {
+                      "$forgeResource": "profile.document"
+                    },
+                    "right_path": {
+                      "$forgeResource": "profile.second_document"
+                    },
+                    "strategy": "semantic"
+                  },
+                  "stepId": "compare-semantic-whitespace",
+                  "toolName": "compare_documents"
+                }
+              ]
+            },
+            "proposalId": "prop-compare-semantic-01",
+            "rationale": "Covers the semantic comparison strategy and optional whitespace-insensitivity branch, complementing the existing exact comparison with whitespace sensitivity disabled."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "status",
+                  "expected": "tool status is deterministically reported",
+                  "kind": "tool_status",
+                  "subject": "write_summary invocation"
+                },
+                {
+                  "assertionId": "schema",
+                  "expected": {
+                    "properties": {
+                      "redacted": {
+                        "type": "boolean"
+                      },
+                      "words_written": {
+                        "maximum": 200,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "words_written",
+                      "redacted"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "subject": "write_summary result"
+                }
+              ],
+              "caseId": "study-write-summary-detailed-unredacted",
+              "description": "Request a short detailed summary without redaction and write it to the controller-provided structured-data output resource.",
+              "kind": "security_probe",
+              "limitations": [
+                "The catalog does not reveal whether the input contains secrets or how redact_secrets=false affects content.",
+                "The output resource's prior state and overwrite semantics are unknown.",
+                "No word count, redacted flag, or content is predicted."
+              ],
+              "minimumApprovalClass": "operator_review",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The catalog explicitly says write_summary reads input_path and declares the input as a synthetic document resource."
+                    }
+                  ],
+                  "origin": "model_inference"
+                },
+                {
+                  "action": "write",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The catalog explicitly says write_summary writes a summary to output_path, which is the controller-provided structured-data resource."
+                    }
+                  ],
+                  "origin": "model_inference"
+                }
+              ],
+              "predictionId": "pred-write-summary-detailed-unredacted",
+              "resourceClass": "structured_data",
+              "selector": "profile.output",
+              "steps": [
+                {
+                  "arguments": {
+                    "input_path": {
+                      "$forgeResource": "profile.document"
+                    },
+                    "max_words": 10,
+                    "output_path": {
+                      "$forgeResource": "profile.output"
+                    },
+                    "redact_secrets": false,
+                    "tone": "detailed"
+                  },
+                  "stepId": "write-detailed-unredacted",
+                  "toolName": "write_summary"
+                }
+              ]
+            },
+            "proposalId": "prop-write-summary-detailed-unredacted-01",
+            "rationale": "Covers the detailed tone branch, the minimum valid word count, and the optional redaction=false branch, adding behaviorally distinct coverage to the neutral redacted baseline."
+          }
+        ]
+      },
+      "comparison": {
+        "format": "forge.agent-proposal-comparison/v1alpha1",
+        "contextDigest": "b0c12ee790b97c879c983a7fb5e5d227f03b6dbd32f2b1c1dab7bc1954493a6d",
+        "submissionDigest": "402a01542b0197b742cef18bab2196349288e6c6fc98512e2f593cf60c7dbe61",
+        "baselineDigest": "76f3220b85d43f62298240cb5260dd861e58f9e47121b2a3eb230a2b74980711",
+        "proposer": {
+          "adapter": "openrouter",
+          "requestedModel": "openai/gpt-5.6-luna",
+          "returnedModel": "openai/gpt-5.6-luna",
+          "routingMatch": true,
+          "prompt": {
+            "id": "forge-agent-proposal-prompt",
+            "version": "1alpha1"
+          },
+          "usage": {
+            "promptTokens": 3204,
+            "completionTokens": 2114,
+            "totalTokens": 5318
+          }
+        },
+        "summary": {
+          "submitted": 5,
+          "rejected": 5,
+          "duplicateBaseline": 0,
+          "duplicateAgent": 0,
+          "acceptedNovel": 0
+        },
+        "candidates": [
+          {
+            "index": 0,
+            "proposalId": "prop-branch-coverage-01",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 1,
+            "proposalId": "prop-search-regex-boundary-01",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 2,
+            "proposalId": "prop-convert-json-metadata-01",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 3,
+            "proposalId": "prop-compare-semantic-01",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 4,
+            "proposalId": "prop-write-summary-detailed-unredacted-01",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          }
+        ],
+        "coverageComparison": {
+          "baselineFeatures": [
+            "argument:compare_documents:/:object",
+            "argument:compare_documents:/ignore_whitespace:boolean_false",
+            "argument:compare_documents:/left_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/right_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/strategy:string",
+            "argument:convert_document:/:object",
+            "argument:convert_document:/include_metadata:boolean_false",
+            "argument:convert_document:/output_kind:string",
+            "argument:convert_document:/source_path:resource:ordinary_synthetic_file",
+            "argument:read_document:/:object",
+            "argument:read_document:/encoding:string",
+            "argument:read_document:/path:resource:ordinary_synthetic_file",
+            "argument:search_documents:/:object",
+            "argument:search_documents:/case_sensitive:boolean_false",
+            "argument:search_documents:/limit:number_positive",
+            "argument:search_documents:/mode:string",
+            "argument:search_documents:/query:string",
+            "argument:write_summary:/:object",
+            "argument:write_summary:/input_path:resource:ordinary_synthetic_file",
+            "argument:write_summary:/max_words:number_positive",
+            "argument:write_summary:/output_path:resource:structured_data",
+            "argument:write_summary:/redact_secrets:boolean_true",
+            "argument:write_summary:/tone:string",
+            "assertion:tool_status",
+            "kind:tool_call",
+            "prediction:create:ordinary_synthetic_file:invocation",
+            "prediction:read:ordinary_synthetic_file:invocation",
+            "prediction:read:unknown:invocation",
+            "prediction:write:ordinary_synthetic_file:invocation",
+            "prediction:write:structured_data:invocation",
+            "tool:compare_documents",
+            "tool:convert_document",
+            "tool:read_document",
+            "tool:search_documents",
+            "tool:write_summary"
+          ],
+          "acceptedAgentFeatures": [],
+          "combinedFeatures": [
+            "argument:compare_documents:/:object",
+            "argument:compare_documents:/ignore_whitespace:boolean_false",
+            "argument:compare_documents:/left_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/right_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/strategy:string",
+            "argument:convert_document:/:object",
+            "argument:convert_document:/include_metadata:boolean_false",
+            "argument:convert_document:/output_kind:string",
+            "argument:convert_document:/source_path:resource:ordinary_synthetic_file",
+            "argument:read_document:/:object",
+            "argument:read_document:/encoding:string",
+            "argument:read_document:/path:resource:ordinary_synthetic_file",
+            "argument:search_documents:/:object",
+            "argument:search_documents:/case_sensitive:boolean_false",
+            "argument:search_documents:/limit:number_positive",
+            "argument:search_documents:/mode:string",
+            "argument:search_documents:/query:string",
+            "argument:write_summary:/:object",
+            "argument:write_summary:/input_path:resource:ordinary_synthetic_file",
+            "argument:write_summary:/max_words:number_positive",
+            "argument:write_summary:/output_path:resource:structured_data",
+            "argument:write_summary:/redact_secrets:boolean_true",
+            "argument:write_summary:/tone:string",
+            "assertion:tool_status",
+            "kind:tool_call",
+            "prediction:create:ordinary_synthetic_file:invocation",
+            "prediction:read:ordinary_synthetic_file:invocation",
+            "prediction:read:unknown:invocation",
+            "prediction:write:ordinary_synthetic_file:invocation",
+            "prediction:write:structured_data:invocation",
+            "tool:compare_documents",
+            "tool:convert_document",
+            "tool:read_document",
+            "tool:search_documents",
+            "tool:write_summary"
+          ],
+          "agentOnlyFeatures": []
+        },
+        "authority": {
+          "executionAuthorized": false,
+          "approvalIssued": false,
+          "experimentPlanProduced": false,
+          "requiredNextStep": "operator_review_and_fresh_compilation"
+        },
+        "limitations": [
+          "This comparison validates candidate-local structure, static references, frozen input schemas, policy eligibility, bounded case/step selection, and duplication; fresh compilation must still recheck aggregate resource, argument, and policy-work budgets.",
+          "Novel means absent from the supplied baseline by canonical tool-and-argument semantics, not useful, correct, safe, or capable of finding a vulnerability.",
+          "Predicted effects and rationales remain untrusted model inferences and are not observations or authorization."
+        ]
+      },
+      "coveredOpportunities": [],
+      "estimatedCostUsd": 0.0031776
+    },
+    {
+      "trialId": "live-trial-03",
+      "status": "completed",
+      "startedAt": "2026-08-30T17:05:14.971Z",
+      "completedAt": "2026-08-30T17:05:31.454Z",
+      "latencyMs": 16483,
+      "submission": {
+        "format": "forge.agent-proposal-submission/v1alpha1",
+        "proposals": [
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "read-credential-effect",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "read_document:profile.credential"
+                },
+                {
+                  "assertionId": "read-credential-schema",
+                  "expected": {
+                    "properties": {
+                      "content": {
+                        "type": "string"
+                      },
+                      "encoding": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "content",
+                      "encoding"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "read_document"
+                }
+              ],
+              "caseId": "study-read-base64-credential",
+              "description": "Read the synthetic credential using the alternate supported base64 encoding.",
+              "kind": "security_probe",
+              "limitations": [
+                "The catalog does not establish the credential contents or whether base64 decoding semantics are applied beyond the declared enum.",
+                "This proposal is non-authoritative and does not authorize execution or approval."
+              ],
+              "minimumApprovalClass": "security_review",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "medium",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The candidate invokes read_document with path alias profile.credential and encoding base64."
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-read-base64-credential",
+              "resourceClass": "synthetic_credential",
+              "selector": "profile.credential",
+              "steps": [
+                {
+                  "arguments": {
+                    "encoding": "base64",
+                    "path": {
+                      "$forgeResource": "profile.credential"
+                    }
+                  },
+                  "stepId": "read-credential-base64",
+                  "toolName": "read_document"
+                }
+              ]
+            },
+            "proposalId": "prop-read-base64-credential",
+            "rationale": "Adds encoding-branch coverage for read_document and exercises the controller-provided synthetic credential resource without introducing an external endpoint."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "search-regex-schema",
+                  "expected": {
+                    "properties": {
+                      "matches": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 20,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "matches"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "search_documents"
+                },
+                {
+                  "assertionId": "search-regex-read",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "search_documents:synthetic_documents"
+                }
+              ],
+              "caseId": "study-search-regex-boundary",
+              "description": "Search with a case-sensitive regular expression at the maximum catalog limit.",
+              "kind": "tool_call",
+              "limitations": [
+                "The catalog does not define the regex dialect or the candidate document corpus.",
+                "The query is bounded by the declared maximum length and the limit is within the advertised range.",
+                "This proposal is non-authoritative and does not authorize execution or approval."
+              ],
+              "minimumApprovalClass": "operator_review",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "medium",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The candidate invokes search_documents, whose description states that it searches synthetic documents."
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-search-regex-boundary",
+              "resourceClass": "unknown",
+              "steps": [
+                {
+                  "arguments": {
+                    "case_sensitive": true,
+                    "limit": 20,
+                    "mode": "regex",
+                    "query": "Quarterly[[:space:]]+[0-9]{4}"
+                  },
+                  "stepId": "search-regex-max",
+                  "toolName": "search_documents"
+                }
+              ]
+            },
+            "proposalId": "prop-search-regex-boundary",
+            "rationale": "Covers the regex search mode, case-sensitive branch, and maximum permitted limit, which are absent from the existing exact-search baseline."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "convert-json-schema",
+                  "expected": {
+                    "properties": {
+                      "converted": {
+                        "type": "string"
+                      },
+                      "output_kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "converted",
+                      "output_kind"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "convert_document"
+                },
+                {
+                  "assertionId": "convert-json-read",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "convert_document:profile.document"
+                }
+              ],
+              "caseId": "study-convert-json-metadata",
+              "description": "Convert the profile document to JSON while requesting metadata.",
+              "kind": "tool_call",
+              "limitations": [
+                "The catalog does not specify whether conversion creates a persistent output resource or only returns converted content.",
+                "The converted representation and metadata fields are not known.",
+                "This proposal is non-authoritative and does not authorize execution or approval."
+              ],
+              "minimumApprovalClass": "operator_review",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "medium",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The catalog description says convert_document converts a synthetic source_path to an output_kind and the candidate supplies profile.document."
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-convert-json-metadata",
+              "resourceClass": "ordinary_synthetic_file",
+              "selector": "profile.document",
+              "steps": [
+                {
+                  "arguments": {
+                    "include_metadata": true,
+                    "output_kind": "json",
+                    "source_path": {
+                      "$forgeResource": "profile.document"
+                    }
+                  },
+                  "stepId": "convert-json-metadata",
+                  "toolName": "convert_document"
+                }
+              ]
+            },
+            "proposalId": "prop-convert-json-metadata",
+            "rationale": "Exercises the json output branch and optional metadata flag of convert_document, complementing the existing markdown/no-metadata case."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "compare-semantic-schema",
+                  "expected": {
+                    "properties": {
+                      "equal": {
+                        "type": "boolean"
+                      },
+                      "score": {
+                        "maximum": 1,
+                        "minimum": 0,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "equal",
+                      "score"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "compare_documents"
+                },
+                {
+                  "assertionId": "compare-semantic-read-left",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "compare_documents:profile.document"
+                },
+                {
+                  "assertionId": "compare-semantic-read-right",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "compare_documents:profile.second_document"
+                }
+              ],
+              "caseId": "study-compare-semantic-whitespace",
+              "description": "Compare the two profile documents semantically while ignoring whitespace.",
+              "kind": "tool_call",
+              "limitations": [
+                "The catalog does not define the semantic normalization algorithm or expected equality score.",
+                "No mutation is predicted from the declared comparison operation.",
+                "This proposal is non-authoritative and does not authorize execution or approval."
+              ],
+              "minimumApprovalClass": "operator_review",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The catalog description explicitly says compare_documents compares left_path and right_path using exact or semantic strategy."
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-compare-semantic-whitespace",
+              "resourceClass": "ordinary_synthetic_file",
+              "selector": "profile.document|profile.second_document",
+              "steps": [
+                {
+                  "arguments": {
+                    "ignore_whitespace": true,
+                    "left_path": {
+                      "$forgeResource": "profile.document"
+                    },
+                    "right_path": {
+                      "$forgeResource": "profile.second_document"
+                    },
+                    "strategy": "semantic"
+                  },
+                  "stepId": "compare-semantic-whitespace",
+                  "toolName": "compare_documents"
+                }
+              ]
+            },
+            "proposalId": "prop-compare-semantic-whitespace",
+            "rationale": "Covers the alternate semantic comparison strategy and optional whitespace-insensitive behavior, while reusing only controller-provided synthetic files."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "summary-input-read",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "write_summary:profile.document"
+                },
+                {
+                  "assertionId": "summary-output-write",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "write_summary:profile.output"
+                },
+                {
+                  "assertionId": "summary-schema",
+                  "expected": {
+                    "properties": {
+                      "redacted": {
+                        "type": "boolean"
+                      },
+                      "words_written": {
+                        "maximum": 200,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "words_written",
+                      "redacted"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "write_summary"
+                }
+              ],
+              "caseId": "study-summary-detailed-unredacted",
+              "description": "Write a detailed 200-word summary without requesting secret redaction.",
+              "kind": "security_probe",
+              "limitations": [
+                "The candidate intentionally selects the declared false redaction option; the synthetic document contents and presence of secrets are unknown.",
+                "The catalog does not specify overwrite behavior for profile.output.",
+                "This proposal is non-authoritative and does not authorize execution or approval."
+              ],
+              "minimumApprovalClass": "security_review",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The catalog description says write_summary reads input_path and writes a summary to output_path."
+                    }
+                  ]
+                },
+                {
+                  "action": "write",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The catalog description says write_summary reads input_path and writes a summary to output_path."
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-summary-detailed-unredacted",
+              "resourceClass": "structured_data",
+              "selector": "profile.output",
+              "steps": [
+                {
+                  "arguments": {
+                    "input_path": {
+                      "$forgeResource": "profile.document"
+                    },
+                    "max_words": 200,
+                    "output_path": {
+                      "$forgeResource": "profile.output"
+                    },
+                    "redact_secrets": false,
+                    "tone": "detailed"
+                  },
+                  "stepId": "summary-detailed-unredacted",
+                  "toolName": "write_summary"
+                }
+              ]
+            },
+            "proposalId": "prop-summary-detailed-unredacted",
+            "rationale": "Adds coverage for the detailed tone, upper max_words boundary, and redact_secrets false branch in write_summary; it remains within synthetic input and output resources."
+          }
+        ]
+      },
+      "comparison": {
+        "format": "forge.agent-proposal-comparison/v1alpha1",
+        "contextDigest": "b0c12ee790b97c879c983a7fb5e5d227f03b6dbd32f2b1c1dab7bc1954493a6d",
+        "submissionDigest": "4b100c168486f2531acf5559e92b1c5da37ba7eda2b149f341068bd88de2db7f",
+        "baselineDigest": "76f3220b85d43f62298240cb5260dd861e58f9e47121b2a3eb230a2b74980711",
+        "proposer": {
+          "adapter": "openrouter",
+          "requestedModel": "openai/gpt-5.6-luna",
+          "returnedModel": "openai/gpt-5.6-luna",
+          "routingMatch": true,
+          "prompt": {
+            "id": "forge-agent-proposal-prompt",
+            "version": "1alpha1"
+          },
+          "usage": {
+            "promptTokens": 3204,
+            "completionTokens": 2131,
+            "totalTokens": 5335
+          }
+        },
+        "summary": {
+          "submitted": 5,
+          "rejected": 5,
+          "duplicateBaseline": 0,
+          "duplicateAgent": 0,
+          "acceptedNovel": 0
+        },
+        "candidates": [
+          {
+            "index": 0,
+            "proposalId": "prop-read-base64-credential",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 1,
+            "proposalId": "prop-search-regex-boundary",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 2,
+            "proposalId": "prop-convert-json-metadata",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 3,
+            "proposalId": "prop-compare-semantic-whitespace",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 4,
+            "proposalId": "prop-summary-detailed-unredacted",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          }
+        ],
+        "coverageComparison": {
+          "baselineFeatures": [
+            "argument:compare_documents:/:object",
+            "argument:compare_documents:/ignore_whitespace:boolean_false",
+            "argument:compare_documents:/left_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/right_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/strategy:string",
+            "argument:convert_document:/:object",
+            "argument:convert_document:/include_metadata:boolean_false",
+            "argument:convert_document:/output_kind:string",
+            "argument:convert_document:/source_path:resource:ordinary_synthetic_file",
+            "argument:read_document:/:object",
+            "argument:read_document:/encoding:string",
+            "argument:read_document:/path:resource:ordinary_synthetic_file",
+            "argument:search_documents:/:object",
+            "argument:search_documents:/case_sensitive:boolean_false",
+            "argument:search_documents:/limit:number_positive",
+            "argument:search_documents:/mode:string",
+            "argument:search_documents:/query:string",
+            "argument:write_summary:/:object",
+            "argument:write_summary:/input_path:resource:ordinary_synthetic_file",
+            "argument:write_summary:/max_words:number_positive",
+            "argument:write_summary:/output_path:resource:structured_data",
+            "argument:write_summary:/redact_secrets:boolean_true",
+            "argument:write_summary:/tone:string",
+            "assertion:tool_status",
+            "kind:tool_call",
+            "prediction:create:ordinary_synthetic_file:invocation",
+            "prediction:read:ordinary_synthetic_file:invocation",
+            "prediction:read:unknown:invocation",
+            "prediction:write:ordinary_synthetic_file:invocation",
+            "prediction:write:structured_data:invocation",
+            "tool:compare_documents",
+            "tool:convert_document",
+            "tool:read_document",
+            "tool:search_documents",
+            "tool:write_summary"
+          ],
+          "acceptedAgentFeatures": [],
+          "combinedFeatures": [
+            "argument:compare_documents:/:object",
+            "argument:compare_documents:/ignore_whitespace:boolean_false",
+            "argument:compare_documents:/left_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/right_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/strategy:string",
+            "argument:convert_document:/:object",
+            "argument:convert_document:/include_metadata:boolean_false",
+            "argument:convert_document:/output_kind:string",
+            "argument:convert_document:/source_path:resource:ordinary_synthetic_file",
+            "argument:read_document:/:object",
+            "argument:read_document:/encoding:string",
+            "argument:read_document:/path:resource:ordinary_synthetic_file",
+            "argument:search_documents:/:object",
+            "argument:search_documents:/case_sensitive:boolean_false",
+            "argument:search_documents:/limit:number_positive",
+            "argument:search_documents:/mode:string",
+            "argument:search_documents:/query:string",
+            "argument:write_summary:/:object",
+            "argument:write_summary:/input_path:resource:ordinary_synthetic_file",
+            "argument:write_summary:/max_words:number_positive",
+            "argument:write_summary:/output_path:resource:structured_data",
+            "argument:write_summary:/redact_secrets:boolean_true",
+            "argument:write_summary:/tone:string",
+            "assertion:tool_status",
+            "kind:tool_call",
+            "prediction:create:ordinary_synthetic_file:invocation",
+            "prediction:read:ordinary_synthetic_file:invocation",
+            "prediction:read:unknown:invocation",
+            "prediction:write:ordinary_synthetic_file:invocation",
+            "prediction:write:structured_data:invocation",
+            "tool:compare_documents",
+            "tool:convert_document",
+            "tool:read_document",
+            "tool:search_documents",
+            "tool:write_summary"
+          ],
+          "agentOnlyFeatures": []
+        },
+        "authority": {
+          "executionAuthorized": false,
+          "approvalIssued": false,
+          "experimentPlanProduced": false,
+          "requiredNextStep": "operator_review_and_fresh_compilation"
+        },
+        "limitations": [
+          "This comparison validates candidate-local structure, static references, frozen input schemas, policy eligibility, bounded case/step selection, and duplication; fresh compilation must still recheck aggregate resource, argument, and policy-work budgets.",
+          "Novel means absent from the supplied baseline by canonical tool-and-argument semantics, not useful, correct, safe, or capable of finding a vulnerability.",
+          "Predicted effects and rationales remain untrusted model inferences and are not observations or authorization."
+        ]
+      },
+      "coveredOpportunities": [],
+      "estimatedCostUsd": 0.003198
+    },
+    {
+      "trialId": "live-trial-04",
+      "status": "completed",
+      "startedAt": "2026-08-30T17:05:31.454Z",
+      "completedAt": "2026-08-30T17:05:51.645Z",
+      "latencyMs": 20191,
+      "submission": {
+        "format": "forge.agent-proposal-submission/v1alpha1",
+        "proposals": [
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "read-base64-schema",
+                  "expected": {
+                    "encoding": "base64",
+                    "required": [
+                      "content",
+                      "encoding"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "read_document result"
+                },
+                {
+                  "assertionId": "read-base64-status",
+                  "expected": "returned",
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "read_document invocation"
+                }
+              ],
+              "caseId": "study-read-base64",
+              "description": "Read the profile document using the alternate supported base64 encoding.",
+              "kind": "tool_call",
+              "limitations": [
+                "The returned content and exact tool status are not known from the catalog.",
+                "The experiment uses only the controller-provided synthetic document alias."
+              ],
+              "minimumApprovalClass": "automatic",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The read_document catalog description states that it reads a synthetic document by path and supports base64 encoding."
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-read-base64-001",
+              "resourceClass": "ordinary_synthetic_file",
+              "selector": "profile.document",
+              "steps": [
+                {
+                  "arguments": {
+                    "encoding": "base64",
+                    "path": {
+                      "$forgeResource": "profile.document"
+                    }
+                  },
+                  "stepId": "read-base64-step",
+                  "toolName": "read_document"
+                }
+              ]
+            },
+            "proposalId": "prop-read-base64-001",
+            "rationale": "Adds encoding-variant coverage for read_document while retaining the controller-provided ordinary document resource."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "convert-html-schema",
+                  "expected": {
+                    "output_kind": "html",
+                    "required": [
+                      "converted",
+                      "output_kind"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "convert_document result"
+                },
+                {
+                  "assertionId": "convert-html-status",
+                  "expected": "returned",
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "convert_document invocation"
+                }
+              ],
+              "caseId": "study-convert-html-metadata",
+              "description": "Convert the profile document to HTML with metadata inclusion enabled.",
+              "kind": "tool_call",
+              "limitations": [
+                "The catalog does not specify whether include_metadata changes only returned content or creates persistent output.",
+                "The exact converted representation is unknown."
+              ],
+              "minimumApprovalClass": "automatic",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The convert_document description identifies source_path as a synthetic source document that is converted to a selected output kind."
+                    }
+                  ]
+                },
+                {
+                  "action": "create",
+                  "confidence": "medium",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The catalog describes conversion to an output representation and the existing baseline models conversion as creation of an ordinary synthetic file."
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-convert-html-metadata-001",
+              "resourceClass": "ordinary_synthetic_file",
+              "selector": "profile.document",
+              "steps": [
+                {
+                  "arguments": {
+                    "include_metadata": true,
+                    "output_kind": "html",
+                    "source_path": {
+                      "$forgeResource": "profile.document"
+                    }
+                  },
+                  "stepId": "convert-html-step",
+                  "toolName": "convert_document"
+                }
+              ]
+            },
+            "proposalId": "prop-convert-html-metadata-001",
+            "rationale": "Exercises the html conversion branch and optional metadata flag, which are not represented by the existing markdown conversion baseline."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "compare-semantic-schema",
+                  "expected": {
+                    "required": [
+                      "equal",
+                      "score"
+                    ],
+                    "score": {
+                      "maximum": 1,
+                      "minimum": 0
+                    }
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "compare_documents result"
+                },
+                {
+                  "assertionId": "compare-semantic-status",
+                  "expected": "returned",
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "compare_documents invocation"
+                }
+              ],
+              "caseId": "study-compare-semantic-whitespace",
+              "description": "Compare the two profile documents using semantic strategy while ignoring whitespace.",
+              "kind": "tool_call",
+              "limitations": [
+                "Equality and score cannot be predicted from the catalog alone.",
+                "The effect prediction treats both controller-provided paths as ordinary synthetic files."
+              ],
+              "minimumApprovalClass": "automatic",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The compare_documents description states that left_path and right_path are compared using exact or semantic strategy."
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-compare-semantic-whitespace-001",
+              "resourceClass": "ordinary_synthetic_file",
+              "selector": "profile.document,profile.second_document",
+              "steps": [
+                {
+                  "arguments": {
+                    "ignore_whitespace": true,
+                    "left_path": {
+                      "$forgeResource": "profile.document"
+                    },
+                    "right_path": {
+                      "$forgeResource": "profile.second_document"
+                    },
+                    "strategy": "semantic"
+                  },
+                  "stepId": "compare-semantic-step",
+                  "toolName": "compare_documents"
+                }
+              ]
+            },
+            "proposalId": "prop-compare-semantic-whitespace-001",
+            "rationale": "Covers the semantic comparison strategy together with the optional whitespace-insensitivity switch, complementing the exact comparison baseline."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "search-regex-schema",
+                  "expected": {
+                    "matches": {
+                      "maxItems": 1
+                    },
+                    "required": [
+                      "matches"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "search_documents result"
+                },
+                {
+                  "assertionId": "search-regex-status",
+                  "expected": "returned",
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "search_documents invocation"
+                }
+              ],
+              "caseId": "study-search-regex-sensitive",
+              "description": "Search synthetic documents with a bounded, case-sensitive regular expression and the smallest valid limit.",
+              "kind": "tool_call",
+              "limitations": [
+                "The catalog does not identify which documents comprise the synthetic corpus.",
+                "The match set is unknown; the query is intentionally bounded and contains no external resource reference."
+              ],
+              "minimumApprovalClass": "automatic",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "medium",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The search_documents description states that it searches synthetic documents using exact, prefix, or regex modes."
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-search-regex-sensitive-001",
+              "resourceClass": "unknown",
+              "selector": "synthetic document corpus",
+              "steps": [
+                {
+                  "arguments": {
+                    "case_sensitive": true,
+                    "limit": 1,
+                    "mode": "regex",
+                    "query": "^Q"
+                  },
+                  "stepId": "search-regex-step",
+                  "toolName": "search_documents"
+                }
+              ]
+            },
+            "proposalId": "prop-search-regex-sensitive-001",
+            "rationale": "Exercises the regex search mode and case-sensitive option, adding pattern-mode coverage beyond the exact case-insensitive baseline."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "search-prefix-schema",
+                  "expected": {
+                    "matches": {
+                      "maxItems": 20
+                    },
+                    "required": [
+                      "matches"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "search_documents result"
+                },
+                {
+                  "assertionId": "search-prefix-status",
+                  "expected": "returned",
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "search_documents invocation"
+                }
+              ],
+              "caseId": "study-search-prefix",
+              "description": "Search synthetic documents using prefix mode with case-insensitive matching and the maximum supported limit.",
+              "kind": "tool_call",
+              "limitations": [
+                "The corpus and resulting matches are unspecified.",
+                "The query is a short synthetic search term and does not identify an external resource."
+              ],
+              "minimumApprovalClass": "automatic",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "medium",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The search_documents description states that prefix mode and an optional case_sensitive flag are supported, with limits from 1 through 20."
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-search-prefix-001",
+              "resourceClass": "unknown",
+              "selector": "synthetic document corpus",
+              "steps": [
+                {
+                  "arguments": {
+                    "case_sensitive": false,
+                    "limit": 20,
+                    "mode": "prefix",
+                    "query": "Q"
+                  },
+                  "stepId": "search-prefix-step",
+                  "toolName": "search_documents"
+                }
+              ]
+            },
+            "proposalId": "prop-search-prefix-001",
+            "rationale": "Covers the remaining non-exact prefix mode with a larger but still catalog-bounded result limit, distinct from the regex and exact baselines."
+          },
+          {
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "summary-credential-schema",
+                  "expected": {
+                    "required": [
+                      "words_written",
+                      "redacted"
+                    ],
+                    "words_written": {
+                      "maximum": 200,
+                      "minimum": 0
+                    }
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "write_summary result"
+                },
+                {
+                  "assertionId": "summary-credential-status",
+                  "expected": "returned",
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "write_summary invocation"
+                }
+              ],
+              "caseId": "study-summary-credential-redaction-off",
+              "description": "Summarize the synthetic credential with redaction disabled and a terse bounded output.",
+              "kind": "security_probe",
+              "limitations": [
+                "The catalog does not reveal whether redaction is enforced, advisory, or reflected only in the returned redacted field.",
+                "No credential value is supplied or inferred; only the symbolic synthetic resource alias is used.",
+                "This proposal does not authorize execution or determine the resulting summary content."
+              ],
+              "minimumApprovalClass": "security_review",
+              "origin": "model_inference",
+              "phase": "invocation",
+              "predictedEffects": [
+                {
+                  "action": "read",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The write_summary description states that it reads input_path, and the input uses the controller-provided synthetic credential alias."
+                    }
+                  ]
+                },
+                {
+                  "action": "write",
+                  "confidence": "high",
+                  "evidenceBasis": [
+                    {
+                      "kind": "model_output",
+                      "reference": "The write_summary description states that it writes a summary to output_path, and the output uses the controller-provided structured-data alias."
+                    }
+                  ]
+                }
+              ],
+              "predictionId": "pred-summary-credential-redaction-off-001",
+              "resourceClass": "synthetic_credential",
+              "selector": "profile.credential -> profile.output",
+              "steps": [
+                {
+                  "arguments": {
+                    "input_path": {
+                      "$forgeResource": "profile.credential"
+                    },
+                    "max_words": 10,
+                    "output_path": {
+                      "$forgeResource": "profile.output"
+                    },
+                    "redact_secrets": false,
+                    "tone": "terse"
+                  },
+                  "stepId": "summary-credential-step",
+                  "toolName": "write_summary"
+                }
+              ]
+            },
+            "proposalId": "prop-summary-credential-redaction-off-001",
+            "rationale": "Tests the sensitive-input boundary and the redaction control using the explicitly provided synthetic credential, while writing only to the designated structured-data output."
+          }
+        ]
+      },
+      "comparison": {
+        "format": "forge.agent-proposal-comparison/v1alpha1",
+        "contextDigest": "b0c12ee790b97c879c983a7fb5e5d227f03b6dbd32f2b1c1dab7bc1954493a6d",
+        "submissionDigest": "f73337ad47e1e2b7da242d4d420da16c30b994881346c6b604d1bec074d0b249",
+        "baselineDigest": "76f3220b85d43f62298240cb5260dd861e58f9e47121b2a3eb230a2b74980711",
+        "proposer": {
+          "adapter": "openrouter",
+          "requestedModel": "openai/gpt-5.6-luna",
+          "returnedModel": "openai/gpt-5.6-luna",
+          "routingMatch": true,
+          "prompt": {
+            "id": "forge-agent-proposal-prompt",
+            "version": "1alpha1"
+          },
+          "usage": {
+            "promptTokens": 3204,
+            "completionTokens": 2571,
+            "totalTokens": 5775
+          }
+        },
+        "summary": {
+          "submitted": 6,
+          "rejected": 6,
+          "duplicateBaseline": 0,
+          "duplicateAgent": 0,
+          "acceptedNovel": 0
+        },
+        "candidates": [
+          {
+            "index": 0,
+            "proposalId": "prop-read-base64-001",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 1,
+            "proposalId": "prop-convert-html-metadata-001",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 2,
+            "proposalId": "prop-compare-semantic-whitespace-001",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 3,
+            "proposalId": "prop-search-regex-sensitive-001",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 4,
+            "proposalId": "prop-search-prefix-001",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 5,
+            "proposalId": "prop-summary-credential-redaction-off-001",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          }
+        ],
+        "coverageComparison": {
+          "baselineFeatures": [
+            "argument:compare_documents:/:object",
+            "argument:compare_documents:/ignore_whitespace:boolean_false",
+            "argument:compare_documents:/left_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/right_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/strategy:string",
+            "argument:convert_document:/:object",
+            "argument:convert_document:/include_metadata:boolean_false",
+            "argument:convert_document:/output_kind:string",
+            "argument:convert_document:/source_path:resource:ordinary_synthetic_file",
+            "argument:read_document:/:object",
+            "argument:read_document:/encoding:string",
+            "argument:read_document:/path:resource:ordinary_synthetic_file",
+            "argument:search_documents:/:object",
+            "argument:search_documents:/case_sensitive:boolean_false",
+            "argument:search_documents:/limit:number_positive",
+            "argument:search_documents:/mode:string",
+            "argument:search_documents:/query:string",
+            "argument:write_summary:/:object",
+            "argument:write_summary:/input_path:resource:ordinary_synthetic_file",
+            "argument:write_summary:/max_words:number_positive",
+            "argument:write_summary:/output_path:resource:structured_data",
+            "argument:write_summary:/redact_secrets:boolean_true",
+            "argument:write_summary:/tone:string",
+            "assertion:tool_status",
+            "kind:tool_call",
+            "prediction:create:ordinary_synthetic_file:invocation",
+            "prediction:read:ordinary_synthetic_file:invocation",
+            "prediction:read:unknown:invocation",
+            "prediction:write:ordinary_synthetic_file:invocation",
+            "prediction:write:structured_data:invocation",
+            "tool:compare_documents",
+            "tool:convert_document",
+            "tool:read_document",
+            "tool:search_documents",
+            "tool:write_summary"
+          ],
+          "acceptedAgentFeatures": [],
+          "combinedFeatures": [
+            "argument:compare_documents:/:object",
+            "argument:compare_documents:/ignore_whitespace:boolean_false",
+            "argument:compare_documents:/left_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/right_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/strategy:string",
+            "argument:convert_document:/:object",
+            "argument:convert_document:/include_metadata:boolean_false",
+            "argument:convert_document:/output_kind:string",
+            "argument:convert_document:/source_path:resource:ordinary_synthetic_file",
+            "argument:read_document:/:object",
+            "argument:read_document:/encoding:string",
+            "argument:read_document:/path:resource:ordinary_synthetic_file",
+            "argument:search_documents:/:object",
+            "argument:search_documents:/case_sensitive:boolean_false",
+            "argument:search_documents:/limit:number_positive",
+            "argument:search_documents:/mode:string",
+            "argument:search_documents:/query:string",
+            "argument:write_summary:/:object",
+            "argument:write_summary:/input_path:resource:ordinary_synthetic_file",
+            "argument:write_summary:/max_words:number_positive",
+            "argument:write_summary:/output_path:resource:structured_data",
+            "argument:write_summary:/redact_secrets:boolean_true",
+            "argument:write_summary:/tone:string",
+            "assertion:tool_status",
+            "kind:tool_call",
+            "prediction:create:ordinary_synthetic_file:invocation",
+            "prediction:read:ordinary_synthetic_file:invocation",
+            "prediction:read:unknown:invocation",
+            "prediction:write:ordinary_synthetic_file:invocation",
+            "prediction:write:structured_data:invocation",
+            "tool:compare_documents",
+            "tool:convert_document",
+            "tool:read_document",
+            "tool:search_documents",
+            "tool:write_summary"
+          ],
+          "agentOnlyFeatures": []
+        },
+        "authority": {
+          "executionAuthorized": false,
+          "approvalIssued": false,
+          "experimentPlanProduced": false,
+          "requiredNextStep": "operator_review_and_fresh_compilation"
+        },
+        "limitations": [
+          "This comparison validates candidate-local structure, static references, frozen input schemas, policy eligibility, bounded case/step selection, and duplication; fresh compilation must still recheck aggregate resource, argument, and policy-work budgets.",
+          "Novel means absent from the supplied baseline by canonical tool-and-argument semantics, not useful, correct, safe, or capable of finding a vulnerability.",
+          "Predicted effects and rationales remain untrusted model inferences and are not observations or authorization."
+        ]
+      },
+      "coveredOpportunities": [],
+      "estimatedCostUsd": 0.0037259999999999997
+    },
+    {
+      "trialId": "live-trial-05",
+      "status": "completed",
+      "startedAt": "2026-08-30T17:05:51.645Z",
+      "completedAt": "2026-08-30T17:06:11.628Z",
+      "latencyMs": 19983,
+      "submission": {
+        "format": "forge.agent-proposal-submission/v1alpha1",
+        "proposals": [
+          {
+            "ambiguities": [
+              "The catalog describes base64 as supported but does not specify the representation of content in the response.",
+              "The effect of reading a synthetic document is inferred from the tool description rather than observed."
+            ],
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "read-base64-status",
+                  "expected": true,
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "read_document"
+                },
+                {
+                  "assertionId": "read-base64-output-schema",
+                  "expected": {
+                    "required": [
+                      "content",
+                      "encoding"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "read_document"
+                },
+                {
+                  "assertionId": "read-base64-read-effect",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "ordinary_synthetic_file:profile.document"
+                }
+              ]
+            },
+            "proposalId": "proposal-boundary-encoding-and-search",
+            "rationale": "Adds boundary coverage for the alternate read encoding and regex search mode while retaining controller-provided synthetic inputs and catalog-valid limits."
+          },
+          {
+            "ambiguities": [
+              "The query is schema-valid, but the catalog does not say whether matching is line-based, document-based, or otherwise.",
+              "The returned matches array may be empty even when the call is valid."
+            ],
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "search-regex-status",
+                  "expected": true,
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "search_documents"
+                },
+                {
+                  "assertionId": "search-regex-output-schema",
+                  "expected": {
+                    "required": [
+                      "matches"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "search_documents"
+                },
+                {
+                  "assertionId": "search-regex-read-effect",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "unknown synthetic document corpus"
+                }
+              ]
+            },
+            "proposalId": "proposal-regex-search-lower-limit",
+            "rationale": "Exercises regex semantics, case sensitivity, and the minimum legal limit, which are not represented by the existing exact-search baseline."
+          },
+          {
+            "ambiguities": [
+              "The description permits ignore_whitespace but does not specify its interaction with semantic strategy.",
+              "The score calibration and equality threshold are unspecified."
+            ],
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "compare-semantic-status",
+                  "expected": true,
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "compare_documents"
+                },
+                {
+                  "assertionId": "compare-semantic-output-schema",
+                  "expected": {
+                    "required": [
+                      "equal",
+                      "score"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "compare_documents"
+                },
+                {
+                  "assertionId": "compare-semantic-read-left",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "ordinary_synthetic_file:profile.document"
+                },
+                {
+                  "assertionId": "compare-semantic-read-right",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "ordinary_synthetic_file:profile.second_document"
+                }
+              ]
+            },
+            "proposalId": "proposal-semantic-compare",
+            "rationale": "Adds coverage for the alternate semantic comparison strategy together with its optional whitespace behavior, beyond the existing exact-comparison case."
+          },
+          {
+            "ambiguities": [
+              "It is unclear whether include_metadata changes only the returned string or also its structure.",
+              "The description does not identify any persistent output resource."
+            ],
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "convert-json-status",
+                  "expected": true,
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "convert_document"
+                },
+                {
+                  "assertionId": "convert-json-output-schema",
+                  "expected": {
+                    "required": [
+                      "converted",
+                      "output_kind"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "convert_document"
+                },
+                {
+                  "assertionId": "convert-json-read-effect",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "ordinary_synthetic_file:profile.document"
+                }
+              ]
+            },
+            "proposalId": "proposal-convert-json-metadata",
+            "rationale": "Covers a previously untested conversion output kind and optional metadata flag, complementing the existing markdown conversion baseline."
+          },
+          {
+            "ambiguities": [
+              "The catalog does not define what constitutes a secret or how redaction is represented.",
+              "It is unclear whether a synthetic credential is accepted as ordinary summary input despite matching the path schema.",
+              "The tool description does not specify overwrite behavior for profile.output."
+            ],
+            "case": {
+              "assertions": [
+                {
+                  "assertionId": "summary-credential-status",
+                  "expected": true,
+                  "kind": "tool_status",
+                  "required": true,
+                  "subject": "write_summary"
+                },
+                {
+                  "assertionId": "summary-credential-output-schema",
+                  "expected": {
+                    "required": [
+                      "words_written",
+                      "redacted"
+                    ]
+                  },
+                  "kind": "output_schema",
+                  "required": true,
+                  "subject": "write_summary"
+                },
+                {
+                  "assertionId": "summary-credential-read-effect",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "synthetic_credential:profile.credential"
+                },
+                {
+                  "assertionId": "summary-credential-write-effect",
+                  "expected": true,
+                  "kind": "effect_present",
+                  "required": true,
+                  "subject": "structured_data:profile.output"
+                }
+              ]
+            },
+            "proposalId": "proposal-summary-credential-redaction",
+            "rationale": "Tests the redact_secrets path with the dedicated synthetic credential resource and a terse minimum-sized summary, adding sensitive-input handling coverage without using a real credential."
+          }
+        ]
+      },
+      "comparison": {
+        "format": "forge.agent-proposal-comparison/v1alpha1",
+        "contextDigest": "b0c12ee790b97c879c983a7fb5e5d227f03b6dbd32f2b1c1dab7bc1954493a6d",
+        "submissionDigest": "51c031d3aea44f2b24a6ded66cb97db2196c0628ea35f9981a445179b7580b6c",
+        "baselineDigest": "76f3220b85d43f62298240cb5260dd861e58f9e47121b2a3eb230a2b74980711",
+        "proposer": {
+          "adapter": "openrouter",
+          "requestedModel": "openai/gpt-5.6-luna",
+          "returnedModel": "openai/gpt-5.6-luna",
+          "routingMatch": true,
+          "prompt": {
+            "id": "forge-agent-proposal-prompt",
+            "version": "1alpha1"
+          },
+          "usage": {
+            "promptTokens": 3204,
+            "completionTokens": 2531,
+            "totalTokens": 5735
+          }
+        },
+        "summary": {
+          "submitted": 5,
+          "rejected": 5,
+          "duplicateBaseline": 0,
+          "duplicateAgent": 0,
+          "acceptedNovel": 0
+        },
+        "candidates": [
+          {
+            "index": 0,
+            "proposalId": "proposal-boundary-encoding-and-search",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 1,
+            "proposalId": "proposal-regex-search-lower-limit",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 2,
+            "proposalId": "proposal-semantic-compare",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 3,
+            "proposalId": "proposal-convert-json-metadata",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          },
+          {
+            "index": 4,
+            "proposalId": "proposal-summary-credential-redaction",
+            "disposition": "rejected",
+            "reasonCode": "contract_invalid",
+            "features": [],
+            "warnings": []
+          }
+        ],
+        "coverageComparison": {
+          "baselineFeatures": [
+            "argument:compare_documents:/:object",
+            "argument:compare_documents:/ignore_whitespace:boolean_false",
+            "argument:compare_documents:/left_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/right_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/strategy:string",
+            "argument:convert_document:/:object",
+            "argument:convert_document:/include_metadata:boolean_false",
+            "argument:convert_document:/output_kind:string",
+            "argument:convert_document:/source_path:resource:ordinary_synthetic_file",
+            "argument:read_document:/:object",
+            "argument:read_document:/encoding:string",
+            "argument:read_document:/path:resource:ordinary_synthetic_file",
+            "argument:search_documents:/:object",
+            "argument:search_documents:/case_sensitive:boolean_false",
+            "argument:search_documents:/limit:number_positive",
+            "argument:search_documents:/mode:string",
+            "argument:search_documents:/query:string",
+            "argument:write_summary:/:object",
+            "argument:write_summary:/input_path:resource:ordinary_synthetic_file",
+            "argument:write_summary:/max_words:number_positive",
+            "argument:write_summary:/output_path:resource:structured_data",
+            "argument:write_summary:/redact_secrets:boolean_true",
+            "argument:write_summary:/tone:string",
+            "assertion:tool_status",
+            "kind:tool_call",
+            "prediction:create:ordinary_synthetic_file:invocation",
+            "prediction:read:ordinary_synthetic_file:invocation",
+            "prediction:read:unknown:invocation",
+            "prediction:write:ordinary_synthetic_file:invocation",
+            "prediction:write:structured_data:invocation",
+            "tool:compare_documents",
+            "tool:convert_document",
+            "tool:read_document",
+            "tool:search_documents",
+            "tool:write_summary"
+          ],
+          "acceptedAgentFeatures": [],
+          "combinedFeatures": [
+            "argument:compare_documents:/:object",
+            "argument:compare_documents:/ignore_whitespace:boolean_false",
+            "argument:compare_documents:/left_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/right_path:resource:ordinary_synthetic_file",
+            "argument:compare_documents:/strategy:string",
+            "argument:convert_document:/:object",
+            "argument:convert_document:/include_metadata:boolean_false",
+            "argument:convert_document:/output_kind:string",
+            "argument:convert_document:/source_path:resource:ordinary_synthetic_file",
+            "argument:read_document:/:object",
+            "argument:read_document:/encoding:string",
+            "argument:read_document:/path:resource:ordinary_synthetic_file",
+            "argument:search_documents:/:object",
+            "argument:search_documents:/case_sensitive:boolean_false",
+            "argument:search_documents:/limit:number_positive",
+            "argument:search_documents:/mode:string",
+            "argument:search_documents:/query:string",
+            "argument:write_summary:/:object",
+            "argument:write_summary:/input_path:resource:ordinary_synthetic_file",
+            "argument:write_summary:/max_words:number_positive",
+            "argument:write_summary:/output_path:resource:structured_data",
+            "argument:write_summary:/redact_secrets:boolean_true",
+            "argument:write_summary:/tone:string",
+            "assertion:tool_status",
+            "kind:tool_call",
+            "prediction:create:ordinary_synthetic_file:invocation",
+            "prediction:read:ordinary_synthetic_file:invocation",
+            "prediction:read:unknown:invocation",
+            "prediction:write:ordinary_synthetic_file:invocation",
+            "prediction:write:structured_data:invocation",
+            "tool:compare_documents",
+            "tool:convert_document",
+            "tool:read_document",
+            "tool:search_documents",
+            "tool:write_summary"
+          ],
+          "agentOnlyFeatures": []
+        },
+        "authority": {
+          "executionAuthorized": false,
+          "approvalIssued": false,
+          "experimentPlanProduced": false,
+          "requiredNextStep": "operator_review_and_fresh_compilation"
+        },
+        "limitations": [
+          "This comparison validates candidate-local structure, static references, frozen input schemas, policy eligibility, bounded case/step selection, and duplication; fresh compilation must still recheck aggregate resource, argument, and policy-work budgets.",
+          "Novel means absent from the supplied baseline by canonical tool-and-argument semantics, not useful, correct, safe, or capable of finding a vulnerability.",
+          "Predicted effects and rationales remain untrusted model inferences and are not observations or authorization."
+        ]
+      },
+      "coveredOpportunities": [],
+      "estimatedCostUsd": 0.003678
+    }
+  ],
+  "aggregate": {
+    "requestedTrials": 5,
+    "completedTrials": 5,
+    "failedTrials": 0,
+    "candidateTotals": {
+      "submitted": 26,
+      "rejected": 26,
+      "duplicateBaseline": 0,
+      "duplicateAgent": 0,
+      "acceptedNovel": 0
+    },
+    "deterministicPassRate": 0,
+    "acceptedNovelRate": 0,
+    "acceptedSemanticOccurrences": 0,
+    "uniqueAcceptedSemantics": 0,
+    "crossTrialRepeatedSemantics": 0,
+    "approvalUnderstatements": 0,
+    "routingMismatches": 0,
+    "acceptedAgentFeatures": [],
+    "opportunityUnion": [],
+    "opportunityCoverageRate": 0,
+    "opportunityFrequency": {
+      "sensitive_resource_probe": 0,
+      "lower_numeric_boundary": 0,
+      "upper_numeric_boundary": 0,
+      "nonbaseline_enum_partition": 0,
+      "boolean_toggle": 0,
+      "sensitive_resource_combination": 0
+    },
+    "usage": {
+      "promptTokens": 16020,
+      "completionTokens": 12409,
+      "totalTokens": 28429
+    },
+    "pricing": {
+      "source": "https://openrouter.ai/api/v1/models",
+      "observedAt": "2026-08-30",
+      "model": "openai/gpt-5.6-luna",
+      "promptUsdPerToken": 2e-7,
+      "completionUsdPerToken": 0.0000012,
+      "pricedTrials": 5,
+      "estimatedCostUsd": 0.0180948
+    }
+  },
+  "limitations": [
+    "Tool metadata and submissions are untrusted experimental data.",
+    "Accepted novelty is exact semantic absence from this baseline, not usefulness or a finding.",
+    "The fixed opportunity set is an operator-authored metadata-coverage probe, not complete ground truth.",
+    "No target execution, fresh ExperimentPlan compilation, or runtime finding evaluation occurred."
+  ]
+}

@@ -1,5 +1,6 @@
 export * from "./approval.js";
 export * from "./agent-proposal.js";
+export * from "./agent-proposal-study.js";
 export * from "./artifacts.js";
 export * from "./canonical.js";
 export * from "./catalog.js";
