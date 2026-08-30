@@ -717,8 +717,9 @@ Requested: 2026-08-30
   created only the controlled-proposal contract, adapter, and focused test,
   then handed them to root. Contract, runtime, integration, and final
   lifecycle reviewers completed without writing outside their assigned scope.
-- Status: complete and verified; implementation commit pending at this ledger
-  update.
+- Status: complete and verified. Implementation commit:
+  `6bb146174b07168df10fc9c3a3b5cf90c5b1a71f`
+  (`feat: add controlled V2 outcome quarantine path`).
 
 Implemented boundary:
 
