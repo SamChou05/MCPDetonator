@@ -227,4 +227,189 @@ describe("attribution and runtime rules", () => {
     });
     expect(prefixAllowedFindings).toHaveLength(0);
   });
+
+  it("surfaces initialization credential reads and tool-originated cooldown activity", async () => {
+    const root = await mkdtemp(join(tmpdir(), "forge-lifecycle-rules-"));
+    const store = await EvidenceStore.create(root, "run-lifecycle");
+    const initializationCredentialPath = "/baseline/home/.config/token";
+    const delayedCredentialPath = "/tool/home/.ssh/id_ed25519";
+    const config = targetConfigV1Schema.parse({
+      schema: "forge.target/v1",
+      target: {
+        id: "lifecycle-fixture",
+        source: { type: "fixture", path: "." },
+        runtime: { transport: "stdio", command: "node", args: ["server.js"] },
+      },
+      sandbox: {
+        profile: "developer-v1",
+        network: "blocked",
+        limits: {
+          timeoutMs: 1_000,
+          cooldownMs: 500,
+          memoryMb: 128,
+          cpus: 1,
+          pids: 32,
+        },
+      },
+      experiments: {
+        initialization: true,
+        tools: [
+          {
+            id: "delayed-tool",
+            tool: "delayed_tool",
+            input: {},
+            expected: {
+              fileReads: [],
+              fileWrites: [],
+              networkConnections: [],
+              childExecutables: [],
+            },
+          },
+        ],
+        workflows: [],
+      },
+    });
+    const phases = [
+      phaseV1Schema.parse({
+        schema: "forge.phase/v1",
+        phaseId: "baseline-initialization-initialization-1",
+        runId: "run-lifecycle",
+        experimentId: "baseline-initialization",
+        kind: "initialization",
+        name: "initialize",
+        startedAt: "2026-08-29T20:00:00.000Z",
+        endedAt: "2026-08-29T20:00:01.000Z",
+        status: "completed",
+      }),
+      phaseV1Schema.parse({
+        schema: "forge.phase/v1",
+        phaseId: "delayed-tool-tool-1",
+        runId: "run-lifecycle",
+        experimentId: "delayed-tool",
+        kind: "tool",
+        name: "call delayed_tool",
+        toolName: "delayed_tool",
+        startedAt: "2026-08-29T20:00:02.000Z",
+        endedAt: "2026-08-29T20:00:03.000Z",
+        status: "completed",
+      }),
+      phaseV1Schema.parse({
+        schema: "forge.phase/v1",
+        phaseId: "delayed-tool-cooldown-2",
+        runId: "run-lifecycle",
+        experimentId: "delayed-tool",
+        kind: "cooldown",
+        name: "observe background activity",
+        startedAt: "2026-08-29T20:00:03.100Z",
+        endedAt: "2026-08-29T20:00:03.600Z",
+        status: "completed",
+      }),
+    ];
+    const initializationCredential = observedEventV1Schema.parse({
+      schema: "forge.event/v1",
+      eventId: "evt-initialization-credential",
+      runId: "run-lifecycle",
+      experimentId: "baseline-initialization",
+      sequence: 0,
+      timestamp: "2026-08-29T20:00:00.500Z",
+      processRef: "run-lifecycle:baseline-initialization:pid-10",
+      effect: {
+        kind: "file.read",
+        path: initializationCredentialPath,
+        bytes: 20,
+        outcome: { status: "succeeded" },
+      },
+      source: {
+        collector: "strace",
+        rawRef: "raw/baseline-initialization/strace.10:1",
+      },
+    });
+    const workerStart = observedEventV1Schema.parse({
+      schema: "forge.event/v1",
+      eventId: "evt-delayed-worker-start",
+      runId: "run-lifecycle",
+      experimentId: "delayed-tool",
+      sequence: 0,
+      timestamp: "2026-08-29T20:00:02.500Z",
+      processRef: "run-lifecycle:delayed-tool:pid-20",
+      effect: { kind: "process.start", pid: 20 },
+      source: { collector: "strace", rawRef: "raw/delayed-tool/strace.10:2" },
+    });
+    const delayedRead = observedEventV1Schema.parse({
+      schema: "forge.event/v1",
+      eventId: "evt-delayed-read",
+      runId: "run-lifecycle",
+      experimentId: "delayed-tool",
+      sequence: 1,
+      timestamp: "2026-08-29T20:00:03.300Z",
+      processRef: "run-lifecycle:delayed-tool:pid-20",
+      effect: {
+        kind: "file.read",
+        path: delayedCredentialPath,
+        bytes: 20,
+        outcome: { status: "succeeded" },
+      },
+      source: { collector: "strace", rawRef: "raw/delayed-tool/strace.20:1" },
+    });
+    const delayedBootstrapRead = observedEventV1Schema.parse({
+      schema: "forge.event/v1",
+      eventId: "evt-delayed-bootstrap-read",
+      runId: "run-lifecycle",
+      experimentId: "delayed-tool",
+      sequence: 2,
+      timestamp: "2026-08-29T20:00:03.350Z",
+      processRef: "run-lifecycle:delayed-tool:pid-20",
+      effect: {
+        kind: "file.read",
+        path: "/usr/lib/node_modules/runtime-bootstrap.js",
+        bytes: 20,
+        outcome: { status: "succeeded" },
+      },
+      source: { collector: "strace", rawRef: "raw/delayed-tool/strace.20:2" },
+    });
+    const events = [
+      initializationCredential,
+      workerStart,
+      delayedRead,
+      delayedBootstrapRead,
+    ];
+    const attributions = await attributeEvents({
+      store,
+      events,
+      phases,
+      isolatedToolExperimentIds: new Set(["delayed-tool"]),
+    });
+    const findings = await evaluateRuntimeRules({
+      store,
+      runId: "run-lifecycle",
+      config,
+      events,
+      phases,
+      attributions,
+      sensitivePathsByExperiment: new Map([
+        ["baseline-initialization", new Set([initializationCredentialPath])],
+        ["delayed-tool", new Set([delayedCredentialPath])],
+      ]),
+      profileRootsByExperiment: new Map([
+        [
+          "baseline-initialization",
+          { home: "/baseline/home", workspace: "/baseline/workspace" },
+        ],
+        ["delayed-tool", { home: "/tool/home", workspace: "/tool/workspace" }],
+      ]),
+    });
+
+    expect(findings.map((value) => value.ruleId).sort()).toEqual([
+      "runtime.initialization_sensitive_access",
+      "runtime.post_return_activity",
+    ]);
+    expect(
+      findings.find(
+        (value) => value.ruleId === "runtime.initialization_sensitive_access",
+      ),
+    ).toMatchObject({ confidence: "high", eventIds: [initializationCredential.eventId] });
+    expect(
+      findings.find((value) => value.ruleId === "runtime.post_return_activity"),
+    ).toMatchObject({ confidence: "medium", eventIds: [delayedRead.eventId] });
+  });
 });

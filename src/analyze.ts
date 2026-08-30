@@ -29,6 +29,7 @@ import {
   ensureSandboxImage,
   imageStraceVersion,
   removeManagedContainer,
+  sandboxImageId,
 } from "./sandbox/docker.js";
 import {
   createDeveloperProfileSeed,
@@ -136,12 +137,13 @@ export async function analyzeTarget(
   loaded: LoadedTargetConfig,
   options: AnalyzeOptions,
 ): Promise<AnalyzeResult> {
-  const image = options.image ?? defaultSandboxImage;
+  const imageReference = options.image ?? defaultSandboxImage;
   await ensureSandboxImage(
     options.projectRoot,
-    image,
+    imageReference,
     options.rebuildImage ?? false,
   );
+  const image = await sandboxImageId(imageReference);
 
   const runId = createRunId();
   const store = await EvidenceStore.create(options.outputRoot, runId);
@@ -169,6 +171,8 @@ export async function analyzeTarget(
       nodeVersion: process.version,
       dockerVersion: await dockerVersion(),
       straceVersion: await imageStraceVersion(image),
+      observerImageReference: imageReference,
+      observerImageId: image,
     },
     limitations,
   };
@@ -386,6 +390,7 @@ export async function analyzeTarget(
       interfaces,
       provenance: reportProvenance,
       staticInspection,
+      profileRootsByExperiment,
       ...(installObservation === undefined
         ? {}
         : {

@@ -118,6 +118,7 @@ describe("report static snapshot alignment", () => {
       interfaces: [],
       provenance,
       staticInspection: runtimeInspection,
+      profileRootsByExperiment: new Map(),
       limitations: [],
     });
 

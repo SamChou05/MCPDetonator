@@ -7,6 +7,7 @@ import type { StdioServerParameters } from "@modelcontextprotocol/sdk/client/std
 
 import type { TargetConfigV1 } from "../config.js";
 import type { EvidenceStore } from "../evidence-store.js";
+import { mountPathMappings } from "../observe/path-mappings.js";
 import type { PreparedTarget } from "../target/prepare.js";
 import type { ObservedPathMapping } from "../observe/strace-normalizer.js";
 import type { MaterializedDeveloperProfile } from "./profile.js";
@@ -20,19 +21,6 @@ export interface DockerMcpInvocation {
   readonly runId: string;
   readonly server: StdioServerParameters;
   readonly pathMappings: readonly ObservedPathMapping[];
-}
-
-function mountPathMappings(
-  hostPath: string,
-  containerPath: string,
-): ObservedPathMapping[] {
-  return [
-    { observedPrefix: hostPath, containerPrefix: containerPath },
-    {
-      observedPrefix: `/run/host_virtiofs${hostPath}`,
-      containerPrefix: containerPath,
-    },
-  ];
 }
 
 function safeDockerToken(value: string): string {
@@ -117,6 +105,21 @@ export async function dockerVersion(): Promise<string> {
   return stdout.trim();
 }
 
+export async function sandboxImageId(
+  image = defaultSandboxImage,
+): Promise<`sha256:${string}`> {
+  const { stdout } = await execFileAsync(
+    "docker",
+    ["image", "inspect", image, "--format", "{{.Id}}"],
+    { encoding: "utf8" },
+  );
+  const imageId = stdout.trim();
+  if (!/^sha256:[a-f0-9]{64}$/.test(imageId)) {
+    throw new Error(`Docker returned an invalid image ID for '${image}': ${imageId}`);
+  }
+  return imageId as `sha256:${string}`;
+}
+
 export async function imageStraceVersion(image = defaultSandboxImage): Promise<string> {
   const { stdout } = await execFileAsync(
     "docker",
@@ -151,6 +154,17 @@ export async function createDockerMcpInvocation(options: {
 
   await mkdir(rawDirectory, { recursive: true, mode: 0o777 });
   await chmod(rawDirectory, 0o777);
+
+  const pathMappings = (
+    await Promise.all([
+      mountPathMappings(profile.hostHome, profile.containerHome),
+      mountPathMappings(profile.hostWorkspace, profile.containerWorkspace),
+      mountPathMappings(
+        preparedTarget.hostRoot,
+        preparedTarget.containerRoot,
+      ),
+    ])
+  ).flat();
 
   const limits = config.sandbox.limits;
   const runtime = config.target.runtime;
@@ -223,14 +237,7 @@ export async function createDockerMcpInvocation(options: {
       stderr: "pipe",
       maxBufferSize: 1_000_000,
     },
-    pathMappings: [
-      ...mountPathMappings(profile.hostHome, profile.containerHome),
-      ...mountPathMappings(profile.hostWorkspace, profile.containerWorkspace),
-      ...mountPathMappings(
-        preparedTarget.hostRoot,
-        preparedTarget.containerRoot,
-      ),
-    ],
+    pathMappings,
   };
 }
 

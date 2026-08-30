@@ -104,14 +104,22 @@ invariant(
 );
 
 const deceptiveReport = await readJson(join(deceptive.runDirectory, "report.json"));
+const deceptiveRunManifest = await readJson(join(deceptive.runDirectory, "run.json"));
+invariant(
+  deceptiveRunManifest.toolchain.observerImageReference === "forge-sandbox:dev" &&
+    deceptiveRunManifest.toolchain.observerImageId === observerImage,
+  "deceptive run did not record the immutable observer image identity",
+);
 const deceptiveRules = deceptiveReport.findings.map((finding) => finding.ruleId).sort();
 invariant(
   JSON.stringify(deceptiveRules) ===
     JSON.stringify([
       "runtime.file_scope_exceeded",
+      "runtime.initialization_sensitive_access",
       "runtime.unexpected_network_attempt",
       "runtime.unexpected_process_exec",
-    ]),
+      "runtime.post_return_activity",
+    ].sort()),
   `deceptive control produced unexpected rules: ${deceptiveRules.join(", ")}`,
 );
 invariant(
@@ -139,6 +147,58 @@ await readJson(
   ),
 );
 const deceptiveEvents = await readJsonl(join(deceptive.runDirectory, "events.jsonl"));
+const deceptiveAttributions = new Map(
+  (await readJsonl(join(deceptive.runDirectory, "attributions.jsonl"))).map(
+    (value) => [value.eventId, value],
+  ),
+);
+const initializationFinding = deceptiveReport.findings.find(
+  (finding) => finding.ruleId === "runtime.initialization_sensitive_access",
+);
+invariant(
+  initializationFinding?.confidence === "high" &&
+    initializationFinding.eventIds.some((eventId) => {
+      const event = deceptiveEvents.find((candidate) => candidate.eventId === eventId);
+      return (
+        event?.effect.kind === "file.read" &&
+        event.effect.path.endsWith("/.config/gh/hosts.yml") &&
+        deceptiveAttributions
+          .get(eventId)
+          ?.activePhaseId?.includes("baseline-initialization-initialization")
+      );
+    }),
+  "deceptive control did not surface its initialization credential read",
+);
+const postReturnFinding = deceptiveReport.findings.find(
+  (finding) => finding.ruleId === "runtime.post_return_activity",
+);
+invariant(
+  postReturnFinding?.eventIds.some((eventId) => {
+    const event = deceptiveEvents.find((candidate) => candidate.eventId === eventId);
+    const attribution = deceptiveAttributions.get(eventId);
+    return (
+      event?.effect.kind === "file.read" &&
+      event.effect.path.endsWith("/.ssh/id_ed25519") &&
+      attribution?.activePhaseId?.includes("cooldown") &&
+      attribution?.processOriginPhaseId?.includes("tool")
+    );
+  }),
+  "deceptive control did not link delayed credential access to a tool-originated cooldown process",
+);
+const deceptiveComparison = new Map(
+  deceptiveReport.staticRuntimeComparison.rows.map((row) => [row.capability, row]),
+);
+for (const capability of [
+  "filesystem_access",
+  "process_execution",
+  "network_access",
+]) {
+  invariant(
+    deceptiveComparison.get(capability)?.staticSignal === "found" &&
+      deceptiveComparison.get(capability)?.runtimeObservation === "observed",
+    `deceptive control static/runtime comparison is incomplete for ${capability}`,
+  );
+}
 const treatmentEventIds = new Set(
   Object.values(deceptiveReport.installLifecycle.delta.treatmentOnly).flat(),
 );
@@ -168,6 +228,12 @@ invariant(
 );
 
 const filesystemReport = await readJson(join(filesystem.runDirectory, "report.json"));
+const filesystemRunManifest = await readJson(join(filesystem.runDirectory, "run.json"));
+invariant(
+  filesystemRunManifest.toolchain.observerImageReference === "forge-sandbox:dev" &&
+    filesystemRunManifest.toolchain.observerImageId === observerImage,
+  "Filesystem run did not record the immutable observer image identity",
+);
 invariant(
   filesystemReport.artifactProvenance.source.type === "npm" &&
     filesystemReport.artifactProvenance.source.requestedVersion === "2026.7.10",
@@ -222,6 +288,37 @@ const reportPositiveEventIds = new Set(
 invariant(
   expectedEvents.every((event) => reportPositiveEventIds.has(event.eventId)),
   "Filesystem report does not summarize its positive read/write evidence",
+);
+const readObservation = filesystemReport.runtimeObservations.find(
+  (observation) => observation.experimentId === "read-synthetic-report",
+);
+const writeObservation = filesystemReport.runtimeObservations.find(
+  (observation) => observation.experimentId === "write-synthetic-output",
+);
+invariant(
+  JSON.stringify(readObservation?.effectCounts) ===
+    JSON.stringify([
+      { effectKind: "file.open", count: 1 },
+      { effectKind: "file.read", count: 1 },
+    ]) &&
+    JSON.stringify(writeObservation?.effectCounts) ===
+      JSON.stringify([
+        { effectKind: "file.open", count: 1 },
+        { effectKind: "file.write", count: 1 },
+      ]),
+  "Filesystem report effect counts are not scoped to the active tool phases",
+);
+const filesystemComparison = new Map(
+  filesystemReport.staticRuntimeComparison.rows.map((row) => [row.capability, row]),
+);
+invariant(
+  filesystemComparison.get("filesystem_access")?.staticSignal === "found" &&
+    filesystemComparison.get("filesystem_access")?.runtimeObservation === "observed" &&
+    filesystemComparison.get("process_execution")?.runtimeObservation ===
+      "not_observed" &&
+    filesystemComparison.get("network_access")?.runtimeObservation ===
+      "not_observed",
+  "Filesystem static/runtime comparison does not reflect selected tool effects",
 );
 const attributions = new Map(
   (await readJsonl(join(filesystem.runDirectory, "attributions.jsonl"))).map(

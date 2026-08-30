@@ -9,7 +9,7 @@ import {
 import { summarizeRuntimeObservations } from "../../src/report.js";
 
 describe("runtime observation report summary", () => {
-  it("links expected-scope examples only from the active tool phase", () => {
+  it("counts and links events only from the active tool phase", () => {
     const config = targetConfigV1Schema.parse({
       schema: "forge.target/v1",
       target: {
@@ -136,7 +136,7 @@ describe("runtime observation report summary", () => {
         experimentId: "read-document",
         kind: "tool",
         toolName: "read_document",
-        effectCounts: [{ effectKind: "file.read", count: 3 }],
+        effectCounts: [{ effectKind: "file.read", count: 2 }],
         expectedScopeMatches: {
           eventCount: 1,
           examples: [
@@ -151,5 +151,143 @@ describe("runtime observation report summary", () => {
         },
       },
     ]);
+  });
+
+  it("counts initialization events only from the active initialization phase", () => {
+    const config = targetConfigV1Schema.parse({
+      schema: "forge.target/v1",
+      target: {
+        id: "generic-target",
+        source: { type: "local", path: "/input/target", install: "none" },
+        runtime: {
+          transport: "stdio",
+          command: "node",
+          args: ["/opt/target/index.js"],
+        },
+      },
+      sandbox: {
+        profile: "developer-v1",
+        network: "blocked",
+        limits: {
+          timeoutMs: 10_000,
+          cooldownMs: 500,
+          memoryMb: 256,
+          cpus: 1,
+          pids: 64,
+        },
+      },
+      experiments: {
+        initialization: true,
+        tools: [
+          {
+            id: "placeholder-tool",
+            tool: "placeholder_tool",
+            input: {},
+            expected: {
+              fileReads: [],
+              fileWrites: [],
+              networkConnections: [],
+              childExecutables: [],
+            },
+          },
+        ],
+        workflows: [],
+      },
+    });
+    const initializationPhase = phaseV1Schema.parse({
+      schema: "forge.phase/v1",
+      phaseId: "baseline-initialization-initialization-1",
+      runId: "run-initialization-summary",
+      experimentId: "baseline-initialization",
+      kind: "initialization",
+      name: "initialize and list tools",
+      startedAt: "2026-08-29T20:00:00.000Z",
+      endedAt: "2026-08-29T20:00:01.000Z",
+      status: "completed",
+    });
+    const cooldownPhase = phaseV1Schema.parse({
+      schema: "forge.phase/v1",
+      phaseId: "baseline-initialization-cooldown-2",
+      runId: "run-initialization-summary",
+      experimentId: "baseline-initialization",
+      kind: "cooldown",
+      name: "observe background activity",
+      startedAt: "2026-08-29T20:00:01.100Z",
+      endedAt: "2026-08-29T20:00:01.600Z",
+      status: "completed",
+    });
+    const initializationRead = observedEventV1Schema.parse({
+      schema: "forge.event/v1",
+      eventId: "evt-initialization-read",
+      runId: "run-initialization-summary",
+      experimentId: "baseline-initialization",
+      sequence: 0,
+      timestamp: "2026-08-29T20:00:00.500Z",
+      processRef: "run-initialization-summary:baseline-initialization:pid-10",
+      effect: {
+        kind: "file.read",
+        path: "/sandbox/home/forge/.config/gh/hosts.yml",
+        bytes: 32,
+        outcome: { status: "succeeded" },
+      },
+      source: {
+        collector: "strace",
+        rawRef: "raw/baseline-initialization/strace.10:5",
+      },
+    });
+    const cooldownWrite = observedEventV1Schema.parse({
+      schema: "forge.event/v1",
+      eventId: "evt-cooldown-write",
+      runId: "run-initialization-summary",
+      experimentId: "baseline-initialization",
+      sequence: 1,
+      timestamp: "2026-08-29T20:00:01.300Z",
+      processRef: "run-initialization-summary:baseline-initialization:pid-10",
+      effect: {
+        kind: "file.write",
+        path: "/sandbox/workspace/background.txt",
+        bytes: 4,
+        outcome: { status: "succeeded" },
+      },
+      source: {
+        collector: "strace",
+        rawRef: "raw/baseline-initialization/strace.10:6",
+      },
+    });
+    const attribution = (
+      eventId: string,
+      activePhaseId: string,
+    ) =>
+      attributionV1Schema.parse({
+        schema: "forge.attribution/v1",
+        attributionId: `attr-${eventId}`,
+        runId: "run-initialization-summary",
+        eventId,
+        activePhaseId,
+        processOriginPhaseId: initializationPhase.phaseId,
+        confidence:
+          activePhaseId === initializationPhase.phaseId ? "high" : "medium",
+        reasons: ["within_phase_bounds"],
+      });
+
+    const result = summarizeRuntimeObservations({
+      config,
+      events: [initializationRead, cooldownWrite],
+      phases: [initializationPhase, cooldownPhase],
+      attributions: [
+        attribution(initializationRead.eventId, initializationPhase.phaseId),
+        attribution(cooldownWrite.eventId, cooldownPhase.phaseId),
+      ],
+    });
+
+    expect(
+      result.find(
+        (observation) => observation.experimentId === "baseline-initialization",
+      ),
+    ).toEqual({
+      experimentId: "baseline-initialization",
+      kind: "initialization",
+      effectCounts: [{ effectKind: "file.read", count: 1 }],
+    });
   });
 });

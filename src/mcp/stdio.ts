@@ -12,7 +12,7 @@ import type {
   TransportSendOptions,
 } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { JSONRPCMessage, MessageExtraInfo } from "@modelcontextprotocol/sdk/types.js";
-import { Ajv, type ErrorObject } from "ajv";
+import type { ErrorObject, ValidateFunction } from "ajv";
 
 import type { TargetConfigV1 } from "../config.js";
 import {
@@ -24,6 +24,7 @@ import {
   type PhaseV1,
 } from "../contracts/v1.js";
 import type { EvidenceStore } from "../evidence-store.js";
+import { compileInputSchema } from "./input-schema.js";
 
 type ToolExperimentV1 = TargetConfigV1["experiments"]["tools"][number];
 
@@ -251,8 +252,16 @@ export async function runMcpExperiment(options: {
         throw new Error("tool input schema exceeds the 256 KB evaluator limit");
       }
 
-      const ajv = new Ajv({ allErrors: true, strict: false });
-      const validateInput = ajv.compile(advertisedTool.inputSchema);
+      let validateInput: ValidateFunction<unknown>;
+      try {
+        validateInput = compileInputSchema(advertisedTool.inputSchema).validate;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `could not validate configured input for '${toolExperiment.tool}': ${message}`,
+          { cause: error },
+        );
+      }
       if (!validateInput(toolExperiment.input)) {
         throw new Error(
           `configured input does not match '${toolExperiment.tool}' schema: ${formatAjvErrors(validateInput.errors)}`,

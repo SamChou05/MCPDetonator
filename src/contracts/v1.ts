@@ -8,6 +8,7 @@ import {
 const identifierSchema = z.string().min(1);
 const timestampSchema = z.iso.datetime({ offset: true });
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
+const dockerImageIdSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 
 export const artifactReferenceV1Schema = z
   .object({
@@ -161,6 +162,8 @@ export const runManifestV1Schema = z
         nodeVersion: z.string().min(1),
         dockerVersion: z.string().min(1).optional(),
         straceVersion: z.string().min(1).optional(),
+        observerImageReference: z.string().min(1),
+        observerImageId: dockerImageIdSchema,
       })
       .strict(),
     limitations: z.array(z.string().min(1)),
@@ -414,6 +417,28 @@ export const reportV1Schema = z
             skippedFiles: z.number().int().nonnegative(),
           })
           .strict(),
+        limitations: z.array(z.string().min(1)),
+      })
+      .strict(),
+    staticRuntimeComparison: z
+      .object({
+        scope: z.string().min(1),
+        rows: z.array(
+          z
+            .object({
+              capability: staticCapabilitySchema,
+              staticSignal: z.enum(["found", "not_found"]),
+              runtimeObservation: z.enum([
+                "observed",
+                "not_observed",
+                "not_comparable",
+              ]),
+              staticSignalIds: z.array(identifierSchema),
+              runtimeEventIds: z.array(identifierSchema),
+              interpretation: z.string().min(1),
+            })
+            .strict(),
+        ),
         limitations: z.array(z.string().min(1)),
       })
       .strict(),

@@ -22,6 +22,25 @@ import type { InstallLifecycleObservation } from "./install/lifecycle.js";
 import type { InstallLifecycleDeltaV1 } from "./install/delta.js";
 
 const maxExpectedScopeExamples = 25;
+const comparedCapabilities = new Set<StaticCapability>([
+  "filesystem_access",
+  "process_execution",
+  "network_access",
+]);
+const allStaticCapabilities: readonly StaticCapability[] = [
+  "filesystem_access",
+  "process_execution",
+  "network_access",
+  "environment_access",
+  "dynamic_code_execution",
+  "dynamic_module_loading",
+  "native_code_loading",
+];
+
+type ProfileRootsByExperiment = ReadonlyMap<
+  string,
+  { readonly home: string; readonly workspace: string }
+>;
 
 type RuntimeObservation = ReportV1["runtimeObservations"][number];
 type ExpectedScopeExample = NonNullable<
@@ -101,10 +120,23 @@ export function summarizeRuntimeObservations(options: {
     const experimentEvents = options.events.filter(
       (event) => event.experimentId === "baseline-initialization",
     );
+    const initializationPhase = options.phases.find(
+      (phase) =>
+        phase.experimentId === "baseline-initialization" &&
+        phase.kind === "initialization",
+    );
+    const initializationEvents =
+      initializationPhase === undefined
+        ? []
+        : experimentEvents.filter(
+            (event) =>
+              attributionByEvent.get(event.eventId)?.activePhaseId ===
+              initializationPhase.phaseId,
+          );
     observations.push({
       experimentId: "baseline-initialization",
       kind: "initialization",
-      effectCounts: effectCounts(experimentEvents),
+      effectCounts: effectCounts(initializationEvents),
     });
   }
 
@@ -115,17 +147,18 @@ export function summarizeRuntimeObservations(options: {
     const toolPhase = options.phases.find(
       (phase) => phase.experimentId === experiment.id && phase.kind === "tool",
     );
-    const matchingEvents =
+    const toolEvents =
       toolPhase === undefined
         ? []
-        : experimentEvents
-            .filter(
-              (event) =>
-                attributionByEvent.get(event.eventId)?.activePhaseId ===
-                  toolPhase.phaseId &&
-                eventMatchesExpectedScope(event, experiment.expected),
-            )
-            .sort((left, right) => left.sequence - right.sequence);
+        : experimentEvents.filter(
+            (event) =>
+              attributionByEvent.get(event.eventId)?.activePhaseId ===
+              toolPhase.phaseId,
+          );
+    const matchingEvents =
+      toolEvents
+        .filter((event) => eventMatchesExpectedScope(event, experiment.expected))
+        .sort((left, right) => left.sequence - right.sequence);
     const uniqueExamples = new Map<string, ExpectedScopeExample>();
     for (const event of matchingEvents) {
       const key = expectedScopeExampleKey(event);
@@ -145,7 +178,7 @@ export function summarizeRuntimeObservations(options: {
       experimentId: experiment.id,
       kind: "tool",
       toolName: experiment.tool,
-      effectCounts: effectCounts(experimentEvents),
+      effectCounts: effectCounts(toolEvents),
       expectedScopeMatches: {
         eventCount: matchingEvents.length,
         examples,
@@ -155,6 +188,162 @@ export function summarizeRuntimeObservations(options: {
   }
 
   return observations;
+}
+
+function pathIsInside(path: string, root: string): boolean {
+  return path === root || path.startsWith(root.endsWith("/") ? root : `${root}/`);
+}
+
+export function compareStaticAndRuntime(options: {
+  readonly staticInspection: NodePackageStaticInspectionV1;
+  readonly events: readonly ObservedEventV1[];
+  readonly phases: readonly PhaseV1[];
+  readonly attributions: readonly AttributionV1[];
+  readonly profileRootsByExperiment: ProfileRootsByExperiment;
+}): ReportV1["staticRuntimeComparison"] {
+  const signalsByCapability = new Map<StaticCapability, string[]>();
+  for (const signal of options.staticInspection.source.signals) {
+    const signalIds = signalsByCapability.get(signal.capability) ?? [];
+    signalIds.push(signal.signalId);
+    signalsByCapability.set(signal.capability, signalIds);
+  }
+
+  const phaseById = new Map(options.phases.map((phase) => [phase.phaseId, phase]));
+  const attributionByEvent = new Map(
+    options.attributions.map((attribution) => [attribution.eventId, attribution]),
+  );
+  const childProcessRefs = new Set(
+    options.events
+      .filter(
+        (event) =>
+          event.effect.kind === "process.start" &&
+          event.effect.parentProcessRef !== undefined,
+      )
+      .map((event) => event.processRef),
+  );
+  const runtimeEventsByCapability = new Map<
+    StaticCapability,
+    ObservedEventV1[]
+  >();
+
+  function selectedPhaseEvent(event: ObservedEventV1): boolean {
+    const attribution = attributionByEvent.get(event.eventId);
+    const activePhase =
+      attribution?.activePhaseId === undefined
+        ? undefined
+        : phaseById.get(attribution.activePhaseId);
+    if (activePhase?.kind === "initialization" || activePhase?.kind === "tool") {
+      return true;
+    }
+    if (activePhase?.kind !== "cooldown") {
+      return false;
+    }
+    const originPhase =
+      attribution?.processOriginPhaseId === undefined
+        ? undefined
+        : phaseById.get(attribution.processOriginPhaseId);
+    return originPhase?.kind === "tool";
+  }
+
+  function addRuntimeEvent(
+    capability: StaticCapability,
+    event: ObservedEventV1,
+  ): void {
+    const events = runtimeEventsByCapability.get(capability) ?? [];
+    events.push(event);
+    runtimeEventsByCapability.set(capability, events);
+  }
+
+  for (const event of options.events) {
+    if (!selectedPhaseEvent(event)) {
+      continue;
+    }
+    if (
+      event.effect.kind === "file.read" ||
+      event.effect.kind === "file.write" ||
+      event.effect.kind === "file.delete"
+    ) {
+      const roots = options.profileRootsByExperiment.get(event.experimentId);
+      const path = event.effect.path;
+      if (
+        roots !== undefined &&
+        [roots.home, roots.workspace].some((root) => pathIsInside(path, root))
+      ) {
+        addRuntimeEvent("filesystem_access", event);
+      }
+      continue;
+    }
+    if (
+      event.effect.kind === "process.exec" &&
+      event.effect.outcome.status === "succeeded" &&
+      childProcessRefs.has(event.processRef)
+    ) {
+      addRuntimeEvent("process_execution", event);
+      continue;
+    }
+    if (
+      (event.effect.kind === "network.connect_attempt" ||
+        event.effect.kind === "network.listen") &&
+      event.effect.protocol !== "unix"
+    ) {
+      addRuntimeEvent("network_access", event);
+    }
+  }
+
+  const rows: ReportV1["staticRuntimeComparison"]["rows"] =
+    allStaticCapabilities.map((capability) => {
+      const staticSignalIds = [...(signalsByCapability.get(capability) ?? [])].sort();
+      const staticSignal = staticSignalIds.length > 0 ? "found" : "not_found";
+      if (!comparedCapabilities.has(capability)) {
+        return {
+          capability,
+          staticSignal,
+          runtimeObservation: "not_comparable" as const,
+          staticSignalIds,
+          runtimeEventIds: [],
+          interpretation:
+            "The current syscall evidence does not directly confirm or refute this static capability.",
+        };
+      }
+
+      const runtimeEventIds = [
+        ...new Set(
+          (runtimeEventsByCapability.get(capability) ?? []).map(
+            (event) => event.eventId,
+          ),
+        ),
+      ].sort();
+      const runtimeObservation =
+        runtimeEventIds.length > 0 ? "observed" : "not_observed";
+      const interpretation =
+        staticSignal === "found" && runtimeObservation === "observed"
+          ? "Package-authored source contains matching capability signals and selected runtime phases observed the behavior."
+          : staticSignal === "found"
+            ? "Package-authored source contains matching capability signals, but the selected runtime phases did not observe the behavior."
+            : runtimeObservation === "observed"
+              ? "Selected runtime phases observed the behavior without a matching signal in the bounded package-authored source scan."
+              : "Neither the bounded package-authored source scan nor the selected runtime phases produced matching evidence.";
+      return {
+        capability,
+        staticSignal,
+        runtimeObservation,
+        staticSignalIds,
+        runtimeEventIds,
+        interpretation,
+      };
+    });
+
+  return {
+    scope:
+      "Package-authored source signals compared with analyst-relevant effects from selected initialization, tool, and tool-originated cooldown phases.",
+    rows,
+    limitations: [
+      "The static scan is bounded lexical analysis of package-authored source and excludes dependency source.",
+      "Filesystem comparison is limited to normalized reads, writes, and deletes under the synthetic home/workspace roots, so open-only activity is excluded; process comparison excludes the root server exec; network comparison excludes Unix-domain sockets.",
+      "Environment, dynamic-code, dynamic-module, and native-code capabilities are not directly comparable with the current normalized runtime evidence.",
+      "Agreement or disagreement is evidence about selected inputs, not a verdict about intent or safety.",
+    ],
+  };
 }
 
 function summarizeStaticAnalysis(
@@ -260,6 +449,7 @@ export async function writeReport(options: {
   readonly interfaces: readonly McpInterfaceV1[];
   readonly provenance: TargetProvenanceV1;
   readonly staticInspection: NodePackageStaticInspectionV1;
+  readonly profileRootsByExperiment: ProfileRootsByExperiment;
   readonly installObservation?: InstallLifecycleObservation;
   readonly installDelta?: InstallLifecycleDeltaV1;
   readonly limitations: readonly string[];
@@ -317,8 +507,8 @@ export async function writeReport(options: {
     generatedAt: new Date().toISOString(),
     summary:
       options.findings.length === 0
-        ? "Within the selected experiments and current rule coverage, Forge found no deterministic runtime scope mismatches."
-        : `Within the selected experiments and current rule coverage, Forge found ${options.findings.length} deterministic runtime scope ${options.findings.length === 1 ? "mismatch" : "mismatches"}.`,
+        ? "Within the selected experiments and current rule coverage, Forge found no deterministic runtime findings."
+        : `Within the selected experiments and current rule coverage, Forge found ${options.findings.length} deterministic runtime ${options.findings.length === 1 ? "finding" : "findings"}.`,
     artifactProvenance: options.provenance,
     sandboxPolicy: {
       profile: options.config.sandbox.profile,
@@ -330,6 +520,13 @@ export async function writeReport(options: {
     },
     advertisedTools,
     staticAnalysis: summarizeStaticAnalysis(options.staticInspection, runtimeSnapshot),
+    staticRuntimeComparison: compareStaticAndRuntime({
+      staticInspection: options.staticInspection,
+      events: options.events,
+      phases: options.phases,
+      attributions: options.attributions,
+      profileRootsByExperiment: options.profileRootsByExperiment,
+    }),
     experiments,
     runtimeObservations: summarizeRuntimeObservations({
       config: options.config,

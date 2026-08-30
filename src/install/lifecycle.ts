@@ -22,6 +22,7 @@ import {
   type PhaseV1,
 } from "../contracts/v1.js";
 import type { EvidenceStore } from "../evidence-store.js";
+import { mountPathMappings } from "../observe/path-mappings.js";
 import type { ObservedPathMapping } from "../observe/strace-normalizer.js";
 import { removeManagedContainer } from "../sandbox/docker.js";
 import {
@@ -135,19 +136,6 @@ function assertMountSafe(path: string): void {
   }
 }
 
-function mountPathMappings(
-  hostPath: string,
-  containerPath: string,
-): ObservedPathMapping[] {
-  return [
-    { observedPrefix: hostPath, containerPrefix: containerPath },
-    {
-      observedPrefix: `/run/host_virtiofs${hostPath}`,
-      containerPrefix: containerPath,
-    },
-  ];
-}
-
 /**
  * The two commands intentionally differ only in lifecycle-script policy.
  * All artifact resolution is offline and uses the isolated cache mount.
@@ -165,7 +153,7 @@ export function npmCiArguments(mode: InstallLifecycleMode): readonly string[] {
   ];
 }
 
-export function createInstallContainerInvocation(options: {
+export async function createInstallContainerInvocation(options: {
   readonly runId: string;
   readonly experimentId: string;
   readonly mode: InstallLifecycleMode;
@@ -175,10 +163,10 @@ export function createInstallContainerInvocation(options: {
   readonly hostInstallRoot: string;
   readonly hostNpmCache: string;
   readonly profile: MaterializedDeveloperProfile;
-}): {
+}): Promise<{
   readonly invocation: InstallContainerInvocation;
   readonly pathMappings: readonly ObservedPathMapping[];
-} {
+}> {
   for (const path of [
     options.rawDirectory,
     options.hostInstallRoot,
@@ -189,6 +177,20 @@ export function createInstallContainerInvocation(options: {
     assertMountSafe(path);
   }
 
+  const pathMappings = (
+    await Promise.all([
+      mountPathMappings(
+        options.profile.hostHome,
+        options.profile.containerHome,
+      ),
+      mountPathMappings(
+        options.profile.hostWorkspace,
+        options.profile.containerWorkspace,
+      ),
+      mountPathMappings(options.hostInstallRoot, installContainerRoot),
+      mountPathMappings(options.hostNpmCache, installCacheRoot),
+    ])
+  ).flat();
   const containerName = `forge-${safeDockerToken(options.runId)}-${safeDockerToken(options.experimentId)}`;
   const limits = options.config.sandbox.limits;
   const command = ["npm", ...npmCiArguments(options.mode)];
@@ -264,18 +266,7 @@ export function createInstallContainerInvocation(options: {
       stdoutPath: resolve(options.rawDirectory, "npm-stdout.log"),
       stderrPath: resolve(options.rawDirectory, "npm-stderr.log"),
     },
-    pathMappings: [
-      ...mountPathMappings(
-        options.profile.hostHome,
-        options.profile.containerHome,
-      ),
-      ...mountPathMappings(
-        options.profile.hostWorkspace,
-        options.profile.containerWorkspace,
-      ),
-      ...mountPathMappings(options.hostInstallRoot, installContainerRoot),
-      ...mountPathMappings(options.hostNpmCache, installCacheRoot),
-    ],
+    pathMappings,
   };
 }
 
@@ -541,7 +532,7 @@ export async function observeInstallLifecycle(options: {
           experimentId,
           profileSeed,
         );
-        const built = createInstallContainerInvocation({
+        const built = await createInstallContainerInvocation({
           runId: options.runId,
           experimentId,
           mode,

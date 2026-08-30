@@ -114,4 +114,112 @@ describe("strace parsing and normalization", () => {
       outcome: { status: "succeeded" },
     });
   });
+
+  it("unwraps nested device annotations without changing literal angle brackets", async () => {
+    const root = await mkdtemp(join(tmpdir(), "forge-normalizer-descriptor-"));
+    const store = await EvidenceStore.create(root, "run-descriptor");
+    const raw = store.pathFor("raw/descriptor-tool");
+    await mkdir(raw, { recursive: true });
+    await writeFile(
+      join(raw, "strace.42"),
+      [
+        '1700000000.000001 openat(AT_FDCWD</sandbox/workspace>, "/dev/null", O_RDONLY) = 17</dev/null<char 1:3>>',
+        '1700000000.000002 read(17</dev/null<char 1:3>>, "x", 1) = 1',
+        '1700000000.000003 write(18</dev/loop0<block 7:0>>, "y", 1) = 1',
+        '1700000000.000004 openat(AT_FDCWD</sandbox/workspace>, "/sandbox/workspace/plain.txt", O_RDONLY) = 19</sandbox/workspace/plain.txt>',
+        '1700000000.000005 read(20</sandbox/workspace/report<draft>.txt>, "z", 1) = 1',
+        '1700000000.000006 write(21</sandbox/workspace/literal<char x:y>>, "q", 1) = 1',
+      ].join("\n"),
+      "utf8",
+    );
+
+    const events = await normalizeExperiment({
+      store,
+      runId: "run-descriptor",
+      experimentId: "descriptor-tool",
+    });
+    const fileEffects = events
+      .map((event) => event.effect)
+      .filter((effect) => effect.kind.startsWith("file."));
+
+    expect(fileEffects).toEqual([
+      {
+        kind: "file.open",
+        path: "/dev/null",
+        outcome: { status: "succeeded" },
+      },
+      {
+        kind: "file.read",
+        path: "/dev/null",
+        bytes: 1,
+        outcome: { status: "succeeded" },
+      },
+      {
+        kind: "file.write",
+        path: "/dev/loop0",
+        bytes: 1,
+        outcome: { status: "succeeded" },
+      },
+      {
+        kind: "file.open",
+        path: "/sandbox/workspace/plain.txt",
+        outcome: { status: "succeeded" },
+      },
+      {
+        kind: "file.read",
+        path: "/sandbox/workspace/report<draft>.txt",
+        bytes: 1,
+        outcome: { status: "succeeded" },
+      },
+      {
+        kind: "file.write",
+        path: "/sandbox/workspace/literal<char x:y>",
+        bytes: 1,
+        outcome: { status: "succeeded" },
+      },
+    ]);
+  });
+
+  it("normalizes positional and vectored file I/O syscall families", async () => {
+    const root = await mkdtemp(join(tmpdir(), "forge-normalizer-file-io-"));
+    const store = await EvidenceStore.create(root, "run-file-io");
+    const raw = store.pathFor("raw/file-io-tool");
+    await mkdir(raw, { recursive: true });
+    await writeFile(
+      join(raw, "strace.42"),
+      [
+        '1700000000.000001 pread64(17</sandbox/workspace/input.db>, "abc", 3, 0) = 3',
+        '1700000000.000002 readv(17</sandbox/workspace/input.db>, [{iov_base="de", iov_len=2}], 1) = 2',
+        '1700000000.000003 preadv(17</sandbox/workspace/input.db>, [{iov_base="f", iov_len=1}], 1, 2) = 1',
+        '1700000000.000004 preadv2(17</sandbox/workspace/input.db>, [{iov_base="gh", iov_len=2}], 1, 3, 0) = 2',
+        '1700000000.000005 pwrite64(18</sandbox/workspace/output.db>, "abc", 3, 0) = 3',
+        '1700000000.000006 writev(18</sandbox/workspace/output.db>, [{iov_base="de", iov_len=2}], 1) = 2',
+        '1700000000.000007 pwritev(18</sandbox/workspace/output.db>, [{iov_base="f", iov_len=1}], 1, 2) = 1',
+        '1700000000.000008 pwritev2(18</sandbox/workspace/output.db>, [{iov_base="gh", iov_len=2}], 1, 3, 0) = 2',
+      ].join("\n"),
+      "utf8",
+    );
+
+    const events = await normalizeExperiment({
+      store,
+      runId: "run-file-io",
+      experimentId: "file-io-tool",
+    });
+    const effects = events
+      .map((event) => event.effect)
+      .filter(
+        (effect) => effect.kind === "file.read" || effect.kind === "file.write",
+      );
+
+    expect(effects).toEqual([
+      { kind: "file.read", path: "/sandbox/workspace/input.db", bytes: 3, outcome: { status: "succeeded" } },
+      { kind: "file.read", path: "/sandbox/workspace/input.db", bytes: 2, outcome: { status: "succeeded" } },
+      { kind: "file.read", path: "/sandbox/workspace/input.db", bytes: 1, outcome: { status: "succeeded" } },
+      { kind: "file.read", path: "/sandbox/workspace/input.db", bytes: 2, outcome: { status: "succeeded" } },
+      { kind: "file.write", path: "/sandbox/workspace/output.db", bytes: 3, outcome: { status: "succeeded" } },
+      { kind: "file.write", path: "/sandbox/workspace/output.db", bytes: 2, outcome: { status: "succeeded" } },
+      { kind: "file.write", path: "/sandbox/workspace/output.db", bytes: 1, outcome: { status: "succeeded" } },
+      { kind: "file.write", path: "/sandbox/workspace/output.db", bytes: 2, outcome: { status: "succeeded" } },
+    ]);
+  });
 });

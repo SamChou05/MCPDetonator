@@ -25,6 +25,21 @@ interface ProcessStartCandidate {
   readonly rawRef: string;
 }
 
+const fileReadSyscalls = new Set([
+  "read",
+  "pread64",
+  "readv",
+  "preadv",
+  "preadv2",
+]);
+const fileWriteSyscalls = new Set([
+  "write",
+  "pwrite64",
+  "writev",
+  "pwritev",
+  "pwritev2",
+]);
+
 export interface ObservedPathMapping {
   readonly observedPrefix: string;
   readonly containerPrefix: string;
@@ -87,15 +102,37 @@ function quotedStrings(value: string): string[] {
 }
 
 function annotatedDescriptorPath(value: string): string | undefined {
-  const match = /^\d+<([^>]+)>/.exec(value.trim());
-  const descriptor = match?.[1];
-  return descriptor?.startsWith("/") ? descriptor : undefined;
-}
+  const trimmed = value.trim();
+  const descriptorNumber = /^\d+/.exec(trimmed)?.[0];
+  if (
+    descriptorNumber === undefined ||
+    trimmed[descriptorNumber.length] !== "<"
+  ) {
+    return undefined;
+  }
 
-function readWriteDescriptorPath(argumentsText: string): string | undefined {
-  const match = /^\d+<([^>]+)>/.exec(argumentsText.trim());
-  const descriptor = match?.[1];
-  return descriptor?.startsWith("/") ? descriptor : undefined;
+  const annotationStart = descriptorNumber.length;
+  let depth = 0;
+  for (let index = annotationStart; index < trimmed.length; index += 1) {
+    const character = trimmed[index];
+    if (character === "<") {
+      depth += 1;
+      continue;
+    }
+    if (character !== ">") {
+      continue;
+    }
+
+    depth -= 1;
+    if (depth === 0) {
+      const descriptor = trimmed
+        .slice(annotationStart + 1, index)
+        .replace(/<(?:char|block) \d+:\d+>$/, "");
+      return descriptor.startsWith("/") ? descriptor : undefined;
+    }
+  }
+
+  return undefined;
 }
 
 function resolveArgumentPath(argumentsText: string): string | undefined {
@@ -184,14 +221,17 @@ function normalizeFile(
     };
   }
 
-  if (record.syscall === "read" || record.syscall === "write") {
+  if (
+    fileReadSyscalls.has(record.syscall) ||
+    fileWriteSyscalls.has(record.syscall)
+  ) {
     const bytes = integerResult(record.resultText);
-    const path = readWriteDescriptorPath(record.argumentsText);
+    const path = annotatedDescriptorPath(record.argumentsText);
     if (path === undefined || bytes === undefined || bytes <= 0) {
       return undefined;
     }
     return {
-      kind: record.syscall === "read" ? "file.read" : "file.write",
+      kind: fileReadSyscalls.has(record.syscall) ? "file.read" : "file.write",
       path: canonicalPath(path, pathMappings),
       bytes,
       outcome: { status: "succeeded" },

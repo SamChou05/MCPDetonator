@@ -76,6 +76,48 @@ export async function evaluateRuntimeRules(options: {
   );
   const findings: FindingV1[] = [];
 
+  const initializationPhase = options.phases.find(
+    (phase) =>
+      phase.experimentId === "baseline-initialization" &&
+      phase.kind === "initialization",
+  );
+  const initializationSensitivePaths =
+    options.sensitivePathsByExperiment.get("baseline-initialization") ?? new Set();
+  if (initializationPhase !== undefined) {
+    const accessesByPath = new Map<string, ObservedEventV1[]>();
+    for (const event of options.events) {
+      if (
+        event.experimentId !== "baseline-initialization" ||
+        attributionFor(event, attributionMap)?.activePhaseId !==
+          initializationPhase.phaseId ||
+        event.effect.kind !== "file.read" ||
+        !initializationSensitivePaths.has(event.effect.path)
+      ) {
+        continue;
+      }
+      const existing = accessesByPath.get(event.effect.path) ?? [];
+      existing.push(event);
+      accessesByPath.set(event.effect.path, existing);
+    }
+
+    let sensitiveIndex = 0;
+    for (const [path, events] of accessesByPath) {
+      sensitiveIndex += 1;
+      findings.push(
+        finding({
+          id: `finding-initialization-sensitive-access-${sensitiveIndex}`,
+          runId: options.runId,
+          ruleId: "runtime.initialization_sensitive_access",
+          title: "Initialization read a synthetic credential",
+          summary: `The MCP read ${path} during initialization, before any tool was called.`,
+          severity: "high",
+          events,
+          attributions: attributionMap,
+        }),
+      );
+    }
+  }
+
   for (const experiment of options.config.experiments.tools) {
     const toolPhase = options.phases.find(
       (phase) => phase.experimentId === experiment.id && phase.kind === "tool",
@@ -202,6 +244,58 @@ export async function evaluateRuntimeRules(options: {
           summary: `${experiment.tool} attempted ${event.effect.address}${event.effect.port === undefined ? "" : `:${event.effect.port}`}, which was not included in the configured expected scope.${outcome}`,
           severity: "medium",
           events: [event],
+          attributions: attributionMap,
+        }),
+      );
+    }
+
+    const cooldownPhase = options.phases.find(
+      (phase) =>
+        phase.experimentId === experiment.id && phase.kind === "cooldown",
+    );
+    if (cooldownPhase === undefined) {
+      continue;
+    }
+    const postReturnEvents = options.events.filter((event) => {
+      if (event.experimentId !== experiment.id) {
+        return false;
+      }
+      const attribution = attributionFor(event, attributionMap);
+      if (
+        attribution?.activePhaseId !== cooldownPhase.phaseId ||
+        attribution.processOriginPhaseId !== toolPhase.phaseId
+      ) {
+        return false;
+      }
+      switch (event.effect.kind) {
+        case "file.read":
+        case "file.write":
+        case "file.delete": {
+          const path = event.effect.path;
+          return syntheticRoots.some((root) => path.startsWith(root));
+        }
+        case "network.connect_attempt":
+        case "network.listen":
+          return event.effect.protocol !== "unix";
+        case "process.exec":
+          return event.effect.outcome.status === "succeeded";
+        default:
+          return false;
+      }
+    });
+    if (postReturnEvents.length > 0) {
+      const effectKinds = [
+        ...new Set(postReturnEvents.map((event) => event.effect.kind)),
+      ].sort();
+      findings.push(
+        finding({
+          id: `finding-${experiment.id}-post-return-activity`,
+          runId: options.runId,
+          ruleId: "runtime.post_return_activity",
+          title: "A tool-originated process acted after the tool returned",
+          summary: `${experiment.tool} returned before ${postReturnEvents.length} tool-originated ${postReturnEvents.length === 1 ? "effect" : "effects"} occurred during cooldown (${effectKinds.join(", ")}).`,
+          severity: "medium",
+          events: postReturnEvents,
           attributions: attributionMap,
         }),
       );

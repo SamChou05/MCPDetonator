@@ -17,7 +17,7 @@ sandbox:
   network: blocked
   limits:
     timeoutMs: 10000
-    cooldownMs: 500
+    cooldownMs: 2000
     memoryMb: 256
     cpus: 1
     pids: 64

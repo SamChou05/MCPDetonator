@@ -3,6 +3,8 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -141,6 +143,26 @@ describe("install lifecycle observation", () => {
 
   it("builds a blocked, instrumented, writable-target install container", async () => {
     const outputRoot = await mkdtemp(join(tmpdir(), "forge-install-builder-"));
+    const realTargetRoot = join(outputRoot, "real-target");
+    const linkedTargetRoot = join(outputRoot, "linked-target");
+    const realCacheRoot = join(outputRoot, "real-cache");
+    const linkedCacheRoot = join(outputRoot, "linked-cache");
+    await Promise.all([
+      mkdir(realTargetRoot),
+      mkdir(realCacheRoot),
+    ]);
+    await Promise.all([
+      symlink(
+        realTargetRoot,
+        linkedTargetRoot,
+        process.platform === "win32" ? "junction" : "dir",
+      ),
+      symlink(
+        realCacheRoot,
+        linkedCacheRoot,
+        process.platform === "win32" ? "junction" : "dir",
+      ),
+    ]);
     const store = await EvidenceStore.create(outputRoot, "run-builder");
     const profile = await materializeDeveloperProfile(
       store,
@@ -153,15 +175,15 @@ describe("install lifecycle observation", () => {
       },
     );
     const rawDirectory = store.pathFor("raw/install-scripts-enabled");
-    const built = createInstallContainerInvocation({
+    const built = await createInstallContainerInvocation({
       runId: "run-builder",
       experimentId: "install-scripts-enabled",
       mode: "scripts-enabled",
       config,
       image: "generic-observer:test",
       rawDirectory,
-      hostInstallRoot: "/tmp/forge-target-copy",
-      hostNpmCache: "/tmp/forge-cache-copy",
+      hostInstallRoot: linkedTargetRoot,
+      hostNpmCache: linkedCacheRoot,
       profile,
     });
 
@@ -183,19 +205,31 @@ describe("install lifecycle observation", () => {
       built.invocation.dockerArgs.some(
         (argument) =>
           argument ===
-          "type=bind,src=/tmp/forge-target-copy,dst=/opt/target",
+          `type=bind,src=${linkedTargetRoot},dst=/opt/target`,
       ),
     ).toBe(true);
     expect(
       built.invocation.dockerArgs.some(
         (argument) =>
           argument ===
-          "type=bind,src=/tmp/forge-target-copy,dst=/opt/target,readonly",
+          `type=bind,src=${linkedTargetRoot},dst=/opt/target,readonly`,
       ),
     ).toBe(false);
     expect(built.pathMappings).toContainEqual({
-      observedPrefix: "/tmp/forge-cache-copy",
+      observedPrefix: linkedCacheRoot,
       containerPrefix: "/npm-cache",
+    });
+    expect(built.pathMappings).toContainEqual({
+      observedPrefix: await realpath(linkedTargetRoot),
+      containerPrefix: "/opt/target",
+    });
+    expect(built.pathMappings).toContainEqual({
+      observedPrefix: `/run/host_virtiofs${linkedTargetRoot}`,
+      containerPrefix: "/opt/target",
+    });
+    expect(built.pathMappings).toContainEqual({
+      observedPrefix: `/run/host_virtiofs${await realpath(linkedTargetRoot)}`,
+      containerPrefix: "/opt/target",
     });
     expect(built.invocation.dockerArgs.join(" ")).not.toContain(
       "arbitrary-package",

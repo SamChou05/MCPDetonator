@@ -16,7 +16,7 @@ exec strace \
   -yy \
   -s 256 \
   -o "${evidence_directory}/strace" \
-  -e trace=%process,%file,%network,read,write \
+  -e trace=%process,%file,%network,read,write,pread64,pwrite64,readv,writev,preadv,pwritev,preadv2,pwritev2 \
   setpriv \
     --reuid=65534 \
     --regid=65534 \

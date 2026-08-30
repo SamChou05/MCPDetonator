@@ -4,6 +4,7 @@ import {
   attributionV1Schema,
   observedEventV1Schema,
   phaseV1Schema,
+  runManifestV1Schema,
 } from "../../src/contracts/v1.js";
 
 describe("persisted v1 contracts", () => {
@@ -88,5 +89,33 @@ describe("persisted v1 contracts", () => {
       outcome: { status: "failed", errno: "ENOENT" },
     });
   });
-});
 
+  it("requires immutable observer image provenance in a run manifest", () => {
+    const run = runManifestV1Schema.parse({
+      schema: "forge.run/v1",
+      runId: "run-7",
+      targetId: "generic-target",
+      configSha256: "a".repeat(64),
+      status: "completed",
+      createdAt: "2026-08-29T18:20:00.000Z",
+      completedAt: "2026-08-29T18:20:01.000Z",
+      sandboxPolicy: {
+        profile: "developer-v1",
+        network: "blocked",
+        timeoutMs: 10_000,
+      },
+      toolchain: {
+        forgeVersion: "0.1.0",
+        nodeVersion: "v22.0.0",
+        dockerVersion: "29.2.0",
+        straceVersion: "strace -- version 6.1",
+        observerImageReference: "forge-sandbox:dev",
+        observerImageId: `sha256:${"b".repeat(64)}`,
+      },
+      limitations: [],
+      artifacts: [],
+    });
+
+    expect(run.toolchain.observerImageId).toBe(`sha256:${"b".repeat(64)}`);
+  });
+});
