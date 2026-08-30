@@ -19,8 +19,10 @@ import {
 } from "node:path";
 
 import {
+  observationHealthV1Schema,
   reportV1Schema,
   runManifestV1Schema,
+  type ObservationHealthV1,
   type ReportV1,
   type RunManifestV1,
 } from "../contracts/v1.js";
@@ -34,6 +36,7 @@ import {
 
 const MAX_MANIFEST_BYTES = 8 * 1_024 * 1_024;
 const MAX_REPORT_BYTES = 64 * 1_024 * 1_024;
+const MAX_OBSERVATION_HEALTH_BYTES = 16 * 1_024 * 1_024;
 
 export type VerifiedRunArtifactKind = "report" | "evidence";
 
@@ -430,6 +433,95 @@ function parseReport(bytes: Buffer): ReportV1 {
   }
 }
 
+function parseObservationHealth(bytes: Buffer): ObservationHealthV1 {
+  try {
+    return observationHealthV1Schema.parse(
+      parseJsonBytes(bytes, "observation-health.json"),
+    );
+  } catch (error) {
+    if (error instanceof RunBundleVerificationError) throw error;
+    throw verificationError(
+      "observation-health.json does not satisfy forge.observation-health/v1",
+      error,
+    );
+  }
+}
+
+function assertObservationHealthIdentity(
+  report: ReportV1,
+  health: ObservationHealthV1,
+): void {
+  const summary = report.observationHealth;
+  if (summary === undefined) {
+    return;
+  }
+  const experimentIds = health.experiments.map(
+    (experiment) => experiment.experimentId,
+  );
+  const policyRelevantGapRecordCount = health.experiments.reduce(
+    (sum, experiment) => sum + experiment.policyRelevantGaps.recordCount,
+    0,
+  );
+  const stringTruncationLineCount = health.experiments.reduce(
+    (sum, experiment) => sum + experiment.stringTruncationLineCount,
+    0,
+  );
+  const policyRelevantGapOutcomeCounts = [
+    "succeeded",
+    "failed",
+    "unknown",
+  ].flatMap((outcome) => {
+    const recordCount = health.experiments.reduce(
+      (sum, experiment) =>
+        sum +
+        (experiment.policyRelevantGaps.outcomeCounts.find(
+          (row) => row.outcome === outcome,
+        )?.recordCount ?? 0),
+      0,
+    );
+    return recordCount === 0 ? [] : [{ outcome, recordCount }];
+  });
+  const sameJson = (left: unknown, right: unknown): boolean =>
+    JSON.stringify(left) === JSON.stringify(right);
+  if (
+    health.runId !== report.runId ||
+    health.scope !== summary.scope ||
+    health.surfaceId !== summary.surfaceId ||
+    health.integrityStatus !== summary.integrityStatus ||
+    health.canonicalizationExecutionStatus !==
+      summary.canonicalizationExecutionStatus ||
+    health.policyRelevantGapStatus !== summary.policyRelevantGapStatus ||
+    !sameJson(experimentIds, summary.experimentIds) ||
+    !sameJson(health.degradedExperimentIds, summary.degradedExperimentIds) ||
+    !sameJson(
+      health.policyRelevantGapExperimentIds,
+      summary.policyRelevantGapExperimentIds,
+    ) ||
+    policyRelevantGapRecordCount !== summary.policyRelevantGapRecordCount ||
+    !sameJson(
+      policyRelevantGapOutcomeCounts,
+      summary.policyRelevantGapOutcomeCounts,
+    ) ||
+    stringTruncationLineCount !== summary.stringTruncationLineCount
+  ) {
+    throw verificationError(
+      "observation-health.json identity and counters do not match report.json",
+    );
+  }
+
+  for (const [index, experiment] of health.experiments.entries()) {
+    if (
+      experiment.canonicalization.status === "completed" &&
+      experiment.canonicalization.emittedEventCount !==
+        report.experiments[index]?.eventCount
+    ) {
+      throw verificationError(
+        "observation-health.json canonical event counts do not match report.json",
+      );
+    }
+  }
+}
+
 function assertReportEvidenceCoverage(
   runDirectory: string,
   report: ReportV1,
@@ -453,6 +545,7 @@ function assertReportEvidenceCoverage(
     report.evidence.preInstallSemanticInspection,
     report.evidence.installDelta,
     report.evidence.advertisedClaims,
+    report.evidence.observationHealth,
     ...report.runtimeObservations.flatMap((observation) => {
       const refs = observation.filesystemStateDelta?.artifactRefs;
       return refs === undefined ? [] : [refs.before, refs.after, refs.delta];
@@ -559,9 +652,12 @@ export async function verifyRunBundle(
   );
   try {
     let reportBytes: Buffer | undefined;
+    let observationHealthBytes: Buffer | undefined;
     let totalArtifactBytes = 0;
     for (const artifact of manifest.artifacts) {
       const isReport = artifact.path === "report.json";
+      const isObservationHealth =
+        artifact.path === "observation-health.json";
       const remainingTotalBytes =
         MAX_PUBLICATION_TOTAL_ARTIFACT_BYTES - totalArtifactBytes;
       const maximumBytes = Math.min(
@@ -573,7 +669,11 @@ export async function verifyRunBundle(
         runDirectory,
         artifact.path,
         {
-          ...(isReport ? { captureLimitBytes: MAX_REPORT_BYTES } : {}),
+          ...(isReport
+            ? { captureLimitBytes: MAX_REPORT_BYTES }
+            : isObservationHealth
+              ? { captureLimitBytes: MAX_OBSERVATION_HEALTH_BYTES }
+              : {}),
           maximumBytes,
           snapshotDirectory,
           deadlineMs,
@@ -592,6 +692,7 @@ export async function verifyRunBundle(
         );
       }
       if (isReport) reportBytes = inspected.bytes;
+      if (isObservationHealth) observationHealthBytes = inspected.bytes;
       verifiedArtifacts.push({
         logicalPath: artifact.path,
         sourcePath: inspected.sourcePath,
@@ -622,6 +723,26 @@ export async function verifyRunBundle(
       );
     }
     assertReportEvidenceCoverage(runDirectory, report, seenPaths);
+    if (report.observationHealth !== undefined) {
+      if (observationHealthBytes === undefined) {
+        throw verificationError(
+          "verified observation-health.json bytes are unavailable",
+        );
+      }
+      const observationHealthArtifact = verifiedArtifacts.find(
+        (artifact) =>
+          artifact.logicalPath === report.evidence.observationHealth,
+      );
+      if (observationHealthArtifact?.mediaType !== "application/json") {
+        throw verificationError(
+          "run.json must label observation-health.json as application/json",
+        );
+      }
+      assertObservationHealthIdentity(
+        report,
+        parseObservationHealth(observationHealthBytes),
+      );
+    }
 
     const reportArtifact = verifiedArtifacts.find(
       (artifact) => artifact.kind === "report",

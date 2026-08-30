@@ -20,6 +20,54 @@ describe("checked-in sample reports", () => {
     });
   }
 
+  it("accepts a paired observation-health summary and rejects an unbound summary", async () => {
+    const path = join(
+      process.cwd(),
+      "examples",
+      "reports",
+      "official-filesystem.report.json",
+    );
+    const document = reportV1Schema.parse(
+      JSON.parse(await readFile(path, "utf8")) as unknown,
+    );
+    document.observationHealth = {
+      scope: "selected_strace_surface",
+      surfaceId: "forge-strace-selected-v1",
+      integrityStatus: "complete",
+      canonicalizationExecutionStatus: "completed",
+      policyRelevantGapStatus: "none_observed",
+      experimentIds: document.experiments.map(
+        (experiment) => experiment.experimentId,
+      ),
+      degradedExperimentIds: [],
+      policyRelevantGapExperimentIds: [],
+      policyRelevantGapRecordCount: 0,
+      policyRelevantGapOutcomeCounts: [],
+      stringTruncationLineCount: 0,
+      artifact: "observation-health.json",
+    };
+    document.evidence.observationHealth = "observation-health.json";
+
+    expect(reportV1Schema.safeParse(document).success).toBe(true);
+
+    const unbound = structuredClone(document);
+    delete unbound.evidence.observationHealth;
+    expect(reportV1Schema.safeParse(unbound).success).toBe(false);
+
+    const unorderedOutcomes = structuredClone(document);
+    unorderedOutcomes.observationHealth!.policyRelevantGapStatus =
+      "gaps_observed";
+    unorderedOutcomes.observationHealth!.policyRelevantGapExperimentIds = [
+      document.experiments[0]!.experimentId,
+    ];
+    unorderedOutcomes.observationHealth!.policyRelevantGapRecordCount = 2;
+    unorderedOutcomes.observationHealth!.policyRelevantGapOutcomeCounts = [
+      { outcome: "unknown", recordCount: 1 },
+      { outcome: "succeeded", recordCount: 1 },
+    ];
+    expect(reportV1Schema.safeParse(unorderedOutcomes).success).toBe(false);
+  });
+
   it("rejects a behavior claim reference that does not resolve", async () => {
     const path = join(
       process.cwd(),
@@ -37,6 +85,36 @@ describe("checked-in sample reports", () => {
       throw new Error("sample report lacks an advertised claim reference");
     }
     reference.fieldReference = "/tools/0/not-a-real-claim-field";
+
+    expect(reportV1Schema.safeParse(document).success).toBe(false);
+  });
+
+  it("rejects contradictory file-operation breakdowns", async () => {
+    const path = join(
+      process.cwd(),
+      "examples",
+      "reports",
+      "official-filesystem.report.json",
+    );
+    const document = reportV1Schema.parse(
+      JSON.parse(await readFile(path, "utf8")) as unknown,
+    );
+    const observation = document.runtimeObservations.find((candidate) =>
+      candidate.effectCounts.some((row) => row.effectKind === "file.read"),
+    );
+    if (observation === undefined) {
+      throw new Error("sample report lacks a file-read observation");
+    }
+    const fileReadCount = observation.effectCounts
+      .filter((row) => row.effectKind === "file.read")
+      .reduce((sum, row) => sum + row.count, 0);
+    observation.fileOperationCounts = [
+      {
+        effectKind: "file.read",
+        operation: "content",
+        count: fileReadCount + 1,
+      },
+    ];
 
     expect(reportV1Schema.safeParse(document).success).toBe(false);
   });

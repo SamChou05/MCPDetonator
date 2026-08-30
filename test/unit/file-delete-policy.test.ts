@@ -69,6 +69,19 @@ describe("file deletion policy", () => {
       endedAt: "2026-08-30T04:00:01.000Z",
       status: "completed",
     });
+    const cooldownPhase = phaseV1Schema.parse({
+      schema: "forge.phase/v1",
+      phaseId: `${experimentId}-cooldown-1`,
+      runId,
+      experimentId,
+      kind: "cooldown",
+      stage: "observation_window",
+      name: "observe after delete_document",
+      toolName: "delete_document",
+      startedAt: "2026-08-30T04:00:01.000Z",
+      endedAt: "2026-08-30T04:00:02.000Z",
+      status: "completed",
+    });
     const allowedDelete = observedEventV1Schema.parse({
       schema: "forge.event/v1",
       eventId: "evt-allowed-delete",
@@ -106,14 +119,42 @@ describe("file deletion policy", () => {
       timestamp: "2026-08-30T04:00:00.400Z",
       source: { collector: "strace", rawRef: "raw/delete-document/strace.10:3" },
     });
-    const events = [allowedDelete, unexpectedDelete, repeatedAllowedDelete];
+    const directoryEnumeration = observedEventV1Schema.parse({
+      ...allowedDelete,
+      eventId: "evt-directory-enumeration",
+      sequence: 3,
+      effect: {
+        kind: "file.read",
+        path: "/sandbox/workspace/synthetic-credential-directory",
+        operation: "directory_entries",
+        outcome: { status: "succeeded" },
+      },
+      source: { collector: "strace", rawRef: "raw/delete-document/strace.10:4" },
+    });
+    const cooldownDirectoryEnumeration = observedEventV1Schema.parse({
+      ...directoryEnumeration,
+      eventId: "evt-cooldown-directory-enumeration",
+      sequence: 4,
+      timestamp: "2026-08-30T04:00:01.300Z",
+      source: { collector: "strace", rawRef: "raw/delete-document/strace.10:5" },
+    });
+    const events = [
+      allowedDelete,
+      unexpectedDelete,
+      repeatedAllowedDelete,
+      directoryEnumeration,
+      cooldownDirectoryEnumeration,
+    ];
     const attributions = events.map((event) =>
       attributionV1Schema.parse({
         schema: "forge.attribution/v1",
         attributionId: `attr-${event.eventId}`,
         runId,
         eventId: event.eventId,
-        activePhaseId: phase.phaseId,
+        activePhaseId:
+          event.eventId === cooldownDirectoryEnumeration.eventId
+            ? cooldownPhase.phaseId
+            : phase.phaseId,
         processOriginPhaseId: phase.phaseId,
         confidence: "high",
         reasons: ["within_phase_bounds", "isolated_tool_run"],
@@ -125,9 +166,14 @@ describe("file deletion policy", () => {
       runId,
       config,
       events,
-      phases: [phase],
+      phases: [phase, cooldownPhase],
       attributions,
-      sensitivePathsByExperiment: new Map([[experimentId, new Set()]]),
+      sensitivePathsByExperiment: new Map([
+        [
+          experimentId,
+          new Set(["/sandbox/workspace/synthetic-credential-directory"]),
+        ],
+      ]),
       profileRootsByExperiment: new Map([
         [
           experimentId,
@@ -136,19 +182,32 @@ describe("file deletion policy", () => {
       ]),
     });
 
-    expect(findings).toHaveLength(1);
-    expect(findings[0]).toMatchObject({
+    expect(findings).toHaveLength(2);
+    const scopeFinding = findings.find(
+      (finding) => finding.ruleId === "runtime.file_scope_exceeded",
+    );
+    expect(scopeFinding).toMatchObject({
       ruleId: "runtime.file_scope_exceeded",
       eventIds: [unexpectedDelete.eventId],
       confidence: "high",
     });
-    expect(findings[0]?.summary).toContain("attempted file.delete");
-    expect(findings[0]?.summary).toContain("recorded syscall failed");
+    expect(scopeFinding?.summary).toContain("attempted file.delete");
+    expect(scopeFinding?.summary).toContain("recorded syscall failed");
+    expect(findings).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ eventIds: [directoryEnumeration.eventId] }),
+      ]),
+    );
+    expect(
+      findings.find(
+        (finding) => finding.ruleId === "runtime.post_return_activity",
+      ),
+    ).toMatchObject({ eventIds: [cooldownDirectoryEnumeration.eventId] });
 
     const [observation] = summarizeRuntimeObservations({
       config,
       events,
-      phases: [phase],
+      phases: [phase, cooldownPhase],
       attributions,
     });
     expect(observation?.expectedScopeMatches).toMatchObject({

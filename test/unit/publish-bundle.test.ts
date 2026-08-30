@@ -14,6 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  observationHealthV1Schema,
   reportV1Schema,
   runManifestV1Schema,
   type RunManifestV1,
@@ -48,8 +49,15 @@ interface BundleFixture {
 async function createBundleFixture(): Promise<BundleFixture> {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "forge-publish-bundle-"));
   temporaryRoots.push(temporaryRoot);
-  const reportSource = await readFile(sampleReportPath, "utf8");
-  const report = reportV1Schema.parse(JSON.parse(reportSource));
+  const report = reportV1Schema.parse(
+    JSON.parse(await readFile(sampleReportPath, "utf8")),
+  );
+  // Keep the generic bundle fixture independent of whether checked-in samples
+  // carry optional observation health. Dedicated tests below construct and
+  // cross-bind that artifact explicitly.
+  delete report.observationHealth;
+  delete report.evidence.observationHealth;
+  const reportSource = `${JSON.stringify(report, null, 2)}\n`;
   const requestedRunDirectory = join(temporaryRoot, report.runId);
   const evidenceSource = "bounded synthetic evidence\n";
   await mkdir(requestedRunDirectory);
@@ -350,6 +358,171 @@ describe("verifyRunBundle", () => {
 
     await expect(verifyRunBundle(fixture.runDirectory)).rejects.toThrow(
       `report.json references unmanifested evidence artifact '${report.evidence.events}'`,
+    );
+  });
+
+  it("requires a report-bound observation-health artifact in the manifest", async () => {
+    const fixture = await createBundleFixture();
+    const report = reportV1Schema.parse(JSON.parse(fixture.reportSource));
+    report.observationHealth = {
+      scope: "selected_strace_surface",
+      surfaceId: "forge-strace-selected-v1",
+      integrityStatus: "complete",
+      canonicalizationExecutionStatus: "completed",
+      policyRelevantGapStatus: "none_observed",
+      experimentIds: report.experiments.map(
+        (experiment) => experiment.experimentId,
+      ),
+      degradedExperimentIds: [],
+      policyRelevantGapExperimentIds: [],
+      policyRelevantGapRecordCount: 0,
+      policyRelevantGapOutcomeCounts: [],
+      stringTruncationLineCount: 0,
+      artifact: "observation-health.json",
+    };
+    report.evidence.observationHealth = "observation-health.json";
+    const reportSource = `${JSON.stringify(report, null, 2)}\n`;
+    await writeFile(join(fixture.runDirectory, "report.json"), reportSource);
+    await mutateManifest(fixture, (manifest) => {
+      const reportArtifact = manifest.artifacts.find(
+        (artifact) => artifact.path === "report.json",
+      );
+      if (reportArtifact === undefined) {
+        throw new Error("publisher fixture lacks report.json");
+      }
+      reportArtifact.sha256 = sha256(reportSource);
+    });
+
+    await expect(verifyRunBundle(fixture.runDirectory)).rejects.toThrow(
+      "report.json references unmanifested evidence artifact 'observation-health.json'",
+    );
+  });
+
+  it("rejects manifest-bound observation health that contradicts the report", async () => {
+    const fixture = await createBundleFixture();
+    const report = reportV1Schema.parse(JSON.parse(fixture.reportSource));
+    const experimentIds = report.experiments.map(
+      (experiment) => experiment.experimentId,
+    );
+    const health = observationHealthV1Schema.parse({
+      schema: "forge.observation-health/v1",
+      runId: report.runId,
+      generatedAt: "2026-08-30T00:00:00.000Z",
+      scope: "selected_strace_surface",
+      surfaceId: "forge-strace-selected-v1",
+      integrityStatus: "degraded",
+      canonicalizationExecutionStatus: "completed",
+      policyRelevantGapStatus: "none_observed",
+      degradedExperimentIds: experimentIds,
+      policyRelevantGapExperimentIds: [],
+      experiments: report.experiments.map((experiment) => ({
+        experimentId: experiment.experimentId,
+        traceDirectoryPresent: false,
+        traceFileCount: 0,
+        nonemptyLineCount: 0,
+        parsedRecordCount: 0,
+        parsedSyscallRecordCount: 0,
+        parsedSignalTerminationRecordCount: 0,
+        capturedSyscallCounts: [],
+        recognizedControlLineCount: 0,
+        recognizedExitControlLineCount: 0,
+        recognizedSignalDeliveryControlLineCount: 0,
+        unfinishedLineCount: 0,
+        resumedLineCount: 0,
+        malformedLineCount: 0,
+        stringTruncationIndicatorCount: 0,
+        stringTruncationLineCount: 0,
+        unfinishedRawRefs: [],
+        resumedRawRefs: [],
+        malformedRawRefs: [],
+        stringTruncationRawRefs: [],
+        terminalMarkerPresentTraceFileCount: 0,
+        missingTerminalMarkerTraceFileCount: 0,
+        missingTerminalMarkerTraceFileRawRefs: [],
+        traceFileDetails: [],
+        traceFileDetailOmittedCount: 0,
+        integrityComplete: false,
+        canonicalization: {
+          status: "completed",
+          emittedEventCount: 0,
+        },
+        policyRelevantGaps: {
+          recordCount: 0,
+          categoryCounts: [],
+          syscallCounts: [],
+          outcomeCounts: [],
+          examples: [],
+          truncatedExampleCount: 0,
+        },
+      })),
+      limitations: ["Synthetic degraded trace health."],
+    });
+    report.observationHealth = {
+      scope: health.scope,
+      surfaceId: health.surfaceId,
+      integrityStatus: "complete",
+      canonicalizationExecutionStatus: "completed",
+      policyRelevantGapStatus: "none_observed",
+      experimentIds,
+      degradedExperimentIds: [],
+      policyRelevantGapExperimentIds: [],
+      policyRelevantGapRecordCount: 0,
+      policyRelevantGapOutcomeCounts: [],
+      stringTruncationLineCount: 0,
+      artifact: "observation-health.json",
+    };
+    report.evidence.observationHealth = "observation-health.json";
+    const reportSource = `${JSON.stringify(report, null, 2)}\n`;
+    const healthSource = `${JSON.stringify(health, null, 2)}\n`;
+    await Promise.all([
+      writeFile(join(fixture.runDirectory, "report.json"), reportSource),
+      writeFile(
+        join(fixture.runDirectory, "observation-health.json"),
+        healthSource,
+      ),
+    ]);
+    await mutateManifest(fixture, (manifest) => {
+      const reportArtifact = manifest.artifacts.find(
+        (artifact) => artifact.path === "report.json",
+      );
+      if (reportArtifact === undefined) {
+        throw new Error("publisher fixture lacks report.json");
+      }
+      reportArtifact.sha256 = sha256(reportSource);
+      manifest.artifacts.push({
+        path: "observation-health.json",
+        sha256: sha256(healthSource),
+        mediaType: "application/json",
+      });
+    });
+
+    await expect(verifyRunBundle(fixture.runDirectory)).rejects.toThrow(
+      "observation-health.json identity and counters do not match report.json",
+    );
+
+    report.observationHealth.integrityStatus = "degraded";
+    report.observationHealth.degradedExperimentIds = experimentIds;
+    const consistentReportSource = `${JSON.stringify(report, null, 2)}\n`;
+    await writeFile(
+      join(fixture.runDirectory, "report.json"),
+      consistentReportSource,
+    );
+    await mutateManifest(fixture, (manifest) => {
+      const reportArtifact = manifest.artifacts.find(
+        (artifact) => artifact.path === "report.json",
+      );
+      if (reportArtifact === undefined) {
+        throw new Error("publisher fixture lacks report.json");
+      }
+      reportArtifact.sha256 = sha256(consistentReportSource);
+      manifest.artifacts.push({
+        path: "observation-health.json",
+        sha256: sha256(healthSource),
+        mediaType: "text/plain",
+      });
+    });
+    await expect(verifyRunBundle(fixture.runDirectory)).rejects.toThrow(
+      "run.json must label observation-health.json as application/json",
     );
   });
 });

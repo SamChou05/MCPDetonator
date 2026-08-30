@@ -86,6 +86,11 @@ async function createRunFixture(root, reportPath, tamperEvidence = false) {
   const report = reportV1Schema.parse(
     JSON.parse(await readFile(reportPath, "utf8")),
   );
+  // This storage verifier uses generic synthetic evidence. Optional
+  // observation-health cross-binding has dedicated bundle tests, so remove it
+  // when checked-in sample reports happen to include that artifact reference.
+  delete report.observationHealth;
+  delete report.evidence.observationHealth;
   const runId = report.runId;
   const configSha256 = targetConfigDigests.get(report.targetId);
   invariant(configSha256 !== undefined, "publisher fixture target is not allowlisted");

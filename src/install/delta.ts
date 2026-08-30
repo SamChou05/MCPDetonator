@@ -56,6 +56,15 @@ function comparableEvent(
   includedFileRoots: readonly string[],
 ): ComparableEvent | undefined {
   const effect = event.effect;
+  // Directory enumeration is retained as the closest V1 event shape and is
+  // separately declared as a trace-coverage gap. It is not evidence that file
+  // contents were read, so do not label it as an install fileRead delta.
+  if (
+    effect.kind === "file.read" &&
+    effect.operation === "directory_entries"
+  ) {
+    return undefined;
+  }
   if (effect.kind === "process.exec" && effect.outcome.status === "succeeded") {
     return {
       event,
@@ -86,6 +95,9 @@ function comparableEvent(
       fingerprint: JSON.stringify({
         kind: effect.kind,
         path: effect.path,
+        ...(effect.kind === "file.read" || effect.kind === "file.write"
+          ? { operation: effect.operation ?? "content" }
+          : {}),
         outcome: effect.outcome,
       }),
     };
@@ -159,6 +171,7 @@ export async function compareInstallLifecycle(options: {
       "A/B differences are observations, not proof that an install script is malicious.",
       "Package-manager nondeterminism can create differences unrelated to lifecycle scripts.",
       "File deltas are limited to the prepared target and synthetic profile roots.",
+      "A complete comparison status means supported canonical-event differencing completed; observation health may still report policy-relevant trace records that lack a lossless canonical event.",
     ],
   };
   await options.store.writeJson(

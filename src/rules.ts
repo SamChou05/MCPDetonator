@@ -122,6 +122,7 @@ export async function evaluateRuntimeRules(options: {
     for (const event of initializationEvents) {
       if (
         event.effect.kind !== "file.read" ||
+        event.effect.operation === "directory_entries" ||
         !initializationSensitivePaths.has(event.effect.path)
       ) {
         continue;
@@ -190,6 +191,12 @@ export async function evaluateRuntimeRules(options: {
         continue;
       }
       const effect = event.effect;
+      if (
+        effect.kind === "file.read" &&
+        effect.operation === "directory_entries"
+      ) {
+        continue;
+      }
       if (sensitiveInitializationEventIds.has(event.eventId)) {
         continue;
       }
@@ -350,6 +357,12 @@ export async function evaluateRuntimeRules(options: {
         event.effect.kind !== "file.read" &&
         event.effect.kind !== "file.write" &&
         event.effect.kind !== "file.delete"
+      ) {
+        continue;
+      }
+      if (
+        event.effect.kind === "file.read" &&
+        event.effect.operation === "directory_entries"
       ) {
         continue;
       }

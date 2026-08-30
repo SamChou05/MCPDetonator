@@ -32,6 +32,70 @@ describe("persisted v1 contracts", () => {
     expect(event.effect.kind).toBe("file.read");
   });
 
+  it("keeps directory enumeration distinct from file-content byte reads", () => {
+    const base = {
+      schema: "forge.event/v1",
+      eventId: "evt-directory-42",
+      runId: "run-7",
+      experimentId: "summarize-file",
+      sequence: 43,
+      timestamp: "2026-08-29T18:20:00.123Z",
+      processRef: "run-7:pid-391",
+      effect: {
+        kind: "file.read",
+        path: "/sandbox/workspace",
+        operation: "directory_entries",
+        outcome: { status: "succeeded" },
+      },
+      source: {
+        collector: "strace",
+        rawRef: "raw/strace.391:85",
+      },
+    } as const;
+
+    expect(observedEventV1Schema.safeParse(base).success).toBe(true);
+    expect(
+      observedEventV1Schema.safeParse({
+        ...base,
+        effect: { ...base.effect, bytes: 64 },
+      }).success,
+    ).toBe(false);
+    expect(
+      observedEventV1Schema.safeParse({
+        ...base,
+        effect: {
+          kind: "file.write",
+          path: "/sandbox/workspace",
+          operation: "directory_entries",
+          outcome: { status: "succeeded" },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      observedEventV1Schema.safeParse({
+        ...base,
+        effect: {
+          kind: "file.write",
+          path: "/sandbox/workspace/output.txt",
+          operation: "truncate",
+          outcome: { status: "succeeded" },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      observedEventV1Schema.safeParse({
+        ...base,
+        effect: {
+          kind: "file.write",
+          path: "/sandbox/workspace/output.txt",
+          operation: "truncate",
+          bytes: 12,
+          outcome: { status: "succeeded" },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it("keeps attribution separate from the observed event", () => {
     const attribution = attributionV1Schema.parse({
       schema: "forge.attribution/v1",

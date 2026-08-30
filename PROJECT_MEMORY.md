@@ -1095,3 +1095,128 @@ Completed: 2026-08-30
 - The modified `.gitignore`, concurrent `ImplementationPlan.md`, generated
   `agent-runs/`, unseen-MCP holdout directory, and its untracked test remain
   out of scope and must remain unstaged and uncommitted.
+
+## Active deterministic trace-coverage wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `codex/trace-coverage-v1` at `7d904b0`
+  (`docs: record publisher milestone`).
+- Starting worktree: clean. This isolated worktree was created because the
+  primary `main` worktree contains an active dashboard wave and the separate
+  `/private/tmp/forge-v2-outcome.oS4qJ8` worktree contains active V2 controlled
+  result-content work. Neither concurrent scope is owned by this wave.
+- Goal: make the selected `strace` observation surface coverage-accounted,
+  turn low-ambiguity high-value syscall families into canonical evidence, and
+  represent harder policy-relevant operations as explicit coverage gaps rather
+  than silently clean non-observation.
+- Root owns shared contracts, analysis/report integration, this ledger, Git
+  coordination, and final verification. Parallel editing scopes are disjoint:
+  parser health owns `src/observe/strace-parser.ts`, the trace entrypoint, and
+  a new focused parser-health test; syscall normalization owns
+  `src/observe/strace-normalizer.ts` and its focused existing test. A separate
+  reviewer is read-only.
+- No agent may edit V2 result-content files, dashboard files, publisher files,
+  or another agent's active scope. Root will not stage or commit until every
+  editing agent has completed.
+- Scope amendment after read-only integration review: root may make the minimal
+  `src/publish/bundle.ts` evidence-reference update (plus a focused test) needed
+  to require the new report-bound health artifact in completed publication
+  bundles. No parallel task owns those paths; broader publisher behavior remains
+  out of scope.
+- Final read-only audit wave baseline: commit remains `7d904b0`; the dirty
+  worktree consists only of the trace-coverage implementation and refreshed
+  verified sample reports listed by `git status --short` on 2026-08-30. Audit
+  agents may inspect but must not edit, stage, or commit any path.
+- Scope amendments owned by root: bind health into the report, publication
+  bundle, real sample refresh, E2E/publisher verifiers, directory-enumeration
+  policy consumers, install comparison, compact file-operation counts, and the
+  public README/limitations documents. These are direct consumers of the new
+  evidence contract and no active parallel task owned the paths.
+
+Completed behavior and handoffs:
+
+- The parser now exactly partitions every nonempty line emitted by the selected
+  filter into parsed syscall/signal-termination, recognized exit/signal-delivery
+  control, unfinished, resumed, or malformed counts. It separately records
+  string abbreviation, bounded raw references, and per-file terminal markers.
+- The selected filter and normalizer now cover high-value descriptor, directory,
+  xattr, file-transfer, legacy/uring I/O, mapping, endpoint, mutation, and
+  escape/interference families. Canonical additions include `execveat`,
+  directory enumeration, truncation, and correlated bind/listen evidence.
+  Ambiguous return text no longer becomes false successful canonical evidence.
+- Descriptor correlation distinguishes shared/copied `CLONE_FILES` tables and
+  handles close, close-range/unshare/CLOEXEC, dup, fcntl duplication, and target
+  reuse conservatively. The final audit added successful unresolved metadata,
+  conditional O_CREAT+O_TRUNC creation, failed relevant mmap, and ordinary
+  TCP/UDP descriptor I/O to explicit gap accounting.
+- `observation-health.json` is schema validated and report/manifest/hash bound.
+  It records the complete captured-syscall histogram, exact structural health,
+  canonicalization execution/event counts, and bounded selected gap examples
+  with exact category/syscall/outcome totals. Contract refinements reject
+  aggregate/example, trace-detail, cross-experiment, and report/artifact
+  contradictions.
+- Directory enumeration remains a labeled canonical event plus an
+  alternate-access gap, but deterministic read/scope/comparison/install
+  consumers do not treat it as file-content proof. Additive
+  `fileOperationCounts` partition compact read/write totals into content,
+  directory enumeration, and truncation.
+- Failed analyses retain the failed manifest and partial artifacts, best-effort
+  write incomplete health, and do not synthesize a completed report. Current
+  successful analyzes always include health; report V1 keeps it optional for
+  legacy compatibility and publication validates it whenever present.
+- Sample refresh now uses bounded FD-pinned regular-file reads, no-follow and
+  containment/state checks, exact manifest rows, and health/report/event-count
+  cross-binding. Its residual intermediate-component race limitation is
+  documented by the handoff because Node lacks portable atomic openat traversal.
+- Two independent final read-only audits reported no remaining high-severity or
+  material correctness issue after the audit findings above were fixed.
+
+Verification for this milestone:
+
+- `npm run typecheck`: passed.
+- `npm test`: passed, 67 files / 558 tests.
+- `npm run build`: passed.
+- `npm run verify:e2e`: passed against the deceptive fixture and official
+  filesystem MCP.
+  - Observer image:
+    `sha256:c491d431445d2e28b03a69e81c0c46e5c7d4e49a893183694a9f52d8a35ef767`
+  - Deceptive run: `runs/run-20260830214347-1b3001cf`
+  - Filesystem run: `runs/run-20260830214423-2072a19a`
+- Checked-in sample reports were refreshed from those exact runs. The official
+  filesystem run has complete selected-surface structural integrity, completed
+  canonicalization, and 57,328 selected gap records; these are coverage records,
+  not findings.
+- `npm run verify:publisher`: passed with 19 artifacts, 5 findings, idempotent
+  retry, and rejection of tampered evidence before publication.
+- Focused parser/normalizer/health/publication/sample suites, Linux filter
+  acceptance, `git diff --check`, shell syntax, and JavaScript syntax checks
+  passed during the wave.
+
+Post-rebase integration verification:
+
+- Rebased the milestone onto `e2f1729` (`feat: add bounded dashboard run
+  history`) and preserved both publisher/dashboard behavior and trace-health
+  bundle validation.
+- Synchronized the reviewed dashboard policy and exact dashboard fixture tests
+  with the refreshed sample report hashes and identities. The checked-in
+  samples remain the hash-bound reports from the trace wave above; the rebase
+  did not change the trace producer or report semantics.
+- `npm run typecheck`, `npm run build`, and `npm run verify:publisher` passed.
+  Publisher verification retained 19 artifacts, 5 findings, idempotent
+  publish-driven dashboard refresh, and pre-publication tamper rejection.
+- `npm test` passed, 71 files / 604 tests.
+- A fresh `npm run verify:e2e` passed on the integrated branch:
+  - Observer image:
+    `sha256:7ad6c08789925fbe5c964f7522d49c419f1aff81905c03653ac086c4946bcce3`
+  - Deceptive run: `runs/run-20260830214903-6f684acf`
+  - Filesystem run: `runs/run-20260830214939-db0a53ba`
+
+Residual scope is explicit: selected-filter accounting is not all-syscall
+capture; the gap taxonomy is not exhaustive; raw trace ingestion is batch based
+without its own aggregate byte/line quota; descriptor correlation is best
+effort across uncommon transfer/exec/unshare cases; thread-local `exit` is not
+guessed into a process exit; and legacy report V1 can omit health.
+
+Status: complete. The implementation commit is the commit containing this
+ledger entry (`feat: expand and account for deterministic trace coverage`).

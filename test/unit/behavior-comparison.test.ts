@@ -692,6 +692,15 @@ describe("advertised/static/observed/operator-scope comparison", () => {
         },
       ],
       [
+        "evt-directory-enumeration",
+        {
+          kind: "file.read",
+          path: "/sandbox/workspace/allowed",
+          operation: "directory_entries",
+          outcome: { status: "succeeded" },
+        },
+      ],
+      [
         "evt-delete-write-scope",
         {
           kind: "file.delete",
@@ -844,6 +853,9 @@ describe("advertised/static/observed/operator-scope comparison", () => {
         "evt-read-prefix-escape",
       ],
     });
+    expect(row(rows, "filesystem_access").runtimeEventIds).not.toContain(
+      "evt-directory-enumeration",
+    );
     expect(row(rows, "network_access")).toMatchObject({
       withinOperatorScopeEventIds: ["evt-network-within"],
       outsideOperatorScopeEventIds: [
@@ -863,6 +875,9 @@ describe("advertised/static/observed/operator-scope comparison", () => {
     });
     expect(comparison.limitations).toContain(
       "A file.delete event is evaluated against configured write scope because the current operator scope has no separate delete permission.",
+    );
+    expect(comparison.limitations).toContain(
+      "Directory enumeration is retained in canonical events and observation health, but it is not treated as file-content evidence in this comparison.",
     );
   });
 
