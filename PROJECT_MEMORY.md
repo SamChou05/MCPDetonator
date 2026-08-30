@@ -1118,3 +1118,6 @@ Known retained limits:
 
 Suggested generalized-wave commit subject:
 `feat: generalize reviewed V2 MCP enrollment`.
+
+Completed generalized-wave commit:
+`ef93608` (`feat: generalize reviewed V2 MCP enrollment`).
