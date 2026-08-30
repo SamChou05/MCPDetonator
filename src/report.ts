@@ -25,6 +25,7 @@ import {
 import { sha256, type EvidenceStore } from "./evidence-store.js";
 import {
   destinationMatchesExpectedScope,
+  isRoutineNameServiceConnection,
   pathMatchesExpectedScope,
 } from "./expected-scope.js";
 import {
@@ -638,7 +639,7 @@ export function compareStaticAndRuntime(options: {
     if (
       (event.effect.kind === "network.connect_attempt" ||
         event.effect.kind === "network.listen") &&
-      event.effect.protocol !== "unix"
+      !isRoutineNameServiceConnection(event.effect)
     ) {
       addRuntimeEvent("network_access", event);
     }
@@ -693,7 +694,7 @@ export function compareStaticAndRuntime(options: {
     rows,
     limitations: [
       "The static scan is bounded lexical analysis of package-authored source and excludes dependency source.",
-      "Runtime comparison includes supported failed attempts. Filesystem comparison is limited to normalized reads, writes, and deletes under the synthetic home/workspace roots, so open-only activity is excluded; process comparison excludes the root server exec; network comparison excludes Unix-domain sockets.",
+      "Runtime comparison includes supported failed attempts. Filesystem comparison is limited to normalized reads, writes, and deletes under the synthetic home/workspace roots, so open-only activity is excluded; process comparison excludes the root server exec; network comparison includes Unix-domain sockets except routine outbound NSCD connection attempts.",
       "Environment, dynamic-code, dynamic-module, and native-code capabilities are not directly comparable with the current normalized runtime evidence.",
       "Agreement or disagreement is evidence about selected inputs, not a verdict about intent or safety.",
     ],

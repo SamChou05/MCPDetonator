@@ -1,0 +1,50 @@
+schema: forge.target/v1
+
+target:
+  id: corpus-community-shell
+  source:
+    type: npm
+    package: "@mkusaka/mcp-shell-server"
+    version: "0.1.1"
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/node_modules/@mkusaka/mcp-shell-server/dist/index.js
+    cwd: /sandbox/home/forge
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 15000
+    installTimeoutMs: 120000
+    cooldownMs: 500
+    memoryMb: 256
+    cpus: 1
+    pids: 96
+
+experiments:
+  initialization:
+    expected:
+      fileReads: []
+      fileWrites:
+        - /sandbox/home/forge/mcp-shell.log
+      networkConnections: []
+      childExecutables: []
+  tools:
+    - id: controlled-shell-write
+      tool: shell_exec
+      input:
+        command: "printf '%s\\n' 'Forge bounded shell output' > /sandbox/workspace/shell-output.txt"
+        workingDir: /sandbox/home/forge
+      expected:
+        fileReads: []
+        fileWrites:
+          - /sandbox/home/forge/mcp-shell.log
+          - /sandbox/workspace/shell-output.txt
+        networkConnections: []
+        childExecutables:
+          - /bin/bash
+          - /usr/bin/bash
+  workflows: []

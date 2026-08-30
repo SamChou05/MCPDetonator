@@ -753,7 +753,7 @@
     ],
     "limitations": [
       "The static scan is bounded lexical analysis of package-authored source and excludes dependency source.",
-      "Runtime comparison includes supported failed attempts. Filesystem comparison is limited to normalized reads, writes, and deletes under the synthetic home/workspace roots, so open-only activity is excluded; process comparison excludes the root server exec; network comparison excludes Unix-domain sockets.",
+      "Runtime comparison includes supported failed attempts. Filesystem comparison is limited to normalized reads, writes, and deletes under the synthetic home/workspace roots, so open-only activity is excluded; process comparison excludes the root server exec; network comparison includes Unix-domain sockets except routine outbound NSCD connection attempts.",
       "Environment, dynamic-code, dynamic-module, and native-code capabilities are not directly comparable with the current normalized runtime evidence.",
       "Agreement or disagreement is evidence about selected inputs, not a verdict about intent or safety."
     ]
@@ -950,7 +950,7 @@
       "An advertised state of not_observed means no per-experiment claim assessment was available for the configured tool; not_claimed means an available bounded assessment produced no matching claim.",
       "Runtime comparison covers selected lifecycle phases and inputs only; non-observation is not proof of universal absence.",
       "Runtime correlation uses phase timing and inferred process origin; temporalOverlapEventIds retain active tool-phase observations that are not unique causal attribution to the tool handler.",
-      "Filesystem runtime evidence is limited to synthetic home/workspace roots, root-server exec is excluded, and Unix-domain socket activity is excluded.",
+      "Filesystem runtime evidence is limited to synthetic home/workspace roots and root-server exec is excluded. Network evidence includes Unix-domain sockets except routine outbound NSCD connection attempts.",
       "A file.open event does not encode access mode, so it is within configured scope when its path is allowed for either reading or writing.",
       "Directory enumeration is retained in canonical events and observation health, but it is not treated as file-content evidence in this comparison.",
       "A file.delete event is evaluated against configured write scope because the current operator scope has no separate delete permission.",

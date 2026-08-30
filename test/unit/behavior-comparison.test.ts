@@ -199,7 +199,7 @@ const profileRoots = {
 };
 
 describe("advertised/static/observed/operator-scope comparison", () => {
-  it("keeps failed lifecycle attempts while excluding root exec, Unix sockets, and unrelated cooldown origins", () => {
+  it("keeps failed lifecycle attempts while excluding root exec, routine NSCD lookups, and unrelated cooldown origins", () => {
     const targetConfig = config({
       initialization: true,
       tools: [{ id: "empty-approval", tool: "inspect" }],
@@ -388,6 +388,28 @@ describe("advertised/static/observed/operator-scope comparison", () => {
           outcome: { status: "failed", errno: "ENETUNREACH" },
         },
       }),
+      event({
+        eventId: "evt-tool-unix-sensitive",
+        experimentId: "empty-approval",
+        sequence: 13,
+        effect: {
+          kind: "network.connect_attempt",
+          protocol: "unix",
+          address: "/var/run/docker.sock",
+          outcome: { status: "failed", errno: "EACCES" },
+        },
+      }),
+      event({
+        eventId: "evt-tool-nscd-listen",
+        experimentId: "empty-approval",
+        sequence: 14,
+        effect: {
+          kind: "network.listen",
+          protocol: "unix",
+          address: "/var/run/nscd/socket",
+          outcome: { status: "succeeded" },
+        },
+      }),
     ];
     const activePhaseByEvent = new Map<string, [string, string?]>([
       ["evt-init-open-failed", ["baseline-init"]],
@@ -400,6 +422,8 @@ describe("advertised/static/observed/operator-scope comparison", () => {
       ["evt-tool-child-start", ["tool-call"]],
       ["evt-tool-read-failed", ["tool-call"]],
       ["evt-tool-network-failed", ["tool-call"]],
+      ["evt-tool-unix-sensitive", ["tool-call"]],
+      ["evt-tool-nscd-listen", ["tool-call"]],
       ["evt-tool-exec-failed", ["tool-call"]],
       ["evt-tool-cooldown-write", ["tool-cooldown", "tool-call"]],
       [
@@ -486,8 +510,16 @@ describe("advertised/static/observed/operator-scope comparison", () => {
     });
     expect(row(toolRows, "network_access")).toMatchObject({
       advertisedState: "not_claimed",
-      runtimeEventIds: ["evt-tool-network-failed"],
-      outsideOperatorScopeEventIds: ["evt-tool-network-failed"],
+      runtimeEventIds: [
+        "evt-tool-network-failed",
+        "evt-tool-nscd-listen",
+        "evt-tool-unix-sensitive",
+      ],
+      outsideOperatorScopeEventIds: [
+        "evt-tool-network-failed",
+        "evt-tool-nscd-listen",
+        "evt-tool-unix-sensitive",
+      ],
     });
     expect(row(toolRows, "process_execution")).toMatchObject({
       runtimeEventIds: ["evt-tool-exec-failed"],

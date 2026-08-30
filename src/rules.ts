@@ -12,6 +12,7 @@ import {
 import type { EvidenceStore } from "./evidence-store.js";
 import {
   destinationMatchesExpectedScope,
+  isRoutineNameServiceConnection,
   pathMatchesExpectedScope,
 } from "./expected-scope.js";
 
@@ -300,7 +301,7 @@ export async function evaluateRuntimeRules(options: {
     const unexpectedConnections = initializationEvents.filter(
       (event) =>
         event.effect.kind === "network.connect_attempt" &&
-        event.effect.protocol !== "unix" &&
+        !isRoutineNameServiceConnection(event.effect) &&
         !destinationMatchesExpectedScope(
           event.effect.address,
           event.effect.port,
@@ -460,6 +461,7 @@ export async function evaluateRuntimeRules(options: {
     const unexpectedConnections = activeEvents.filter(
       (event) =>
         event.effect.kind === "network.connect_attempt" &&
+        !isRoutineNameServiceConnection(event.effect) &&
         !destinationMatchesExpectedScope(
           event.effect.address,
           event.effect.port,
@@ -515,8 +517,9 @@ export async function evaluateRuntimeRules(options: {
           return syntheticRoots.some((root) => pathIsInside(path, root));
         }
         case "network.connect_attempt":
+          return !isRoutineNameServiceConnection(event.effect);
         case "network.listen":
-          return event.effect.protocol !== "unix";
+          return true;
         case "process.exec":
           return event.effect.outcome.status === "succeeded";
         default:

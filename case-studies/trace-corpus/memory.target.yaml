@@ -1,0 +1,51 @@
+schema: forge.target/v1
+
+target:
+  id: corpus-official-memory
+  source:
+    type: npm
+    package: "@modelcontextprotocol/server-memory"
+    version: "2026.7.4"
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/node_modules/@modelcontextprotocol/server-memory/dist/index.js
+    env:
+      MEMORY_FILE_PATH: /sandbox/workspace/memory.jsonl
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 15000
+    installTimeoutMs: 120000
+    cooldownMs: 500
+    memoryMb: 256
+    cpus: 1
+    pids: 64
+
+experiments:
+  initialization:
+    expected:
+      fileReads: []
+      fileWrites: []
+      networkConnections: []
+      childExecutables: []
+  tools:
+    - id: create-synthetic-entity
+      tool: create_entities
+      input:
+        entities:
+          - name: ForgeSyntheticEntity
+            entityType: synthetic_test
+            observations:
+              - Bounded trace-corpus observation
+      expected:
+        fileReads:
+          - /sandbox/workspace/memory.jsonl
+        fileWrites:
+          - /sandbox/workspace/memory.jsonl
+        networkConnections: []
+        childExecutables: []
+  workflows: []

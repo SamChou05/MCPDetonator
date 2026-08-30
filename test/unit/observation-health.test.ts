@@ -24,8 +24,11 @@ describe("observation health", () => {
         '1700000000.000001 mkdir("/sandbox/workspace/new-directory", 0700) = 0',
         '1700000000.000002 sendto(3<NETLINK:[ROUTE:42]>, "route", 5, 0, {sa_family=AF_NETLINK}, 12) = 5',
         '1700000000.000003 getdents64(4</sandbox/workspace>, [{d_ino=1, d_name="report.txt"}], 32768) = 32',
-        "1700000000.000004 exit_group(0) = ?",
-        "1700000000.000005 +++ exited with 0 +++",
+        "1700000000.000004 io_uring_setup(256, {flags=0}) = -1 EPERM (Operation not permitted)",
+        "1700000000.000005 io_uring_setup(256, {flags=0}) = 7",
+        "1700000000.000006 io_uring_setup(256, {flags=0}) = ? ERESTARTSYS (To be restarted if SA_RESTART is set)",
+        "1700000000.000007 exit_group(0) = ?",
+        "1700000000.000008 +++ exited with 0 +++",
       ].join("\n"),
       "utf8",
     );
@@ -55,11 +58,12 @@ describe("observation health", () => {
     });
     expect(health.experiments[0]).toMatchObject({
       experimentId: "health-tool",
-      nonemptyLineCount: 5,
-      parsedSyscallRecordCount: 4,
+      nonemptyLineCount: 8,
+      parsedSyscallRecordCount: 7,
       capturedSyscallCounts: [
         { syscall: "exit_group", recordCount: 1 },
         { syscall: "getdents64", recordCount: 1 },
+        { syscall: "io_uring_setup", recordCount: 3 },
         { syscall: "mkdir", recordCount: 1 },
         { syscall: "sendto", recordCount: 1 },
       ],
@@ -70,16 +74,23 @@ describe("observation health", () => {
         emittedEventCount: events.length,
       },
       policyRelevantGaps: {
-        recordCount: 2,
+        recordCount: 5,
         categoryCounts: [
           { category: "filesystem_mutation", recordCount: 1 },
+          { category: "opaque_io", recordCount: 2 },
+          { category: "failed_capability_probe", recordCount: 1 },
           { category: "alternate_file_access", recordCount: 1 },
         ],
         syscallCounts: [
           { syscall: "getdents64", recordCount: 1 },
+          { syscall: "io_uring_setup", recordCount: 3 },
           { syscall: "mkdir", recordCount: 1 },
         ],
-        outcomeCounts: [{ outcome: "succeeded", recordCount: 2 }],
+        outcomeCounts: [
+          { outcome: "succeeded", recordCount: 3 },
+          { outcome: "failed", recordCount: 1 },
+          { outcome: "unknown", recordCount: 1 },
+        ],
         truncatedExampleCount: 0,
       },
     });

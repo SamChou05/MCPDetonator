@@ -174,6 +174,7 @@ export type PolicyRelevantTraceGapCategory =
   | "data_transfer"
   | "escape_or_interference"
   | "opaque_io"
+  | "failed_capability_probe"
   | "network_endpoint"
   | "alternate_file_access"
   | "indeterminate_outcome"
@@ -1142,6 +1143,7 @@ const policyRelevantTraceGapCategoryOrder: readonly PolicyRelevantTraceGapCatego
   "data_transfer",
   "escape_or_interference",
   "opaque_io",
+  "failed_capability_probe",
   "network_endpoint",
   "alternate_file_access",
   "indeterminate_outcome",
@@ -1743,6 +1745,15 @@ function policyRelevantTraceGapCategory(
       return undefined;
     }
     return "escape_or_interference";
+  }
+  if (
+    record.syscall === "io_uring_setup" &&
+    syscallOutcome(record.resultText) === "failed"
+  ) {
+    // No ring descriptor exists after a definitive setup failure, so this
+    // record cannot represent opaque ring I/O. The category describes the
+    // failed capability setup attempt without inferring why it was made.
+    return "failed_capability_probe";
   }
   if (unsupportedOpaqueIoSyscalls.has(record.syscall)) {
     return "opaque_io";

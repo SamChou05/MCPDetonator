@@ -94,6 +94,10 @@ Our goal is to measure your ability to make intelligent design choices and think
 
 - [`Prototype.md`](Prototype.md) explains the implemented architecture,
   evidence model, verified cases, limitations, and core demo.
+- [`case-studies/trace-corpus/README.md`](case-studies/trace-corpus/README.md)
+  provides four pinned public MCP targets and a manifest-bound coverage
+  summarizer; the [recorded experiment](experiments/baseline/trace-coverage-corpus-2026-08-30.md)
+  explains which gaps warranted implementation work.
 - [`PublisherDemo.md`](PublisherDemo.md) runs the optional synthetic
   S3/PostgreSQL completed-run publisher locally.
 - [`HardenedEvidenceInfrastructurePlan.md`](HardenedEvidenceInfrastructurePlan.md)

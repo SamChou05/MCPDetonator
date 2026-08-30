@@ -213,7 +213,8 @@ test settings
    records bounded examples and exact counts for a selected taxonomy of
    policy-relevant operations it cannot yet represent faithfully, including
    filesystem mutations, alternate file access, data transfer, opaque I/O,
-   endpoint-establishment semantics, escape/interference attempts, and
+   definitively failed capability probes, endpoint-establishment semantics,
+   escape/interference attempts, and
    unresolved relevant paths, truncated relied-on arguments, or indeterminate
    syscall outcomes. These are coverage gaps, not automatic findings.
    Directory enumeration is retained as an explicitly labeled read-like event
@@ -246,15 +247,20 @@ test settings
    - Reading or attempting to read a fake credential during MCP startup or its
      pre-tool observation window.
    - Exceeding an optional operator-authored initialization scope for synthetic
-     files, child programs, or non-local network destinations.
+     files, child programs, or network destinations, including non-routine Unix
+     socket paths.
    - Reading, writing, or deleting a file outside the allowed list for a tool;
      deletions use the configured write scope.
    - Starting a program outside the allowed list.
-   - Trying an unexpected network connection.
+   - Trying an unexpected network connection, including a Unix domain socket
+     not listed in the expected scope. Outbound connection attempts to the
+     routine NSCD endpoints `/run/nscd/socket` and `/var/run/nscd/socket` are
+     retained as canonical evidence but exempted from this policy check;
+     listeners on those paths remain network evidence.
    - A process created by a tool continuing to act after the tool returned.
 
    Forge also compares four deliberately separate facts for file access, child
-   programs, and non-local network use: whether the tool interface made a
+   programs, and network use: whether the tool interface made a
    bounded positive claim, whether package-authored source contained a lexical
    signal, whether the selected runtime phases produced matching events, and
    whether those exact events fell inside the operator-authored scope. Tool

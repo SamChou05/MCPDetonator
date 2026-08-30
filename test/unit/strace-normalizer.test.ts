@@ -1294,6 +1294,77 @@ describe("strace parsing and normalization", () => {
     });
   });
 
+  it("separates failed io_uring setup probes from opaque I/O", () => {
+    const records = parseRecords([
+      "1700000011.000001 io_uring_setup(256, {flags=0}) = 7",
+      "1700000011.000002 io_uring_setup(256, {flags=0}) = -1 EPERM (Operation not permitted)",
+      "1700000011.000003 io_uring_setup(256, {flags=0}) = ? ERESTARTSYS (To be restarted if SA_RESTART is set)",
+      "1700000011.000004 io_uring_enter(7, 1, 0, 0, NULL, 0) = -1 EINVAL (Invalid argument)",
+      "1700000011.000005 io_uring_register(7, IORING_REGISTER_FILES, 0x0, 1) = -1 EBADF (Bad file descriptor)",
+      "1700000011.000006 io_setup(128, [0x7f00]) = -1 EPERM (Operation not permitted)",
+    ]);
+
+    expect(
+      classifyPolicyRelevantTraceGaps(records, { maxExamples: 10 }),
+    ).toEqual({
+      recordCount: 6,
+      categoryCounts: [
+        { category: "opaque_io", recordCount: 5 },
+        { category: "failed_capability_probe", recordCount: 1 },
+      ],
+      syscallCounts: [
+        { syscall: "io_setup", recordCount: 1 },
+        { syscall: "io_uring_enter", recordCount: 1 },
+        { syscall: "io_uring_register", recordCount: 1 },
+        { syscall: "io_uring_setup", recordCount: 3 },
+      ],
+      outcomeCounts: [
+        { outcome: "succeeded", recordCount: 1 },
+        { outcome: "failed", recordCount: 4 },
+        { outcome: "unknown", recordCount: 1 },
+      ],
+      examples: [
+        {
+          category: "opaque_io",
+          syscall: "io_uring_setup",
+          rawRef: "raw/gap-tool/strace.42:1",
+          outcome: "succeeded",
+        },
+        {
+          category: "failed_capability_probe",
+          syscall: "io_uring_setup",
+          rawRef: "raw/gap-tool/strace.42:2",
+          outcome: "failed",
+        },
+        {
+          category: "opaque_io",
+          syscall: "io_uring_setup",
+          rawRef: "raw/gap-tool/strace.42:3",
+          outcome: "unknown",
+        },
+        {
+          category: "opaque_io",
+          syscall: "io_uring_enter",
+          rawRef: "raw/gap-tool/strace.42:4",
+          outcome: "failed",
+        },
+        {
+          category: "opaque_io",
+          syscall: "io_uring_register",
+          rawRef: "raw/gap-tool/strace.42:5",
+          outcome: "failed",
+        },
+        {
+          category: "opaque_io",
+          syscall: "io_setup",
+          rawRef: "raw/gap-tool/strace.42:6",
+          outcome: "failed",
+        },
+      ],
+      truncatedExampleCount: 0,
+    });
+  });
+
   it("excludes signal-zero probes using each syscall's signal argument", () => {
     const records = parseRecords([
       "1700000007.000001 kill(101, 0) = 0",

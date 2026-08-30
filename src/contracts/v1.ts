@@ -416,6 +416,7 @@ const policyRelevantTraceGapCategorySchema = z.enum([
   "data_transfer",
   "escape_or_interference",
   "opaque_io",
+  "failed_capability_probe",
   "network_endpoint",
   "alternate_file_access",
   "indeterminate_outcome",

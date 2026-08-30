@@ -233,6 +233,173 @@ describe("attribution and runtime rules", () => {
     expect(prefixAllowedFindings).toHaveLength(0);
   });
 
+  it("ignores routine NSCD lookups but reports other unexpected Unix sockets", async () => {
+    const runId = "run-tool-unix-socket";
+    const experimentId = "socket-tool";
+    const root = await mkdtemp(join(tmpdir(), "forge-tool-unix-socket-"));
+    const store = await EvidenceStore.create(root, runId);
+    const config = targetConfigV1Schema.parse({
+      schema: "forge.target/v1",
+      target: {
+        id: "tool-unix-socket-fixture",
+        source: { type: "fixture", path: "." },
+        runtime: { transport: "stdio", command: "node", args: ["server.js"] },
+      },
+      sandbox: {
+        profile: "developer-v1",
+        network: "blocked",
+        limits: {
+          timeoutMs: 1_000,
+          cooldownMs: 0,
+          memoryMb: 128,
+          cpus: 1,
+          pids: 32,
+        },
+      },
+      experiments: {
+        initialization: false,
+        tools: [
+          {
+            id: experimentId,
+            tool: "socket_tool",
+            input: {},
+            expected: {
+              fileReads: [],
+              fileWrites: [],
+              networkConnections: [],
+              childExecutables: [],
+            },
+          },
+        ],
+        workflows: [],
+      },
+    });
+    const phase = phaseV1Schema.parse({
+      schema: "forge.phase/v1",
+      phaseId: `${experimentId}-tool-1`,
+      runId,
+      experimentId,
+      kind: "tool",
+      name: "call socket_tool",
+      toolName: "socket_tool",
+      startedAt: "2026-08-30T22:00:00.000Z",
+      endedAt: "2026-08-30T22:00:01.000Z",
+      status: "completed",
+    });
+    const event = (
+      eventId: string,
+      sequence: number,
+      effect: ObservedEffectV1,
+    ) =>
+      observedEventV1Schema.parse({
+        schema: "forge.event/v1",
+        eventId,
+        runId,
+        experimentId,
+        sequence,
+        timestamp: `2026-08-30T22:00:00.${sequence + 1}00Z`,
+        processRef: `${runId}:${experimentId}:pid-10`,
+        effect,
+        source: {
+          collector: "strace",
+          rawRef: `raw/${experimentId}/strace.10:${sequence + 1}`,
+        },
+      });
+    const routineUnixConnection = event("evt-tool-nscd-network", 0, {
+      kind: "network.connect_attempt",
+      protocol: "unix",
+      address: "/var/run/nscd/socket",
+      outcome: { status: "failed", errno: "ENOENT" },
+    });
+    const sensitiveUnixConnection = event("evt-tool-docker-network", 1, {
+      kind: "network.connect_attempt",
+      protocol: "unix",
+      address: "/var/run/docker.sock",
+      outcome: { status: "failed", errno: "EACCES" },
+    });
+    const tcpConnection = event("evt-tool-tcp-network", 2, {
+      kind: "network.connect_attempt",
+      protocol: "tcp",
+      address: "198.51.100.9",
+      port: 443,
+      outcome: { status: "failed", errno: "ENETUNREACH" },
+    });
+    const events = [
+      routineUnixConnection,
+      sensitiveUnixConnection,
+      tcpConnection,
+    ];
+    const attributions = await attributeEvents({
+      store,
+      events,
+      phases: [phase],
+      isolatedToolExperimentIds: new Set([experimentId]),
+    });
+    const findings = await evaluateRuntimeRules({
+      store,
+      runId,
+      config,
+      events,
+      phases: [phase],
+      attributions,
+      sensitivePathsByExperiment: new Map([[experimentId, new Set()]]),
+      profileRootsByExperiment: new Map([
+        [experimentId, { home: "/tool/home", workspace: "/tool/workspace" }],
+      ]),
+    });
+
+    expect(findings).toHaveLength(2);
+    expect(findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleId: "runtime.unexpected_network_attempt",
+          eventIds: [sensitiveUnixConnection.eventId],
+        }),
+        expect.objectContaining({
+          ruleId: "runtime.unexpected_network_attempt",
+          eventIds: [tcpConnection.eventId],
+        }),
+      ]),
+    );
+    expect(findings.flatMap((value) => value.eventIds)).not.toContain(
+      routineUnixConnection.eventId,
+    );
+
+    const configuredTool = config.experiments.tools[0];
+    if (configuredTool === undefined) {
+      throw new Error("socket test tool was not configured");
+    }
+    const allowedUnixConfig = targetConfigV1Schema.parse({
+      ...config,
+      experiments: {
+        ...config.experiments,
+        tools: [
+          {
+            ...configuredTool,
+            expected: {
+              ...configuredTool.expected,
+              networkConnections: [{ address: "/var/run/docker.sock" }],
+            },
+          },
+        ],
+      },
+    });
+    const allowedUnixFindings = await evaluateRuntimeRules({
+      store,
+      runId,
+      config: allowedUnixConfig,
+      events,
+      phases: [phase],
+      attributions,
+      sensitivePathsByExperiment: new Map([[experimentId, new Set()]]),
+      profileRootsByExperiment: new Map([
+        [experimentId, { home: "/tool/home", workspace: "/tool/workspace" }],
+      ]),
+    });
+    expect(allowedUnixFindings).toHaveLength(1);
+    expect(allowedUnixFindings[0]?.eventIds).toEqual([tcpConnection.eventId]);
+  });
+
   it("surfaces initialization credential reads and tool-originated cooldown activity", async () => {
     const root = await mkdtemp(join(tmpdir(), "forge-lifecycle-rules-"));
     const store = await EvidenceStore.create(root, "run-lifecycle");
@@ -372,11 +539,45 @@ describe("attribution and runtime rules", () => {
       },
       source: { collector: "strace", rawRef: "raw/delayed-tool/strace.20:2" },
     });
+    const delayedSensitiveSocket = observedEventV1Schema.parse({
+      schema: "forge.event/v1",
+      eventId: "evt-delayed-docker-socket",
+      runId: "run-lifecycle",
+      experimentId: "delayed-tool",
+      sequence: 3,
+      timestamp: "2026-08-29T20:00:03.400Z",
+      processRef: "run-lifecycle:delayed-tool:pid-20",
+      effect: {
+        kind: "network.connect_attempt",
+        protocol: "unix",
+        address: "/var/run/docker.sock",
+        outcome: { status: "failed", errno: "EACCES" },
+      },
+      source: { collector: "strace", rawRef: "raw/delayed-tool/strace.20:3" },
+    });
+    const delayedNscdListener = observedEventV1Schema.parse({
+      schema: "forge.event/v1",
+      eventId: "evt-delayed-nscd-listener",
+      runId: "run-lifecycle",
+      experimentId: "delayed-tool",
+      sequence: 4,
+      timestamp: "2026-08-29T20:00:03.500Z",
+      processRef: "run-lifecycle:delayed-tool:pid-20",
+      effect: {
+        kind: "network.listen",
+        protocol: "unix",
+        address: "/var/run/nscd/socket",
+        outcome: { status: "succeeded" },
+      },
+      source: { collector: "strace", rawRef: "raw/delayed-tool/strace.20:4" },
+    });
     const events = [
       initializationCredential,
       workerStart,
       delayedRead,
       delayedBootstrapRead,
+      delayedSensitiveSocket,
+      delayedNscdListener,
     ];
     const attributions = await attributeEvents({
       store,
@@ -415,7 +616,14 @@ describe("attribution and runtime rules", () => {
     ).toMatchObject({ confidence: "high", eventIds: [initializationCredential.eventId] });
     expect(
       findings.find((value) => value.ruleId === "runtime.post_return_activity"),
-    ).toMatchObject({ confidence: "medium", eventIds: [delayedRead.eventId] });
+    ).toMatchObject({
+      confidence: "medium",
+      eventIds: [
+        delayedRead.eventId,
+        delayedSensitiveSocket.eventId,
+        delayedNscdListener.eventId,
+      ],
+    });
   });
 
   it("applies an operator-authored scope across every initialization phase", async () => {
@@ -676,8 +884,19 @@ describe("attribution and runtime rules", () => {
       {
         kind: "network.connect_attempt",
         protocol: "unix",
-        address: "/tmp/server.sock",
+        address: "/var/run/nscd/socket",
         outcome: { status: "succeeded" },
+      },
+    );
+    const sensitiveUnixConnection = event(
+      "evt-initialization-sensitive-unix-network",
+      "2026-08-29T21:00:01.850Z",
+      rootProcessRef,
+      {
+        kind: "network.connect_attempt",
+        protocol: "unix",
+        address: "/var/run/docker.sock",
+        outcome: { status: "failed", errno: "EACCES" },
       },
     );
     const cooldownCredentialRead = event(
@@ -726,6 +945,7 @@ describe("attribution and runtime rules", () => {
       allowedConnection,
       unexpectedConnection,
       unixConnection,
+      sensitiveUnixConnection,
       cooldownCredentialRead,
       cooldownUnexpectedWrite,
       cooldownUnexpectedDelete,
@@ -754,7 +974,7 @@ describe("attribution and runtime rules", () => {
       ]),
     });
 
-    expect(findings).toHaveLength(7);
+    expect(findings).toHaveLength(8);
     expect(
       findings.find(
         (value) => value.ruleId === "runtime.initialization_sensitive_access",
@@ -789,11 +1009,17 @@ describe("attribution and runtime rules", () => {
       eventIds: [unexpectedChildExec.eventId],
     });
     expect(
-      findings.find(
-        (value) =>
-          value.ruleId === "runtime.initialization_unexpected_network_attempt",
-      ),
-    ).toMatchObject({ eventIds: [unexpectedConnection.eventId] });
+      findings
+        .filter(
+          (value) =>
+            value.ruleId ===
+            "runtime.initialization_unexpected_network_attempt",
+        )
+        .flatMap((value) => value.eventIds),
+    ).toEqual([unexpectedConnection.eventId, sensitiveUnixConnection.eventId]);
+    expect(findings.flatMap((value) => value.eventIds)).not.toContain(
+      unixConnection.eventId,
+    );
     expect(
       findings.flatMap((value) => value.eventIds),
     ).not.toEqual(expect.arrayContaining([rootShimExec.eventId]));

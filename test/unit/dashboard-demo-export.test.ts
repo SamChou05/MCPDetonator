@@ -15,9 +15,9 @@ import {
 } from "../../src/dashboard/demo-export.js";
 
 const CONTROLLED_SHA256 =
-  "d023396906932475abbd403f8fceaefd1ec629932254e0c89846839996480987";
+  "7bb1ba2a957565622a7a1703f5179cdd946abda65fa3cfdde05d0dcfe15bb4e2";
 const REFERENCE_SHA256 =
-  "7549f378efe51567e81cf6151027cd0595b95351d49c5e0ff88396bd78bd85e5";
+  "6c1394701f9d27a7fb6bbc0485e54c27c29574fc43a56e8d007a7482b0b86310";
 const CONTROLLED_RUN_ID = "run-20260830214347-1b3001cf";
 const REFERENCE_RUN_ID = "run-20260830214423-2072a19a";
 const CONTROLLED_TARGET_ID = "deceptive-document-summarizer";

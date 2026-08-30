@@ -13,6 +13,7 @@ import type {
 } from "./contracts/v1.js";
 import {
   destinationMatchesExpectedScope,
+  isRoutineNameServiceConnection,
   pathMatchesExpectedScope,
 } from "./expected-scope.js";
 import type {
@@ -245,8 +246,11 @@ function capabilityForEvent(
         : undefined;
     }
     case "network.connect_attempt":
+      return isRoutineNameServiceConnection(event.effect)
+        ? undefined
+        : "network_access";
     case "network.listen":
-      return event.effect.protocol === "unix" ? undefined : "network_access";
+      return "network_access";
     case "process.exec":
       return childProcessIdentities.has(
         processIdentity(event.experimentId, event.processRef),
@@ -586,7 +590,7 @@ export function compareAdvertisedStaticObservedAndApproved(options: {
       "An advertised state of not_observed means no per-experiment claim assessment was available for the configured tool; not_claimed means an available bounded assessment produced no matching claim.",
       "Runtime comparison covers selected lifecycle phases and inputs only; non-observation is not proof of universal absence.",
       "Runtime correlation uses phase timing and inferred process origin; temporalOverlapEventIds retain active tool-phase observations that are not unique causal attribution to the tool handler.",
-      "Filesystem runtime evidence is limited to synthetic home/workspace roots, root-server exec is excluded, and Unix-domain socket activity is excluded.",
+      "Filesystem runtime evidence is limited to synthetic home/workspace roots and root-server exec is excluded. Network evidence includes Unix-domain sockets except routine outbound NSCD connection attempts.",
       "A file.open event does not encode access mode, so it is within configured scope when its path is allowed for either reading or writing.",
       "Directory enumeration is retained in canonical events and observation health, but it is not treated as file-content evidence in this comparison.",
       "A file.delete event is evaluated against configured write scope because the current operator scope has no separate delete permission.",
