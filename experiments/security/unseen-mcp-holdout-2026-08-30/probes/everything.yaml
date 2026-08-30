@@ -1,0 +1,39 @@
+schema: forge.target/v1
+target:
+  id: unseen-everything
+  source:
+    type: npm
+    package: "@modelcontextprotocol/server-everything"
+    version: "2026.8.18"
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/node_modules/@modelcontextprotocol/server-everything/dist/index.js
+      - stdio
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    {
+      timeoutMs: 15000,
+      installTimeoutMs: 180000,
+      cooldownMs: 500,
+      memoryMb: 512,
+      cpus: 1,
+      pids: 128,
+    }
+experiments:
+  initialization: false
+  tools:
+    - id: catalog-probe
+      tool: forge_holdout_probe_missing
+      input: {}
+      expected:
+        &empty {
+          fileReads: [],
+          fileWrites: [],
+          networkConnections: [],
+          childExecutables: [],
+        }
+  workflows: []

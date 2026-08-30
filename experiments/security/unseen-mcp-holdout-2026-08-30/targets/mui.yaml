@@ -1,0 +1,35 @@
+schema: forge.target/v1
+target:
+  id: unseen-mui-invocation
+  source: { type: npm, package: "@mui/mcp", version: "0.1.4" }
+  runtime:
+    transport: stdio
+    command: node
+    args: [/opt/target/node_modules/@mui/mcp/stdio.js]
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    {
+      timeoutMs: 15000,
+      installTimeoutMs: 180000,
+      cooldownMs: 500,
+      memoryMb: 512,
+      cpus: 1,
+      pids: 128,
+    }
+experiments:
+  initialization: false
+  tools:
+    - id: invoke-fetch-docs
+      tool: fetchDocs
+      input:
+        urls: ["https://example.invalid/forge-holdout"]
+      expected:
+        {
+          fileReads: [],
+          fileWrites: [],
+          networkConnections: [],
+          childExecutables: [],
+        }
+  workflows: []
