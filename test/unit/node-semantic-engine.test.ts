@@ -157,7 +157,7 @@ describe("bounded Node semantic engine", () => {
         "index.cjs": [
           'const filesystem = require("node:fs");',
           'filesystem.readFileSync("/tmp/before");',
-          "const promises = filesystem.promises;",
+          "const { promises } = filesystem;",
           "promises.readFile = () => undefined;",
           'filesystem.promises.readFile("/tmp/after");',
         ].join("\n"),
@@ -254,13 +254,25 @@ describe("bounded Node semantic engine", () => {
     const builtin = analyzeNodeSemanticSources(
       inputFor({
         "src/index.mts": [
+          'import { default as importedFilesystem } from "node:fs";',
           'const filesystem = await import("node:fs");',
           'filesystem.readFileSync("/tmp/input");',
+          'const defaultFilesystem = (await import("node:fs")).default;',
+          'defaultFilesystem.readFileSync("/tmp/default-input");',
+          'importedFilesystem.readFileSync("/tmp/imported-input");',
         ].join("\n"),
       }),
     );
     expect(builtin.status).toBe("completed");
     expect(builtin.callsites).toEqual([
+      expect.objectContaining({
+        sinkId: "node.fs.readFileSync.call",
+        aliasDepth: 0,
+      }),
+      expect.objectContaining({
+        sinkId: "node.fs.readFileSync.call",
+        aliasDepth: 1,
+      }),
       expect.objectContaining({
         sinkId: "node.fs.readFileSync.call",
         aliasDepth: 0,
@@ -379,6 +391,29 @@ describe("bounded Node semantic engine", () => {
     );
   });
 
+  it("propagates globalThis member mutation to equivalent bare globals", () => {
+    const analysis = analyzeNodeSemanticSources(
+      inputFor({
+        "index.cjs": [
+          "globalThis.fetch = () => undefined;",
+          'fetch("https://example.test");',
+          "globalThis.process = { env: {} };",
+          "const secret = process.env.SECRET;",
+          "void secret;",
+        ].join("\n"),
+      }),
+    );
+
+    expect(analysis.status).toBe("partial");
+    expect(analysis.callsites).toEqual([]);
+    expect(analysis.issues.map((issue) => issue.summary)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("'fetch'"),
+        expect.stringContaining("'process'"),
+      ]),
+    );
+  });
+
   it("enforces alias depth at the exact boundary without converting overflow into worker failure", () => {
     const limits = { ...defaultNodeSemanticLimits, maxAliasDepth: 2 };
     const exact = analyzeNodeSemanticSources(
@@ -459,6 +494,11 @@ describe("bounded Node semantic engine", () => {
           "declare const process: { env: Record<string, string> };",
         ].join("\n"),
         "helper.js": "function fetch(value) { return value; }",
+        "shadowed-global-this.js": [
+          "const globalThis = { fetch: (value) => value };",
+          "globalThis.fetch = (value) => value;",
+          'globalThis.fetch("https://local.example.test");',
+        ].join("\n"),
         "relative.js": [
           "function load(require) {",
           '  return require("./admitted.js");',

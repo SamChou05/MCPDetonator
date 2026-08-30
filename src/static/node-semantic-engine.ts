@@ -221,6 +221,24 @@ function assignmentRoot(node: ts.Expression): ts.Identifier | undefined {
   return undefined;
 }
 
+function firstStaticMemberFromRoot(
+  node: ts.Expression,
+  rootName: string,
+): string | undefined {
+  const current = unwrapExpression(node);
+  if (
+    !ts.isPropertyAccessExpression(current) &&
+    !ts.isElementAccessExpression(current)
+  ) {
+    return undefined;
+  }
+  const base = unwrapExpression(current.expression);
+  if (ts.isIdentifier(base) && base.text === rootName) {
+    return staticMemberName(current);
+  }
+  return firstStaticMemberFromRoot(current.expression, rootName);
+}
+
 function purelyTypeOnlyImport(node: ts.ImportDeclaration): boolean {
   const clause = node.importClause;
   return (
@@ -295,6 +313,16 @@ function isUnshadowedGlobal(
 
 function declarationCreatesRuntimeBinding(declaration: ts.Declaration): boolean {
   if (declaration.getSourceFile().isDeclarationFile) return false;
+  // With no default library, the checker can synthesize declarations from
+  // assignment targets. Those are mutations of an unresolved global, not
+  // lexical declarations that shadow it.
+  if (
+    ts.isIdentifier(declaration) ||
+    ts.isPropertyAccessExpression(declaration) ||
+    ts.isElementAccessExpression(declaration)
+  ) {
+    return false;
+  }
   let current: ts.Node | undefined = declaration;
   while (current !== undefined && !ts.isSourceFile(current)) {
     if (
@@ -536,9 +564,18 @@ export function analyzeNodeSemanticSources(
   }
 
   const taintedSymbols = new Set<ts.Symbol>();
-  const directGlobalMutations = new Map<string, ts.Identifier>();
-  function unresolvedGlobalKey(identifier: ts.Identifier): string {
-    return `${identifier.getSourceFile().fileName}\0${identifier.text}`;
+  const directGlobalMutations = new Map<
+    string,
+    { readonly identifier: ts.Identifier; readonly name: string }
+  >();
+  function globalMutationKey(sourceFile: ts.SourceFile, name: string): string {
+    return `${sourceFile.fileName}\0${name}`;
+  }
+  function recordGlobalMutation(identifier: ts.Identifier, name: string): void {
+    directGlobalMutations.set(
+      globalMutationKey(identifier.getSourceFile(), name),
+      { identifier, name },
+    );
   }
   for (const node of nodes) {
     let mutated: ts.Expression | undefined;
@@ -565,7 +602,22 @@ export function analyzeNodeSemanticSources(
       modeledSyntaxGlobals.has(root.text) &&
       isUnshadowedGlobal(root, checker)
     ) {
-      directGlobalMutations.set(unresolvedGlobalKey(root), root);
+      recordGlobalMutation(root, root.text);
+      const unwrappedMutation = unwrapExpression(mutated);
+      if (
+        root.text === "globalThis" &&
+        (ts.isPropertyAccessExpression(unwrappedMutation) ||
+          ts.isElementAccessExpression(unwrappedMutation))
+      ) {
+        const member = firstStaticMemberFromRoot(mutated, "globalThis");
+        const affectedNames =
+          member === undefined
+            ? [...modeledSyntaxGlobals]
+            : modeledSyntaxGlobals.has(member)
+              ? [member]
+              : [];
+        for (const name of affectedNames) recordGlobalMutation(root, name);
+      }
     }
     if (symbol !== undefined) {
       taintedSymbols.add(symbol);
@@ -577,11 +629,13 @@ export function analyzeNodeSemanticSources(
     return (
       isUnshadowedGlobal(identifier, checker) &&
       (symbol === undefined || !taintedSymbols.has(symbol)) &&
-      !directGlobalMutations.has(unresolvedGlobalKey(identifier))
+      !directGlobalMutations.has(
+        globalMutationKey(identifier.getSourceFile(), identifier.text),
+      )
     );
   }
 
-  for (const identifier of directGlobalMutations.values()) {
+  for (const { identifier, name } of directGlobalMutations.values()) {
     resolutionIncomplete = true;
     const targetPath = targetPathFromVirtual(
       identifier.getSourceFile().fileName,
@@ -589,7 +643,7 @@ export function analyzeNodeSemanticSources(
     addIssue({
       kind: "unsupported_binding_flow",
       ...(targetPath === undefined ? {} : { targetPath }),
-      summary: `The modeled global '${identifier.text}' is directly mutation-affected in this source file; global resolution is withheld regardless of source order.`,
+      summary: `The modeled global '${name}' is directly mutation-affected in this source file; global resolution is withheld regardless of source order.`,
     });
   }
 
@@ -707,9 +761,9 @@ export function analyzeNodeSemanticSources(
 
   const origins = new Map<ts.Symbol, Origin>();
 
-  // A mutation through an immutable namespace alias also invalidates the
-  // original namespace. Propagate that taint over const identifier aliases in
-  // bounded linear graph work, rather than repeatedly walking alias chains.
+  // A mutation through an immutable namespace/member alias also invalidates
+  // the original namespace. Propagate that taint over const identifier and
+  // destructured aliases in bounded linear graph work.
   const aliasNeighbors = new Map<ts.Symbol, Set<ts.Symbol>>();
   function connectAlias(left: ts.Symbol, right: ts.Symbol): void {
     const leftNeighbors = aliasNeighbors.get(left) ?? new Set<ts.Symbol>();
@@ -723,17 +777,17 @@ export function analyzeNodeSemanticSources(
     if (
       !ts.isVariableDeclaration(node) ||
       !isConstVariableDeclaration(node) ||
-      !ts.isIdentifier(node.name) ||
       node.initializer === undefined
     ) {
       continue;
     }
     const referencedIdentifier = assignmentRoot(node.initializer);
     if (referencedIdentifier === undefined) continue;
-    const declared = checker.getSymbolAtLocation(node.name);
     const referenced = checker.getSymbolAtLocation(referencedIdentifier);
-    if (declared !== undefined && referenced !== undefined) {
-      connectAlias(declared, referenced);
+    if (referenced === undefined) continue;
+    for (const identifier of bindingIdentifiers(node.name)) {
+      const declared = checker.getSymbolAtLocation(identifier);
+      if (declared !== undefined) connectAlias(declared, referenced);
     }
   }
   const taintQueue = [...taintedSymbols];
