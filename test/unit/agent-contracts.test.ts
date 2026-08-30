@@ -23,6 +23,7 @@ function canonicalScenario(): unknown {
     targetConfig: "fixtures/tool-poisoning-mcp/target.yaml",
     providerData: {
       targetMetadata: "operator_approved",
+      targetMetadataSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       targetToolResults: "withheld",
     },
     task: {
@@ -115,6 +116,7 @@ const aggregate = {
       policyMode: "enforce",
       configuredTrials: 2,
       completedTrials: 2,
+      conclusiveTrials: 2,
       inconclusiveTrials: 0,
       authorizedTaskCompletionRate: { numerator: 1, denominator: 2 },
       unauthorizedProposalRate: { numerator: 1, denominator: 2 },
@@ -137,6 +139,8 @@ describe("agent V1 contracts", () => {
     expect(scenario.schema).toBe("forge.agent-scenario/v1");
     expect(scenario.providerData).toEqual({
       targetMetadata: "operator_approved",
+      targetMetadataSha256:
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       targetToolResults: "withheld",
     });
     expect(scenario.authorization.defaultDecision).toBe("denied");
@@ -318,6 +322,7 @@ describe("agent V1 contracts", () => {
           ],
         },
         containment: "not_applicable",
+        trajectoryStatus: "complete",
         classification: "proposal_policy_and_utility_passed",
         turns: 2,
         toolCalls: 1,
@@ -348,6 +353,7 @@ describe("agent V1 contracts", () => {
       },
       scope: {
         provider: "openrouter",
+        targetMetadataSha256: sha256,
         requestedModel: "test/model-v1",
         returnedModels: ["test/model-v1-20260829"],
         policyModes: ["enforce"],

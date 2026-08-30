@@ -13,6 +13,10 @@ import {
   type AgentToolDefinitionV1,
 } from "./contracts.js";
 import { createAgentPolicyDecision } from "./policy.js";
+import { providerToolDefinitions } from "./provider-data.js";
+import { AgentCleanupVerificationError } from "./docker-cleanup.js";
+import { ProviderCredentialIsolationError } from "./redaction.js";
+import { AgentTrialResourceQuotaError } from "./resource-quota.js";
 import type {
   AgentProvider,
   ProviderCompletion,
@@ -58,10 +62,21 @@ const OUTPUT_BUDGET_FAILURE =
 const DISPATCH_DEADLINE_FAILURE =
   "agent trial deadline exhausted before tool dispatch";
 
-export interface AgentToolExecutionResult {
-  readonly content: string;
-  readonly result: unknown;
-}
+export type AgentToolExecutionResult =
+  | {
+      /** Controller-selected content returned to the provider. */
+      readonly content: string;
+      /** Full local result retained in action evidence. */
+      readonly result: unknown;
+      readonly localFailure?: never;
+    }
+  | {
+      /** Controller-selected content returned to the provider. */
+      readonly content: string;
+      /** Local failure retained in evidence but never exposed to the provider. */
+      readonly localFailure: string;
+      readonly result?: never;
+    };
 
 export interface AgentToolExecutionContext {
   /** Remaining wall-clock budget for this dispatch, measured immediately before it. */
@@ -77,6 +92,8 @@ export interface AgentLoopResult {
   readonly returnedModels: readonly string[];
   readonly limitsHit: readonly ("turns" | "tool_calls" | "timeout" | "output_tokens")[];
   readonly providerFailure?: string;
+  /** Why the trajectory ended before the provider produced a natural final turn. */
+  readonly inconclusiveReason?: string;
 }
 
 function timestamp(): string {
@@ -128,14 +145,6 @@ function conservativeOutputTokenEstimate(
   return estimate;
 }
 
-function providerToolDefinitions(tools: readonly AgentToolDefinitionV1[]) {
-  return tools.map((tool) => ({
-    name: tool.name,
-    ...(tool.description === undefined ? {} : { description: tool.description }),
-    inputSchema: tool.inputSchema,
-  }));
-}
-
 function ensureUniqueTools(tools: readonly AgentToolDefinitionV1[]): void {
   const names = new Set<string>();
   for (const tool of tools) {
@@ -166,13 +175,14 @@ export async function runAgentLoop(input: {
   const artifactMessages: AgentMessageV1[] = [];
   const actions: AgentActionV1[] = [];
   const decisions: AgentPolicyDecisionV1[] = [];
-  const returnedModels = new Set<string>();
+  const returnedModels: string[] = [];
   const limitsHit = new Set<AgentLoopResult["limitsHit"][number]>();
   let messageSequence = 0;
   let turns = 0;
   let toolCalls = 0;
   let outputTokens = 0;
   let providerFailure: string | undefined;
+  let inconclusiveReason: string | undefined;
   let requiresAnotherTurn = false;
   let stopLoop = false;
   const startedAt = Date.now();
@@ -223,18 +233,30 @@ export async function runAgentLoop(input: {
   while (turns < input.scenario.rollouts.limits.maxTurns) {
     if (toolCalls >= input.scenario.rollouts.limits.maxToolCalls) {
       limitsHit.add("tool_calls");
+      if (requiresAnotherTurn) {
+        inconclusiveReason =
+          "agent trial required another provider turn after reaching the tool-call limit";
+      }
       break;
     }
     const elapsedMs = Date.now() - startedAt;
     const remainingMs = input.scenario.rollouts.limits.timeoutMs - elapsedMs;
     if (remainingMs <= 0) {
       limitsHit.add("timeout");
+      if (requiresAnotherTurn) {
+        inconclusiveReason =
+          "agent trial deadline expired before the required next provider turn";
+      }
       break;
     }
     const remainingOutputTokens =
       input.scenario.rollouts.limits.maxOutputTokens - outputTokens;
     if (remainingOutputTokens <= 0) {
       limitsHit.add("output_tokens");
+      if (requiresAnotherTurn) {
+        inconclusiveReason =
+          "agent trial output-token budget was exhausted before the required next provider turn";
+      }
       break;
     }
 
@@ -249,7 +271,14 @@ export async function runAgentLoop(input: {
         timeoutMs: remainingMs,
       });
     } catch (error) {
+      if (
+        error instanceof AgentTrialResourceQuotaError ||
+        error instanceof ProviderCredentialIsolationError
+      ) {
+        throw error;
+      }
       providerFailure = safeErrorMessage(error);
+      inconclusiveReason = providerFailure;
       await input.store.writeJson(
         `${input.evidencePath}/provider-error.json`,
         errorArtifactSchema,
@@ -262,7 +291,7 @@ export async function runAgentLoop(input: {
     }
 
     turns += 1;
-    returnedModels.add(completion.returnedModel);
+    returnedModels.push(completion.returnedModel);
     const accountedOutputTokens =
       completion.usage?.completionTokens ??
       conservativeOutputTokenEstimate(completion);
@@ -292,6 +321,7 @@ export async function runAgentLoop(input: {
     if (accountedOutputTokens > remainingOutputTokens) {
       limitsHit.add("output_tokens");
       providerFailure = OUTPUT_BUDGET_FAILURE;
+      inconclusiveReason = providerFailure;
       requiresAnotherTurn = false;
       await input.store.writeJson(
         `${input.evidencePath}/provider-error.json`,
@@ -332,6 +362,20 @@ export async function runAgentLoop(input: {
 
     if (artifactToolCalls.length === 0) {
       requiresAnotherTurn = false;
+      if (completion.finishReason !== "stop") {
+        const finishReason = completion.finishReason ?? "null";
+        providerFailure =
+          `provider completion ended without tool calls using non-natural finish reason '${finishReason.slice(0, 64)}'`;
+        inconclusiveReason = providerFailure;
+        if (completion.finishReason === "length") {
+          limitsHit.add("output_tokens");
+        }
+        await input.store.writeJson(
+          `${input.evidencePath}/provider-error.json`,
+          errorArtifactSchema,
+          { message: providerFailure },
+        );
+      }
       break;
     }
     requiresAnotherTurn = true;
@@ -387,6 +431,7 @@ export async function runAgentLoop(input: {
         if (dispatchTimeoutMs <= 0) {
           limitsHit.add("timeout");
           providerFailure = DISPATCH_DEADLINE_FAILURE;
+          inconclusiveReason = providerFailure;
           requiresAnotherTurn = false;
           stopLoop = true;
           action = agentActionV1Schema.parse({
@@ -415,30 +460,65 @@ export async function runAgentLoop(input: {
               toolCall.arguments,
               { timeoutMs: dispatchTimeoutMs },
             );
-            const resultRef = `${input.evidencePath}/results/${actionId}.json`;
-            await input.store.writeJson(resultRef, resultArtifactSchema, {
-              result: jsonClone(execution.result),
-            });
-            action = agentActionV1Schema.parse({
-              schema: "forge.agent-action/v1",
-              actionId,
-              scenarioId: input.scenario.id,
-              trialId: input.trialId,
-              sequence: toolCalls - 1,
-              proposedAt,
-              toolSource: toolByName.get(toolCall.name)?.source ?? "unknown",
-              toolCall,
-              policyDecisionId: decisionId,
-              outcome: {
-                status: "succeeded",
-                dispatchedAt,
-                completedAt: timestamp(),
-                resultRef,
-              },
-            });
+            if (execution.localFailure === undefined) {
+              const resultRef = `${input.evidencePath}/results/${actionId}.json`;
+              await input.store.writeJson(resultRef, resultArtifactSchema, {
+                result: jsonClone(execution.result),
+              });
+              action = agentActionV1Schema.parse({
+                schema: "forge.agent-action/v1",
+                actionId,
+                scenarioId: input.scenario.id,
+                trialId: input.trialId,
+                sequence: toolCalls - 1,
+                proposedAt,
+                toolSource: toolByName.get(toolCall.name)?.source ?? "unknown",
+                toolCall,
+                policyDecisionId: decisionId,
+                outcome: {
+                  status: "succeeded",
+                  dispatchedAt,
+                  completedAt: timestamp(),
+                  resultRef,
+                },
+              });
+            } else {
+              const message = safeErrorMessage(
+                new Error(execution.localFailure),
+              );
+              const errorRef = `${input.evidencePath}/errors/${actionId}.json`;
+              await input.store.writeJson(errorRef, errorArtifactSchema, {
+                message,
+              });
+              action = agentActionV1Schema.parse({
+                schema: "forge.agent-action/v1",
+                actionId,
+                scenarioId: input.scenario.id,
+                trialId: input.trialId,
+                sequence: toolCalls - 1,
+                proposedAt,
+                toolSource: toolByName.get(toolCall.name)?.source ?? "unknown",
+                toolCall,
+                policyDecisionId: decisionId,
+                outcome: {
+                  status: "failed",
+                  dispatchedAt,
+                  completedAt: timestamp(),
+                  errorRef,
+                },
+              });
+            }
             toolMessageContent = boundedToolContent(execution.content);
+            // A locally retained target failure can use the same fixed provider
+            // marker as success. Do not add a provider-visible outcome bit.
             toolMessageIsError = false;
           } catch (error) {
+            if (
+              error instanceof AgentCleanupVerificationError ||
+              error instanceof AgentTrialResourceQuotaError
+            ) {
+              throw error;
+            }
             const message = safeErrorMessage(error);
             const errorRef = `${input.evidencePath}/errors/${actionId}.json`;
             await input.store.writeJson(errorRef, errorArtifactSchema, { message });
@@ -505,6 +585,8 @@ export async function runAgentLoop(input: {
     turns >= input.scenario.rollouts.limits.maxTurns
   ) {
     limitsHit.add("turns");
+    inconclusiveReason =
+      "agent trial required another provider turn after reaching the turn limit";
   }
 
   return {
@@ -513,8 +595,9 @@ export async function runAgentLoop(input: {
     decisions,
     turns,
     toolCalls,
-    returnedModels: [...returnedModels],
+    returnedModels,
     limitsHit: [...limitsHit],
     ...(providerFailure === undefined ? {} : { providerFailure }),
+    ...(inconclusiveReason === undefined ? {} : { inconclusiveReason }),
   };
 }

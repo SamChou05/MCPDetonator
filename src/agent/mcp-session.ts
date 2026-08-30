@@ -1,6 +1,7 @@
 import { createWriteStream, type WriteStream } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { Readable, Transform, type TransformCallback } from "node:stream";
 import { finished } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -17,8 +18,6 @@ import type {
   JSONRPCMessage,
   MessageExtraInfo,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { ErrorObject, ValidateFunction } from "ajv";
-
 import {
   mcpInterfaceV1Schema,
   mcpMessageV1Schema,
@@ -28,10 +27,15 @@ import {
   type PhaseV1,
 } from "../contracts/v1.js";
 import type { EvidenceStore } from "../evidence-store.js";
-import { compileInputSchema } from "../mcp/input-schema.js";
 
 export const MAX_MCP_INPUT_SCHEMA_BYTES = 256_000;
 export const MAX_MCP_TOOL_ARGUMENT_BYTES = 256_000;
+export const MAX_MCP_TOOL_CATALOG_BYTES = 512_000;
+export const MAX_MCP_TOOL_COUNT = 128;
+export const MAX_MCP_TRANSCRIPT_MESSAGES = 256;
+export const MAX_MCP_TRANSCRIPT_BYTES = 2_000_000;
+export const MAX_MCP_STDERR_BYTES = 256_000;
+export const MAX_MCP_CLOSE_MS = 5_000;
 
 export interface OpenRecordedMcpSessionOptions {
   readonly runId: string;
@@ -59,30 +63,64 @@ export interface RecordedMcpSession {
   close(): Promise<void>;
 }
 
-type SessionState = "opening" | "open" | "closing" | "closed";
-
-interface AdvertisedTool {
-  readonly validateInput: ValidateFunction<unknown>;
+/** Initialization failed and the partially opened MCP process could not be closed. */
+export class McpSessionInitializationCleanupError extends Error {
+  public constructor(
+    public readonly initializationError: unknown,
+    public readonly cleanupError: unknown,
+  ) {
+    super("MCP session initialization failed and its cleanup could not be verified", {
+      cause: new AggregateError(
+        [initializationError, cleanupError],
+        "MCP initialization and cleanup both failed",
+      ),
+    });
+    this.name = "McpSessionInitializationCleanupError";
+  }
 }
+
+/** Close a partially initialized session without hiding a close failure. */
+export async function closeFailedMcpSession(
+  session: Pick<RecordedMcpSession, "close">,
+  initializationError: unknown,
+): Promise<never> {
+  try {
+    await session.close();
+  } catch (cleanupError) {
+    throw new McpSessionInitializationCleanupError(
+      initializationError,
+      cleanupError,
+    );
+  }
+  throw initializationError;
+}
+
+type SessionState = "opening" | "open" | "closing" | "closed";
 
 function timestamp(): string {
   return new Date().toISOString();
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+async function closeWithinDeadline<T>(operation: Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  try {
+    return await Promise.race([
+      operation,
+      delay(MAX_MCP_CLOSE_MS, undefined, { signal: controller.signal }).then(
+        () => {
+          throw new Error(
+            `MCP session close timed out after ${MAX_MCP_CLOSE_MS} ms`,
+          );
+        },
+      ),
+    ]);
+  } finally {
+    controller.abort();
+  }
 }
 
-function formatAjvErrors(errors: ErrorObject[] | null | undefined): string {
-  if (!errors || errors.length === 0) {
-    return "unknown schema validation error";
-  }
-  return errors
-    .map(
-      (error) =>
-        `${error.instancePath || "input"} ${error.message ?? "is invalid"}`,
-    )
-    .join("; ");
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function artifactPath(basePath: string, fileName: string): string {
@@ -151,6 +189,11 @@ class RecordingTransport implements Transport {
 
   private recordQueue: Promise<void> = Promise.resolve();
   private recordingError: unknown;
+  private abortPromise: Promise<void> | undefined;
+  private terminalError: Error | undefined;
+  private closeRequested = false;
+  private acceptedMessageCount = 0;
+  private acceptedMessageBytes = 0;
   private sequence = 0;
 
   public constructor(
@@ -162,31 +205,109 @@ class RecordingTransport implements Transport {
     ) => Promise<void>,
   ) {}
 
+  public get failure(): Error | undefined {
+    return this.terminalError;
+  }
+
   private enqueue(
     direction: McpMessageV1["direction"],
     message: JSONRPCMessage,
   ): Promise<void> {
+    if (this.terminalError !== undefined) {
+      throw this.terminalError;
+    }
+
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(message);
+    } catch (error) {
+      const failure = new Error(
+        `MCP JSON-RPC message must be JSON serializable: ${errorMessage(error)}`,
+        { cause: error },
+      );
+      this.abort(failure);
+      throw failure;
+    }
+    // Include the STDIO record delimiter so accounting matches wire payloads.
+    const messageBytes = Buffer.byteLength(serialized, "utf8") + 1;
+    if (this.acceptedMessageCount + 1 > MAX_MCP_TRANSCRIPT_MESSAGES) {
+      const failure = new Error(
+        `MCP transcript exceeded the ${MAX_MCP_TRANSCRIPT_MESSAGES}-message evaluator limit`,
+      );
+      this.abort(failure);
+      throw failure;
+    }
+    if (this.acceptedMessageBytes + messageBytes > MAX_MCP_TRANSCRIPT_BYTES) {
+      const failure = new Error(
+        `MCP transcript exceeded the ${MAX_MCP_TRANSCRIPT_BYTES}-byte evaluator limit`,
+      );
+      this.abort(failure);
+      throw failure;
+    }
+
+    const messageCopy = JSON.parse(serialized) as JSONRPCMessage;
+    this.acceptedMessageCount += 1;
+    this.acceptedMessageBytes += messageBytes;
     const sequence = this.sequence;
     this.sequence += 1;
 
     const record = this.recordQueue.then(() =>
-      this.recordMessage(direction, sequence, message),
+      this.recordMessage(direction, sequence, messageCopy),
     );
     this.recordQueue = record.catch((error: unknown) => {
-      this.recordingError ??= error;
+      this.abort(error);
     });
     return record;
   }
 
+  public abort(error: unknown): void {
+    if (this.terminalError !== undefined) {
+      return;
+    }
+
+    const failure =
+      error instanceof Error
+        ? error
+        : new Error(`MCP transport failed: ${String(error)}`);
+    this.terminalError = failure;
+    this.recordingError = failure;
+    try {
+      this.onerror?.(failure);
+    } catch {
+      // The terminal transport error is retained and surfaced by flush/close.
+    }
+    this.abortPromise = this.inner.close().catch((closeError: unknown) => {
+      this.recordingError ??= closeError;
+    });
+  }
+
   public async start(): Promise<void> {
-    this.inner.onclose = () => this.onclose?.();
-    this.inner.onerror = (error) => this.onerror?.(error);
+    this.inner.onclose = () => {
+      if (!this.closeRequested && this.terminalError === undefined) {
+        const failure = new Error(
+          "MCP transport closed unexpectedly before controller cleanup",
+        );
+        this.terminalError = failure;
+        this.recordingError = failure;
+        try {
+          this.onerror?.(failure);
+        } catch {
+          // The failure remains available through flush/close.
+        }
+      }
+      this.onclose?.();
+    };
+    this.inner.onerror = (error) => this.abort(error);
     this.inner.onmessage = <T extends JSONRPCMessage>(
       message: T,
       extra?: MessageExtraInfo,
     ) => {
-      void this.enqueue("server_to_client", message).catch(() => undefined);
-      this.onmessage?.(message, extra);
+      try {
+        void this.enqueue("server_to_client", message).catch(() => undefined);
+        this.onmessage?.(message, extra);
+      } catch (error) {
+        this.abort(error);
+      }
     };
     await this.inner.start();
   }
@@ -195,9 +316,14 @@ class RecordingTransport implements Transport {
     message: JSONRPCMessage,
     options?: TransportSendOptions,
   ): Promise<void> {
-    await this.enqueue("client_to_server", message);
-    void options;
-    await this.inner.send(message);
+    try {
+      await this.enqueue("client_to_server", message);
+      void options;
+      await this.inner.send(message);
+    } catch (error) {
+      this.abort(error);
+      throw error;
+    }
   }
 
   public async flush(): Promise<void> {
@@ -208,25 +334,72 @@ class RecordingTransport implements Transport {
   }
 
   public async close(): Promise<void> {
-    await this.inner.close();
+    this.closeRequested = true;
+    if (this.abortPromise === undefined) {
+      await this.inner.close();
+    } else {
+      await this.abortPromise;
+    }
     await this.flush();
+  }
+}
+
+class BoundedStderrTransform extends Transform {
+  private capturedBytes = 0;
+  private quotaExceeded = false;
+
+  public constructor(private readonly onQuotaExceeded: (error: Error) => void) {
+    super();
+  }
+
+  public override _transform(
+    chunk: Buffer | string,
+    encoding: BufferEncoding,
+    callback: TransformCallback,
+  ): void {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding);
+    if (this.quotaExceeded) {
+      callback();
+      return;
+    }
+
+    const remainingBytes = MAX_MCP_STDERR_BYTES - this.capturedBytes;
+    if (bytes.byteLength <= remainingBytes) {
+      this.capturedBytes += bytes.byteLength;
+      callback(null, bytes);
+      return;
+    }
+
+    if (remainingBytes > 0) {
+      this.push(bytes.subarray(0, remainingBytes));
+      this.capturedBytes += remainingBytes;
+    }
+    this.quotaExceeded = true;
+    this.onQuotaExceeded(
+      new Error(
+        `MCP stderr exceeded the ${MAX_MCP_STDERR_BYTES}-byte evaluator limit`,
+      ),
+    );
+    callback();
   }
 }
 
 class RecordedMcpSessionImpl implements RecordedMcpSession {
   private readonly phaseRecords: PhaseV1[] = [];
-  private readonly toolsByName = new Map<string, AdvertisedTool>();
+  private readonly advertisedToolNames = new Set<string>();
   private connected = false;
   private closePromise: Promise<void> | undefined;
   private nextPhaseNumber = 1;
   private state: SessionState = "opening";
   private discoveredInterface: McpInterfaceV1 | undefined;
+  private observedTransportFailure: Error | undefined;
 
   public constructor(
     private readonly options: OpenRecordedMcpSessionOptions,
     private readonly client: Client,
     private readonly stdio: StdioClientTransport,
     private readonly recording: RecordingTransport,
+    private readonly stderrCapture: BoundedStderrTransform,
     private readonly stderrOutput: WriteStream,
   ) {}
 
@@ -258,10 +431,30 @@ class RecordedMcpSessionImpl implements RecordedMcpSession {
         const listedTools = await this.client.listTools(undefined, {
           timeout: this.options.timeoutMs,
         });
+        if (listedTools.tools.length > MAX_MCP_TOOL_COUNT) {
+          throw new Error(
+            `MCP advertised ${listedTools.tools.length} tools, exceeding the ${MAX_MCP_TOOL_COUNT}-tool evaluator limit`,
+          );
+        }
+        const serializedCatalog = JSON.stringify(listedTools.tools);
+        if (
+          Buffer.byteLength(serializedCatalog, "utf8") >
+          MAX_MCP_TOOL_CATALOG_BYTES
+        ) {
+          throw new Error(
+            "advertised MCP tool catalog exceeds the 512 KB evaluator limit",
+          );
+        }
+
         const interfaceTools: McpInterfaceV1["tools"] = [];
-        const validators = new Map<string, AdvertisedTool>();
+        const toolNames = new Set<string>();
 
         for (const tool of listedTools.tools) {
+          if (toolNames.has(tool.name)) {
+            throw new Error(`MCP advertised duplicate tool name '${tool.name}'`);
+          }
+          toolNames.add(tool.name);
+
           const inputSchema = cloneJson(
             tool.inputSchema,
             `input schema for MCP tool '${tool.name}'`,
@@ -274,17 +467,6 @@ class RecordedMcpSessionImpl implements RecordedMcpSession {
               `input schema for MCP tool '${tool.name}' exceeds the 256 KB evaluator limit`,
             );
           }
-
-          let validateInput: ValidateFunction<unknown>;
-          try {
-            validateInput = compileInputSchema(inputSchema).validate;
-          } catch (error) {
-            throw new Error(
-              `could not compile advertised input schema for MCP tool '${tool.name}': ${errorMessage(error)}`,
-              { cause: error },
-            );
-          }
-          validators.set(tool.name, { validateInput });
 
           interfaceTools.push({
             name: tool.name,
@@ -323,13 +505,13 @@ class RecordedMcpSessionImpl implements RecordedMcpSession {
           mcpInterfaceV1Schema,
           mcpInterface,
         );
-        return { mcpInterface, validators };
+        return { mcpInterface, toolNames };
       },
     );
 
     this.discoveredInterface = discovery.mcpInterface;
-    for (const [toolName, advertisedTool] of discovery.validators) {
-      this.toolsByName.set(toolName, advertisedTool);
+    for (const toolName of discovery.toolNames) {
+      this.advertisedToolNames.add(toolName);
     }
     this.state = "open";
   }
@@ -345,17 +527,11 @@ class RecordedMcpSessionImpl implements RecordedMcpSession {
       throw new Error("MCP tool timeout must be a positive integer");
     }
 
-    const advertisedTool = this.toolsByName.get(toolName);
-    if (advertisedTool === undefined) {
+    if (!this.advertisedToolNames.has(toolName)) {
       throw new Error(`MCP did not advertise requested tool '${toolName}'`);
     }
 
     const argumentsCopy = boundedArguments(toolName, toolArguments);
-    if (!advertisedTool.validateInput(argumentsCopy)) {
-      throw new Error(
-        `arguments do not match MCP tool '${toolName}' schema: ${formatAjvErrors(advertisedTool.validateInput.errors)}`,
-      );
-    }
 
     return this.inPhase(
       "tool",
@@ -389,13 +565,20 @@ class RecordedMcpSessionImpl implements RecordedMcpSession {
     }
 
     this.state = "closing";
-    this.closePromise = this.closeResources().finally(() => {
-      this.state = "closed";
-    });
+    this.closePromise = closeWithinDeadline(this.closeResources()).finally(
+      () => {
+        this.state = "closed";
+      },
+    );
     return this.closePromise;
   }
 
   private assertOpen(): void {
+    const transportFailure = this.recording.failure;
+    if (transportFailure !== undefined) {
+      this.observedTransportFailure = transportFailure;
+      throw transportFailure;
+    }
     if (this.state !== "open") {
       throw new Error("MCP session is not open");
     }
@@ -416,7 +599,17 @@ class RecordedMcpSessionImpl implements RecordedMcpSession {
       result = await task();
       await this.recording.flush();
     } catch (error) {
-      await this.recording.flush().catch(() => undefined);
+      let phaseError = error;
+      try {
+        await this.recording.flush();
+      } catch (recordingError) {
+        phaseError = recordingError;
+      }
+      const transportFailure = this.recording.failure;
+      if (transportFailure !== undefined) {
+        this.observedTransportFailure = transportFailure;
+        phaseError = transportFailure;
+      }
       await this.recordPhase({
         kind,
         name,
@@ -425,7 +618,7 @@ class RecordedMcpSessionImpl implements RecordedMcpSession {
         startedAt,
         status: "failed",
       });
-      throw error;
+      throw phaseError;
     }
 
     await this.recordPhase({
@@ -479,9 +672,21 @@ class RecordedMcpSessionImpl implements RecordedMcpSession {
       }
       await this.recording.flush();
     } catch (error) {
-      closeError = error;
+      if (error !== this.observedTransportFailure) {
+        closeError = error;
+      }
     }
 
+    const stderrStream = this.stdio.stderr;
+    if (stderrStream instanceof Readable) {
+      stderrStream.unpipe(this.stderrCapture);
+    }
+    if (!this.stderrCapture.writableEnded) {
+      this.stderrCapture.end();
+    }
+    await finished(this.stderrCapture).catch((error: unknown) => {
+      closeError ??= error;
+    });
     if (!this.stderrOutput.writableEnded) {
       this.stderrOutput.end();
     }
@@ -515,7 +720,6 @@ export async function openRecordedMcpSession(
     flags: "a",
     mode: 0o600,
   });
-  stdio.stderr?.pipe(stderrOutput);
 
   const recording = new RecordingTransport(
     stdio,
@@ -527,7 +731,7 @@ export async function openRecordedMcpSession(
         sequence,
         timestamp: timestamp(),
         direction,
-        message: cloneJson(message, "MCP JSON-RPC message") as McpMessageV1["message"],
+        message: message as McpMessageV1["message"],
       };
       await options.store.appendJsonl(
         artifactPath(options.evidencePath, "mcp-transcript.jsonl"),
@@ -536,6 +740,12 @@ export async function openRecordedMcpSession(
       );
     },
   );
+  const stderrCapture = new BoundedStderrTransform((error) => {
+    recording.abort(error);
+  });
+  stderrCapture.on("error", (error) => recording.abort(error));
+  stderrOutput.on("error", (error) => recording.abort(error));
+  stdio.stderr?.pipe(stderrCapture).pipe(stderrOutput);
   const client = new Client({
     name: "forge-agent-rollout",
     version: "0.1.0",
@@ -545,6 +755,7 @@ export async function openRecordedMcpSession(
     client,
     stdio,
     recording,
+    stderrCapture,
     stderrOutput,
   );
 
@@ -552,7 +763,6 @@ export async function openRecordedMcpSession(
     await session.initialize();
     return session;
   } catch (error) {
-    await session.close().catch(() => undefined);
-    throw error;
+    return closeFailedMcpSession(session, error);
   }
 }

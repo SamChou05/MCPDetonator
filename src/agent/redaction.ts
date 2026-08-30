@@ -1,7 +1,15 @@
-import { readdir, readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const redactionMarker = "[REDACTED_PROVIDER_CREDENTIAL]";
+
+export class ProviderCredentialIsolationError extends Error {
+  public constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ProviderCredentialIsolationError";
+  }
+}
 
 export function usableProviderCredentials(
   secrets: readonly string[],
@@ -14,15 +22,33 @@ export function usableProviderCredentials(
 export function assertNoProviderCredentialInValue(
   value: unknown,
   secrets: readonly string[],
+  failureMessage =
+    "provider credential isolation check failed before external-model access",
 ): void {
-  const serialized = JSON.stringify(value);
-  if (
-    serialized !== undefined &&
-    usableProviderCredentials(secrets).some((secret) => serialized.includes(secret))
-  ) {
-    throw new Error(
-      "provider credential isolation check failed before external-model access",
+  const credentials = usableProviderCredentials(secrets);
+  const visited = new WeakSet<object>();
+
+  function containsCredential(candidate: unknown): boolean {
+    if (typeof candidate === "string") {
+      return credentials.some((credential) => candidate.includes(credential));
+    }
+    if (typeof candidate !== "object" || candidate === null) {
+      return false;
+    }
+    if (visited.has(candidate)) {
+      return false;
+    }
+    visited.add(candidate);
+    if (Array.isArray(candidate)) {
+      return candidate.some(containsCredential);
+    }
+    return Object.entries(candidate).some(
+      ([key, entry]) => containsCredential(key) || containsCredential(entry),
     );
+  }
+
+  if (credentials.length > 0 && containsCredential(value)) {
+    throw new ProviderCredentialIsolationError(failureMessage);
   }
 }
 
@@ -37,9 +63,31 @@ export function redactProviderCredentials(
   return result;
 }
 
-export async function assertNoProviderCredentialInEvidence(
+async function fileContainsNeedle(
+  path: string,
+  needles: readonly Buffer[],
+): Promise<boolean> {
+  const overlapBytes = Math.max(...needles.map((needle) => needle.length)) - 1;
+  let overlap = Buffer.alloc(0);
+  for await (const rawChunk of createReadStream(path)) {
+    const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
+    const searchable =
+      overlap.length === 0 ? chunk : Buffer.concat([overlap, chunk]);
+    if (needles.some((needle) => searchable.includes(needle))) {
+      return true;
+    }
+    overlap =
+      overlapBytes <= 0
+        ? Buffer.alloc(0)
+        : searchable.subarray(Math.max(0, searchable.length - overlapBytes));
+  }
+  return false;
+}
+
+async function assertNoProviderCredentialInTree(
   root: string,
   secrets: readonly string[],
+  failureMessage: string,
 ): Promise<void> {
   const needles = usableProviderCredentials(secrets).map((secret) =>
     Buffer.from(secret, "utf8"),
@@ -59,14 +107,33 @@ export async function assertNoProviderCredentialInEvidence(
       if (!entry.isFile()) {
         continue;
       }
-      const contents = await readFile(path);
-      if (needles.some((needle) => contents.includes(needle))) {
-        throw new Error(
-          "provider credential isolation check failed: a credential appeared in evidence",
-        );
+      if (await fileContainsNeedle(path, needles)) {
+        throw new ProviderCredentialIsolationError(failureMessage);
       }
     }
   }
 
   await visit(root);
+}
+
+export async function assertNoProviderCredentialInPreparedTarget(
+  root: string,
+  secrets: readonly string[],
+): Promise<void> {
+  await assertNoProviderCredentialInTree(
+    root,
+    secrets,
+    "provider credential isolation check failed: the prepared target contains the provider credential",
+  );
+}
+
+export async function assertNoProviderCredentialInEvidence(
+  root: string,
+  secrets: readonly string[],
+): Promise<void> {
+  await assertNoProviderCredentialInTree(
+    root,
+    secrets,
+    "provider credential isolation check failed: a credential appeared in evidence",
+  );
 }

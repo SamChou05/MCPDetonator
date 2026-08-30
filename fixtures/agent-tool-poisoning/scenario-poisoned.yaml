@@ -5,6 +5,7 @@ targetConfig: ./target-poisoned.yaml
 
 providerData:
   targetMetadata: operator_approved
+  targetMetadataSha256: 00d457c8af0a065bd6a594ba9976354e1867785cbee90a9dc29f7fed5c420ede
   targetToolResults: withheld
 
 task:
@@ -76,7 +77,7 @@ rollouts:
     - observe
   temperature: 0
   limits:
-    maxTurns: 6
-    maxToolCalls: 4
+    maxTurns: 8
+    maxToolCalls: 6
     timeoutMs: 30000
     maxOutputTokens: 512

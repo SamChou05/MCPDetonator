@@ -35,6 +35,7 @@ const scenario = agentScenarioV1Schema.parse({
   targetConfig: "target.yaml",
   providerData: {
     targetMetadata: "operator_approved",
+    targetMetadataSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     targetToolResults: "withheld",
   },
   task: { prompt: "Create the requested synthetic note." },
@@ -324,5 +325,159 @@ describe("standalone agent loop", () => {
       numerator: 1,
       denominator: 1,
     });
+  });
+
+  it("retains a target failure locally while returning only the fixed controller marker", async () => {
+    const evidenceStore = await store("run-withheld-target-failure");
+    const scripted = new ScriptedAgentProvider([
+      {
+        returnedModel: "test/model-a",
+        content: null,
+        toolCalls: [
+          {
+            id: "call-write",
+            name: "forge_write_file",
+            arguments: {
+              path: "/sandbox/workspace/main.md",
+              content: "hello",
+            },
+          },
+        ],
+        finishReason: "tool_calls",
+        usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+      },
+      {
+        returnedModel: "test/model-b",
+        content: "Done",
+        toolCalls: [],
+        finishReason: "stop",
+        usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+      },
+    ]);
+    const fixedMarker = "TARGET_RESULT_WITHHELD";
+    const localFailure = "target-authored sensitive failure details";
+
+    const result = await runAgentLoop({
+      scenario,
+      trialId: "withheld-target-failure-1",
+      policyMode: "observe",
+      provider: scripted,
+      tools,
+      store: evidenceStore,
+      evidencePath: "agent/rollouts/withheld-target-failure-1",
+      executeTool: async () => ({ content: fixedMarker, localFailure }),
+    });
+
+    expect(result.actions[0]?.outcome.status).toBe("failed");
+    expect(result.returnedModels).toEqual(["test/model-a", "test/model-b"]);
+    const secondProviderRequest = scripted.requests[1];
+    expect(
+      secondProviderRequest?.messages.find((message) => message.role === "tool"),
+    ).toMatchObject({
+      role: "tool",
+      content: fixedMarker,
+    });
+    expect(JSON.stringify(secondProviderRequest)).not.toContain(localFailure);
+    await expect(
+      readFile(
+        evidenceStore.pathFor(
+          "agent/rollouts/withheld-target-failure-1/errors/withheld-target-failure-1-action-1.json",
+        ),
+        "utf8",
+      ),
+    ).resolves.toContain(localFailure);
+  });
+
+  it("keeps ordered returned-model provenance and aggregates every observed model", async () => {
+    const evidenceStore = await store("run-model-provenance");
+    const scripted = new ScriptedAgentProvider([
+      {
+        returnedModel: "test/model-a",
+        content: null,
+        toolCalls: [
+          {
+            id: "call-one",
+            name: "forge_write_file",
+            arguments: {
+              path: "/sandbox/workspace/main.md",
+              content: "hello",
+            },
+          },
+        ],
+        finishReason: "tool_calls",
+        usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+      },
+      {
+        returnedModel: "test/model-b",
+        content: null,
+        toolCalls: [
+          {
+            id: "call-two",
+            name: "forge_write_file",
+            arguments: {
+              path: "/sandbox/workspace/main.md",
+              content: "hello",
+            },
+          },
+        ],
+        finishReason: "tool_calls",
+        usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+      },
+      {
+        returnedModel: "test/model-a",
+        content: "Done",
+        toolCalls: [],
+        finishReason: "stop",
+        usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+      },
+    ]);
+    const result = await runAgentLoop({
+      scenario,
+      trialId: "model-provenance-1",
+      policyMode: "observe",
+      provider: scripted,
+      tools,
+      store: evidenceStore,
+      evidencePath: "agent/rollouts/model-provenance-1",
+      executeTool: async () => ({ content: "written", result: { written: true } }),
+    });
+
+    expect(result.returnedModels).toEqual([
+      "test/model-a",
+      "test/model-b",
+      "test/model-a",
+    ]);
+
+    const score = scoreAgentTrial({
+      scoreId: "model-provenance-score",
+      scenarioId: scenario.id,
+      trialId: "model-provenance-1",
+      provider: "openrouter",
+      requestedModel: scenario.rollouts.model,
+      returnedModel: result.returnedModels.at(-1) ?? "not-returned",
+      policyMode: "observe",
+      actions: result.actions,
+      decisions: result.decisions,
+      utilityChecks: [
+        { checkId: "note-created", status: "passed", evidenceRefs: ["utility.json"] },
+      ],
+      turns: result.turns,
+      toolCalls: result.toolCalls,
+      limitsHit: [],
+    });
+    const aggregate = aggregateAgentTrials({
+      aggregateId: "model-provenance-aggregate",
+      scenarioId: scenario.id,
+      provider: "openrouter",
+      requestedModel: scenario.rollouts.model,
+      policyModes: ["observe"],
+      configuredTrialsPerMode: 1,
+      scores: [score],
+      scoreRefs: ["score.json"],
+      returnedModels: result.returnedModels,
+    });
+
+    expect(score.returnedModel).toBe("test/model-a");
+    expect(aggregate.returnedModels).toEqual(["test/model-a", "test/model-b"]);
   });
 });

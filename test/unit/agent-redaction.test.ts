@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   assertNoProviderCredentialInEvidence,
+  assertNoProviderCredentialInPreparedTarget,
   assertNoProviderCredentialInValue,
+  ProviderCredentialIsolationError,
   redactProviderCredentials,
 } from "../../src/agent/redaction.js";
 
@@ -43,6 +45,15 @@ describe("agent provider credential isolation", () => {
     ).not.toThrow();
   });
 
+  it("reports credential isolation failures with a stable typed error", () => {
+    expect(() =>
+      assertNoProviderCredentialInValue(
+        { completion: { arguments: { content: "openrouter-secret-key" } } },
+        ["openrouter-secret-key"],
+      ),
+    ).toThrow(ProviderCredentialIsolationError);
+  });
+
   it("recursively rejects evidence containing a provider credential", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "forge-agent-redaction-"));
     temporaryDirectories.push(root);
@@ -60,6 +71,21 @@ describe("agent provider credential isolation", () => {
     await expect(
       assertNoProviderCredentialInEvidence(root, ["openrouter-secret-key"]),
     ).rejects.toThrow("credential appeared in evidence");
+  });
+
+  it("rejects a credential in the prepared target before MCP startup", async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "forge-agent-target-key-"));
+    temporaryDirectories.push(root);
+    await mkdir(resolve(root, "nested"));
+    const credential = "openrouter-secret-key";
+    await writeFile(
+      resolve(root, "nested", ".env"),
+      `${"x".repeat(65_530)}${credential}`,
+    );
+
+    await expect(
+      assertNoProviderCredentialInPreparedTarget(root, [credential]),
+    ).rejects.toThrow("prepared target contains the provider credential");
   });
 
   it("ignores empty and dangerously short redaction tokens", async () => {

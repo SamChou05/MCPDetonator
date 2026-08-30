@@ -1,6 +1,6 @@
 # Tool-result injection
 
-**Status:** Future-agent
+**Status:** Future-Agent
 
 ## Question
 
@@ -71,4 +71,3 @@ cover every encoding, modality, or client-side sanitization strategy.
 
 Requires an agent rollout harness, controlled result variants, and deterministic
 authorization scoring.
-

@@ -7,6 +7,10 @@ import { removeAndVerifyAgentContainer } from "../docker-cleanup.js";
 
 const execFileAsync = promisify(execFile);
 
+const MAX_SYNTHETIC_PATH_DESCENDANTS = 16;
+const MAX_CONTROLLED_WRITE_BYTES = 8_000_000;
+const MAX_CONTROLLED_WRITE_ENTRY_BUDGET = 1_800;
+
 export const controlledToolNames = [
   "forge_read_file",
   "forge_write_file",
@@ -241,7 +245,29 @@ function requireSyntheticPath(value: unknown): string {
   ) {
     throw new Error("path must remain under a synthetic home or workspace root");
   }
+  const root = normalized === "/sandbox/home/forge" ||
+      normalized.startsWith("/sandbox/home/forge/")
+    ? "/sandbox/home/forge"
+    : "/sandbox/workspace";
+  const relativePath = normalized.slice(root.length).replace(/^\//u, "");
+  const descendants = relativePath.length === 0
+    ? 0
+    : relativePath.split("/").length;
+  if (descendants > MAX_SYNTHETIC_PATH_DESCENDANTS) {
+    throw new Error(
+      `path exceeds the ${MAX_SYNTHETIC_PATH_DESCENDANTS}-component synthetic depth limit`,
+    );
+  }
   return normalized;
+}
+
+function controlledWriteEntryCost(path: string): number {
+  const root = path === "/sandbox/home/forge" ||
+      path.startsWith("/sandbox/home/forge/")
+    ? "/sandbox/home/forge"
+    : "/sandbox/workspace";
+  const relativePath = path.slice(root.length).replace(/^\//u, "");
+  return relativePath.length === 0 ? 1 : relativePath.split("/").length;
 }
 
 function assertMountSafe(path: string): void {
@@ -253,6 +279,8 @@ function assertMountSafe(path: string): void {
 export class ControlledToolSet {
   private readonly deliveries: ControlledReceiverDelivery[] = [];
   private workerSequence = 0;
+  private controlledWriteBytes = 0;
+  private controlledWriteEntryBudget = 0;
 
   public constructor(
     private readonly options: {
@@ -280,7 +308,13 @@ export class ControlledToolSet {
     const path = requireSyntheticPath(pathValue);
     const result = await this.runFilesystemWorker(statWorker, [path]);
     const parsed = JSON.parse(result) as ControlledFileObservation;
-    if (typeof parsed.exists !== "boolean") {
+    if (
+      typeof parsed.exists !== "boolean" ||
+      (parsed.exists &&
+        parsed.kind !== "file" &&
+        parsed.kind !== "directory" &&
+        parsed.kind !== "other")
+    ) {
       throw new Error("synthetic filesystem observer returned an invalid result");
     }
     return parsed;
@@ -326,6 +360,25 @@ export class ControlledToolSet {
     requireExactKeys(input, ["path", "content"]);
     const path = requireSyntheticPath(input.path);
     const content = requireBoundedString(input.content, "content", 65_536);
+    const contentBytes = Buffer.byteLength(content, "utf8");
+    const entryCost = controlledWriteEntryCost(path);
+    if (this.controlledWriteBytes + contentBytes > MAX_CONTROLLED_WRITE_BYTES) {
+      throw new Error(
+        `controlled writes exceed the ${MAX_CONTROLLED_WRITE_BYTES}-byte trial limit`,
+      );
+    }
+    if (
+      this.controlledWriteEntryBudget + entryCost >
+      MAX_CONTROLLED_WRITE_ENTRY_BUDGET
+    ) {
+      throw new Error(
+        `controlled writes exceed the ${MAX_CONTROLLED_WRITE_ENTRY_BUDGET}-entry trial budget`,
+      );
+    }
+    // Charge attempts before launching the worker. Failed or repeated writes do
+    // not replenish the budget, keeping the controller fail-closed.
+    this.controlledWriteBytes += contentBytes;
+    this.controlledWriteEntryBudget += entryCost;
     const result = await this.runFilesystemWorker(
       writeWorker,
       [path, content],

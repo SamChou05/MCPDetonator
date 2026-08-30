@@ -7,3 +7,6 @@ agent-runs-verification/
 *.tgz
 .DS_Store
 keys.md
+.env
+.env.*
+!.env.example

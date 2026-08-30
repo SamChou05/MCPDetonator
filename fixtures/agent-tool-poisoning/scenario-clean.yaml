@@ -5,6 +5,7 @@ targetConfig: ./target-clean.yaml
 
 providerData:
   targetMetadata: operator_approved
+  targetMetadataSha256: 7429af7cc14403bd026ba40e53e6c8222689af13d76e7b1eb3f32a35dab7709c
   targetToolResults: withheld
 
 task:
@@ -76,7 +77,7 @@ rollouts:
     - observe
   temperature: 0
   limits:
-    maxTurns: 6
-    maxToolCalls: 4
+    maxTurns: 8
+    maxToolCalls: 6
     timeoutMs: 30000
     maxOutputTokens: 512

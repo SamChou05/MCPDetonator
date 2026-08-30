@@ -13,6 +13,9 @@ import {
   runAgentLoop,
   type AgentToolExecutionContext,
 } from "../../src/agent/loop.js";
+import { AgentCleanupVerificationError } from "../../src/agent/docker-cleanup.js";
+import { ProviderCredentialIsolationError } from "../../src/agent/redaction.js";
+import { AgentTrialResourceQuotaError } from "../../src/agent/resource-quota.js";
 import { ScriptedAgentProvider } from "../../src/agent/providers/scripted.js";
 import { EvidenceStore } from "../../src/evidence-store.js";
 
@@ -42,6 +45,7 @@ function scenarioWithLimits(
     targetConfig: "target.yaml",
     providerData: {
       targetMetadata: "operator_approved",
+      targetMetadataSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       targetToolResults: "withheld",
     },
     task: { prompt: "Create the requested synthetic note." },
@@ -156,6 +160,7 @@ describe("agent loop limit enforcement", () => {
     expect(result.providerFailure).toBe(
       "provider completion exceeded the remaining output-token budget",
     );
+    expect(result.inconclusiveReason).toBe(result.providerFailure);
     expect(
       result.messages.filter((message) => message.role === "assistant"),
     ).toHaveLength(1);
@@ -260,6 +265,7 @@ describe("agent loop limit enforcement", () => {
     expect(result.providerFailure).toBe(
       "agent trial deadline exhausted before tool dispatch",
     );
+    expect(result.inconclusiveReason).toBe(result.providerFailure);
     expect(result.actions).toHaveLength(1);
     expect(result.actions[0]?.outcome.status).toBe("proposed");
     expect(result.decisions[0]?.dispatchDisposition).toBe("dispatch");
@@ -298,10 +304,235 @@ describe("agent loop limit enforcement", () => {
     expect(result.toolCalls).toBe(0);
     expect(result.limitsHit).toEqual([]);
     expect(result.providerFailure).toBeUndefined();
+    expect(result.inconclusiveReason).toBeUndefined();
     expect(result.messages.at(-1)).toMatchObject({
       role: "assistant",
       content: "Done",
       toolCalls: [],
     });
+  });
+
+  it.each([
+    {
+      finishReason: "length",
+      expectedLimit: "output_tokens" as const,
+    },
+    {
+      finishReason: "content_filter",
+      expectedLimit: undefined,
+    },
+    {
+      finishReason: null,
+      expectedLimit: undefined,
+    },
+  ])(
+    "marks a zero-tool $finishReason provider termination as inconclusive",
+    async ({ finishReason, expectedLimit }) => {
+      const evidenceStore = await createStore(
+        `run-non-natural-${finishReason ?? "null"}`,
+      );
+      const result = await runAgentLoop({
+        scenario: scenarioWithLimits({ maxTurns: 1 }),
+        trialId: `non-natural-${finishReason ?? "null"}-1`,
+        policyMode: "observe",
+        provider: new ScriptedAgentProvider([
+          {
+            returnedModel: "test/model-v1",
+            content: "Partial provider output",
+            toolCalls: [],
+            finishReason,
+            usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+          },
+        ]),
+        tools: [writeTool],
+        store: evidenceStore,
+        evidencePath: `agent/rollouts/non-natural-${finishReason ?? "null"}-1`,
+        executeTool: async () => {
+          throw new Error("non-natural completion must not dispatch a tool");
+        },
+      });
+
+      expect(result.inconclusiveReason).toContain("non-natural finish reason");
+      expect(result.providerFailure).toBe(result.inconclusiveReason);
+      if (expectedLimit === undefined) {
+        expect(result.limitsHit).toEqual([]);
+      } else {
+        expect(result.limitsHit).toContain(expectedLimit);
+      }
+    },
+  );
+
+  it("marks a required next turn as inconclusive at the turn limit", async () => {
+    const evidenceStore = await createStore("run-turn-limit");
+    const result = await runAgentLoop({
+      scenario: scenarioWithLimits({ maxTurns: 1 }),
+      trialId: "turn-limit-1",
+      policyMode: "observe",
+      provider: new ScriptedAgentProvider([
+        {
+          returnedModel: "test/model-v1",
+          content: null,
+          toolCalls: [writeCall("call-one")],
+          finishReason: "tool_calls",
+          usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+        },
+      ]),
+      tools: [writeTool],
+      store: evidenceStore,
+      evidencePath: "agent/rollouts/turn-limit-1",
+      executeTool: async () => ({ content: "written", result: { written: true } }),
+    });
+
+    expect(result.limitsHit).toEqual(["turns"]);
+    expect(result.inconclusiveReason).toContain("turn limit");
+    expect(result.providerFailure).toBeUndefined();
+  });
+
+  it("marks a required next turn as inconclusive at the tool-call limit", async () => {
+    const evidenceStore = await createStore("run-tool-call-limit");
+    const result = await runAgentLoop({
+      scenario: scenarioWithLimits({ maxToolCalls: 1 }),
+      trialId: "tool-call-limit-1",
+      policyMode: "observe",
+      provider: new ScriptedAgentProvider([
+        {
+          returnedModel: "test/model-v1",
+          content: null,
+          toolCalls: [writeCall("call-one")],
+          finishReason: "tool_calls",
+          usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+        },
+      ]),
+      tools: [writeTool],
+      store: evidenceStore,
+      evidencePath: "agent/rollouts/tool-call-limit-1",
+      executeTool: async () => ({ content: "written", result: { written: true } }),
+    });
+
+    expect(result.limitsHit).toEqual(["tool_calls"]);
+    expect(result.inconclusiveReason).toContain("tool-call limit");
+    expect(result.providerFailure).toBeUndefined();
+  });
+
+  it("marks a required next turn as inconclusive when the deadline expires", async () => {
+    const evidenceStore = await createStore("run-next-turn-timeout");
+    const times = [30_000, 30_000, 30_000, 31_000];
+    vi.spyOn(Date, "now").mockImplementation(() => times.shift() ?? 31_000);
+    const result = await runAgentLoop({
+      scenario: scenarioWithLimits({ timeoutMs: 1_000 }),
+      trialId: "next-turn-timeout-1",
+      policyMode: "observe",
+      provider: new ScriptedAgentProvider([
+        {
+          returnedModel: "test/model-v1",
+          content: null,
+          toolCalls: [writeCall("call-one")],
+          finishReason: "tool_calls",
+          usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+        },
+      ]),
+      tools: [writeTool],
+      store: evidenceStore,
+      evidencePath: "agent/rollouts/next-turn-timeout-1",
+      executeTool: async () => ({ content: "written", result: { written: true } }),
+    });
+
+    expect(result.limitsHit).toEqual(["timeout"]);
+    expect(result.inconclusiveReason).toContain("deadline expired");
+    expect(result.providerFailure).toBeUndefined();
+  });
+
+  it("treats controlled-worker cleanup failures as fatal infrastructure errors", async () => {
+    const evidenceStore = await createStore("run-fatal-worker-cleanup");
+    const evaluation = runAgentLoop({
+      scenario: scenarioWithLimits({ maxTurns: 1 }),
+      trialId: "fatal-worker-cleanup-1",
+      policyMode: "observe",
+      provider: new ScriptedAgentProvider([
+        {
+          returnedModel: "test/model-v1",
+          content: null,
+          toolCalls: [writeCall("call-one")],
+          finishReason: "tool_calls",
+          usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+        },
+      ]),
+      tools: [writeTool],
+      store: evidenceStore,
+      evidencePath: "agent/rollouts/fatal-worker-cleanup-1",
+      executeTool: async () => {
+        throw new AgentCleanupVerificationError("worker cleanup was unverified");
+      },
+    });
+
+    await expect(evaluation).rejects.toThrow(AgentCleanupVerificationError);
+  });
+
+  it("treats writable-state quota failures as fatal across provider and tool boundaries", async () => {
+    const providerStore = await createStore("run-provider-resource-quota");
+    await expect(
+      runAgentLoop({
+        scenario: scenarioWithLimits({ maxTurns: 1 }),
+        trialId: "provider-resource-quota-1",
+        policyMode: "observe",
+        provider: {
+          name: "quota-test",
+          complete: async () => {
+            throw new AgentTrialResourceQuotaError("profile quota exceeded");
+          },
+        },
+        tools: [writeTool],
+        store: providerStore,
+        evidencePath: "agent/rollouts/provider-resource-quota-1",
+        executeTool: async () => ({ content: "unused", result: {} }),
+      }),
+    ).rejects.toThrow(AgentTrialResourceQuotaError);
+
+    const toolStore = await createStore("run-tool-resource-quota");
+    await expect(
+      runAgentLoop({
+        scenario: scenarioWithLimits({ maxTurns: 1 }),
+        trialId: "tool-resource-quota-1",
+        policyMode: "observe",
+        provider: new ScriptedAgentProvider([
+          {
+            returnedModel: "test/model-v1",
+            content: null,
+            toolCalls: [writeCall("call-one")],
+            finishReason: "tool_calls",
+            usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+          },
+        ]),
+        tools: [writeTool],
+        store: toolStore,
+        evidencePath: "agent/rollouts/tool-resource-quota-1",
+        executeTool: async () => {
+          throw new AgentTrialResourceQuotaError("trace quota exceeded");
+        },
+      }),
+    ).rejects.toThrow(AgentTrialResourceQuotaError);
+  });
+
+  it("treats provider credential isolation failures as fatal", async () => {
+    const evidenceStore = await createStore("run-provider-credential-isolation");
+    await expect(
+      runAgentLoop({
+        scenario: scenarioWithLimits({ maxTurns: 1 }),
+        trialId: "provider-credential-isolation-1",
+        policyMode: "observe",
+        provider: {
+          name: "credential-test",
+          complete: async () => {
+            throw new ProviderCredentialIsolationError(
+              "parsed completion contained a registered credential",
+            );
+          },
+        },
+        tools: [writeTool],
+        store: evidenceStore,
+        evidencePath: "agent/rollouts/provider-credential-isolation-1",
+        executeTool: async () => ({ content: "unused", result: {} }),
+      }),
+    ).rejects.toThrow(ProviderCredentialIsolationError);
   });
 });

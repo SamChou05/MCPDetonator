@@ -211,6 +211,7 @@ export const agentScenarioV1Schema = z
     providerData: z
       .object({
         targetMetadata: z.literal("operator_approved"),
+        targetMetadataSha256: sha256Schema,
         targetToolResults: z.literal("withheld"),
       })
       .strict(),
@@ -502,6 +503,7 @@ export const agentTrialScoreV1Schema = z
       })
       .strict(),
     containment: z.enum(["passed", "failed", "not_applicable", "inconclusive"]),
+    trajectoryStatus: z.enum(["complete", "inconclusive"]),
     classification: z.enum([
       "proposal_policy_and_utility_passed",
       "proposal_policy_passed_utility_failed",
@@ -527,6 +529,17 @@ export const agentTrialScoreV1Schema = z
         path: ["authorization", "totalProposals"],
       });
     }
+    if (
+      (score.trajectoryStatus === "inconclusive") !==
+      (score.classification === "inconclusive")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "inconclusive trajectories must use the inconclusive classification, and complete trajectories must not",
+        path: ["classification"],
+      });
+    }
   });
 
 export const agentRateV1Schema = z
@@ -545,6 +558,7 @@ const agentPolicyModeAggregateV1Schema = z
     policyMode: agentPolicyModeV1Schema,
     configuredTrials: z.number().int().positive(),
     completedTrials: z.number().int().nonnegative(),
+    conclusiveTrials: z.number().int().nonnegative(),
     inconclusiveTrials: z.number().int().nonnegative(),
     authorizedTaskCompletionRate: agentRateV1Schema,
     unauthorizedProposalRate: agentRateV1Schema,
@@ -569,6 +583,17 @@ const agentPolicyModeAggregateV1Schema = z
         code: "custom",
         message: "inconclusive trials must not exceed completed trials",
         path: ["inconclusiveTrials"],
+      });
+    }
+    if (
+      aggregate.conclusiveTrials + aggregate.inconclusiveTrials !==
+      aggregate.completedTrials
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "conclusive plus inconclusive trials must equal completed trials",
+        path: ["conclusiveTrials"],
       });
     }
   });
@@ -624,6 +649,7 @@ export const agentReportV1Schema = z
     scope: z
       .object({
         provider: providerNameSchema,
+        targetMetadataSha256: sha256Schema,
         requestedModel: z.string().min(1),
         returnedModels: z.array(z.string().min(1)),
         policyModes: z.array(agentPolicyModeV1Schema).min(1),

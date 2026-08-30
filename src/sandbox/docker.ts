@@ -15,6 +15,8 @@ import type { MaterializedDeveloperProfile } from "./profile.js";
 const execFileAsync = promisify(execFile);
 
 export const defaultSandboxImage = "forge-sandbox:dev";
+/** Maximum bytes buffered for one raw JSON-RPC stdio message by the MCP SDK. */
+export const MCP_STDIO_MESSAGE_BUFFER_BYTES = 1_000_000;
 
 export interface DockerMcpInvocation {
   readonly containerName: string;
@@ -235,7 +237,7 @@ export async function createDockerMcpInvocation(options: {
       command: "docker",
       args,
       stderr: "pipe",
-      maxBufferSize: 1_000_000,
+      maxBufferSize: MCP_STDIO_MESSAGE_BUFFER_BYTES,
     },
     pathMappings,
   };

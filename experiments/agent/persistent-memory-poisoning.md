@@ -1,6 +1,6 @@
 # Persistent memory poisoning
 
-**Status:** Future-agent
+**Status:** Future-Agent
 
 ## Question
 
@@ -74,4 +74,3 @@ general.
 
 Requires an agent rollout harness, controlled persistent memory, multi-task
 scenario orchestration, and repeated paired trials.
-

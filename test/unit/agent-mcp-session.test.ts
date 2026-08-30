@@ -1,11 +1,16 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  MAX_MCP_STDERR_BYTES,
+  MAX_MCP_TRANSCRIPT_BYTES,
+  MAX_MCP_TRANSCRIPT_MESSAGES,
   MAX_MCP_TOOL_ARGUMENT_BYTES,
+  McpSessionInitializationCleanupError,
+  closeFailedMcpSession,
   openRecordedMcpSession,
 } from "../../src/agent/mcp-session.js";
 import { EvidenceStore } from "../../src/evidence-store.js";
@@ -36,12 +41,25 @@ function handle(message) {
     listCount += 1;
     const inputSchema = process.env.FORGE_OVERSIZED_SCHEMA === "1"
       ? { type: "object", description: "x".repeat(256_100) }
+      : process.env.FORGE_INVALID_REGEX_SCHEMA === "1"
+      ? {
+          type: "object",
+          properties: { message: { type: "string", pattern: "[" } }
+        }
       : {
           type: "object",
           properties: { message: { type: "string" } },
           required: ["message"],
           additionalProperties: false
         };
+    const notificationCount = Number(process.env.FORGE_NOTIFICATION_FLOOD || 0);
+    for (let index = 0; index < notificationCount; index += 1) {
+      send({
+        jsonrpc: "2.0",
+        method: "notifications/message",
+        params: { level: "info", data: "flood-" + index }
+      });
+    }
     send({
       jsonrpc: "2.0",
       id: message.id,
@@ -65,16 +83,31 @@ function handle(message) {
   }
 
   if (message.method === "tools/call") {
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: {
-        content: [{
-          type: "text",
-          text: message.params.arguments.message + ":list-count=" + listCount
-        }]
-      }
-    });
+    const sendResult = () => {
+      const responseBytes = Number(process.env.FORGE_RESPONSE_BYTES || 0);
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: {
+          content: [{
+            type: "text",
+            text: responseBytes > 0
+              ? "x".repeat(responseBytes)
+              : message.params.arguments.message + ":list-count=" + listCount
+          }]
+        }
+      });
+    };
+    const stderrBytes = Number(process.env.FORGE_STDERR_ON_CALL_BYTES || 0);
+    if (stderrBytes > 0) {
+      process.stderr.write("e".repeat(stderrBytes));
+      setTimeout(sendResult, 100);
+    } else {
+      sendResult();
+    }
+    if (process.env.FORGE_EXIT_AFTER_CALL === "1") {
+      setTimeout(() => process.exit(0), 30);
+    }
     return;
   }
 
@@ -102,6 +135,24 @@ process.stdin.on("data", (chunk) => {
 process.stdin.on("end", () => process.exit(0));
 `;
 
+describe("failed MCP initialization cleanup", () => {
+  it("surfaces an unverified close instead of hiding it", async () => {
+    const initializationError = new Error("initialize failed");
+    const cleanupError = new Error("close failed");
+
+    await expect(
+      closeFailedMcpSession(
+        { close: async () => Promise.reject(cleanupError) },
+        initializationError,
+      ),
+    ).rejects.toMatchObject({
+      name: "McpSessionInitializationCleanupError",
+      initializationError,
+      cleanupError,
+    } satisfies Partial<McpSessionInitializationCleanupError>);
+  });
+});
+
 const temporaryRoots: string[] = [];
 
 async function createStore(runId: string): Promise<EvidenceStore> {
@@ -125,7 +176,7 @@ afterEach(async () => {
 });
 
 describe("recorded agent MCP session", () => {
-  it("discovers once, validates repeated calls, and records scoped evidence", async () => {
+  it("discovers once, forwards calls without executing target schemas, and records scoped evidence", async () => {
     const store = await createStore("run-agent-mcp");
     const evidencePath = "agent/rollouts/trial-1/raw/mcp";
     const session = await openRecordedMcpSession({
@@ -175,9 +226,9 @@ describe("recorded agent MCP session", () => {
         "second:list-count=1",
       );
 
-      await expect(
-        session.callTool("echo", { message: 123 }),
-      ).rejects.toThrow("arguments do not match MCP tool 'echo' schema");
+      expect(resultText(await session.callTool("echo", { message: 123 }))).toBe(
+        "123:list-count=1",
+      );
       await expect(session.callTool("missing", {})).rejects.toThrow(
         "MCP did not advertise requested tool 'missing'",
       );
@@ -192,9 +243,11 @@ describe("recorded agent MCP session", () => {
         "initialization",
         "tool",
         "tool",
+        "tool",
         "cooldown",
       ]);
       expect(session.phases.map((phase) => phase.status)).toEqual([
+        "completed",
         "completed",
         "completed",
         "completed",
@@ -219,7 +272,7 @@ describe("recorded agent MCP session", () => {
       .map((entry) => (entry["message"] as { method?: string }).method)
       .filter((method): method is string => method !== undefined);
     expect(clientMethods.filter((method) => method === "tools/list")).toHaveLength(1);
-    expect(clientMethods.filter((method) => method === "tools/call")).toHaveLength(2);
+    expect(clientMethods.filter((method) => method === "tools/call")).toHaveLength(3);
 
     const persistedInterface = JSON.parse(
       await readFile(store.pathFor(`${evidencePath}/interface.json`), "utf8"),
@@ -234,6 +287,7 @@ describe("recorded agent MCP session", () => {
       .map((line) => JSON.parse(line) as { kind: string });
     expect(persistedPhases.map((phase) => phase.kind)).toEqual([
       "initialization",
+      "tool",
       "tool",
       "tool",
       "cooldown",
@@ -274,5 +328,191 @@ describe("recorded agent MCP session", () => {
     await expect(
       readFile(store.pathFor(`${evidencePath}/server-stderr.log`), "utf8"),
     ).resolves.toContain("fixture stderr marker");
+  });
+
+  it("preserves but never compiles an invalid target-authored regex schema", async () => {
+    const store = await createStore("run-agent-untrusted-schema");
+    const evidencePath = "agent/rollouts/untrusted-schema/raw/mcp";
+    const session = await openRecordedMcpSession({
+      runId: "run-agent-untrusted-schema",
+      experimentId: "agent-untrusted-schema",
+      store,
+      server: {
+        command: process.execPath,
+        args: ["--eval", TEST_SERVER],
+        env: { FORGE_INVALID_REGEX_SCHEMA: "1" },
+      },
+      timeoutMs: 5_000,
+      evidencePath,
+    });
+
+    try {
+      expect(session.mcpInterface.tools[0]?.inputSchema).toEqual({
+        type: "object",
+        properties: { message: { type: "string", pattern: "[" } },
+      });
+      await expect(
+        session.callTool("echo", { message: "still forwarded" }),
+      ).resolves.toBeDefined();
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("aborts initialization when an inbound notification flood exceeds the transcript count quota", async () => {
+    const store = await createStore("run-agent-message-flood");
+    const evidencePath = "agent/rollouts/message-flood/raw/mcp";
+
+    await expect(
+      openRecordedMcpSession({
+        runId: "run-agent-message-flood",
+        experimentId: "agent-message-flood",
+        store,
+        server: {
+          command: process.execPath,
+          args: ["--eval", TEST_SERVER],
+          env: {
+            FORGE_NOTIFICATION_FLOOD: String(
+              MAX_MCP_TRANSCRIPT_MESSAGES + 32,
+            ),
+          },
+        },
+        timeoutMs: 5_000,
+        evidencePath,
+      }),
+    ).rejects.toThrow(
+      `MCP transcript exceeded the ${MAX_MCP_TRANSCRIPT_MESSAGES}-message evaluator limit`,
+    );
+
+    const transcript = (
+      await readFile(
+        store.pathFor(`${evidencePath}/mcp-transcript.jsonl`),
+        "utf8",
+      )
+    )
+      .trim()
+      .split("\n");
+    expect(transcript.length).toBeLessThanOrEqual(MAX_MCP_TRANSCRIPT_MESSAGES);
+    const phases = await readFile(
+      store.pathFor(`${evidencePath}/phases.jsonl`),
+      "utf8",
+    );
+    expect(phases).toContain('"kind":"initialization"');
+    expect(phases).toContain('"status":"failed"');
+  });
+
+  it("rejects an oversized inbound response before recording or returning it", async () => {
+    const store = await createStore("run-agent-response-oversize");
+    const evidencePath = "agent/rollouts/response-oversize/raw/mcp";
+    const session = await openRecordedMcpSession({
+      runId: "run-agent-response-oversize",
+      experimentId: "agent-response-oversize",
+      store,
+      server: {
+        command: process.execPath,
+        args: ["--eval", TEST_SERVER],
+        env: {
+          FORGE_RESPONSE_BYTES: String(MAX_MCP_TRANSCRIPT_BYTES + 1_024),
+        },
+      },
+      timeoutMs: 5_000,
+      evidencePath,
+    });
+
+    try {
+      await expect(
+        session.callTool("echo", { message: "oversized" }),
+      ).rejects.toThrow(
+        `MCP transcript exceeded the ${MAX_MCP_TRANSCRIPT_BYTES}-byte evaluator limit`,
+      );
+    } finally {
+      await session.close().catch(() => undefined);
+    }
+
+    expect(
+      (
+        await stat(store.pathFor(`${evidencePath}/mcp-transcript.jsonl`))
+      ).size,
+    ).toBeLessThan(MAX_MCP_TRANSCRIPT_BYTES);
+    const phases = await readFile(
+      store.pathFor(`${evidencePath}/phases.jsonl`),
+      "utf8",
+    );
+    expect(phases).toContain('"kind":"tool"');
+    expect(phases).toContain('"status":"failed"');
+  });
+
+  it("caps stderr and aborts a call when the target exceeds the stderr quota", async () => {
+    const store = await createStore("run-agent-stderr-oversize");
+    const evidencePath = "agent/rollouts/stderr-oversize/raw/mcp";
+    const session = await openRecordedMcpSession({
+      runId: "run-agent-stderr-oversize",
+      experimentId: "agent-stderr-oversize",
+      store,
+      server: {
+        command: process.execPath,
+        args: ["--eval", TEST_SERVER],
+        env: {
+          FORGE_STDERR_ON_CALL_BYTES: String(MAX_MCP_STDERR_BYTES + 1_024),
+        },
+      },
+      timeoutMs: 5_000,
+      evidencePath,
+    });
+
+    try {
+      await expect(
+        session.callTool("echo", { message: "stderr flood" }),
+      ).rejects.toThrow(
+        `MCP stderr exceeded the ${MAX_MCP_STDERR_BYTES}-byte evaluator limit`,
+      );
+    } finally {
+      await session.close().catch(() => undefined);
+    }
+
+    expect(
+      (await stat(store.pathFor(`${evidencePath}/server-stderr.log`))).size,
+    ).toBe(MAX_MCP_STDERR_BYTES);
+    const phases = await readFile(
+      store.pathFor(`${evidencePath}/phases.jsonl`),
+      "utf8",
+    );
+    expect(phases).toContain('"kind":"tool"');
+    expect(phases).toContain('"status":"failed"');
+  });
+
+  it("treats an unexpected transport close between calls as a fatal session failure", async () => {
+    const store = await createStore("run-agent-unexpected-close");
+    const evidencePath = "agent/rollouts/unexpected-close/raw/mcp";
+    const session = await openRecordedMcpSession({
+      runId: "run-agent-unexpected-close",
+      experimentId: "agent-unexpected-close",
+      store,
+      server: {
+        command: process.execPath,
+        args: ["--eval", TEST_SERVER],
+        env: { FORGE_EXIT_AFTER_CALL: "1" },
+      },
+      timeoutMs: 5_000,
+      evidencePath,
+    });
+
+    try {
+      await expect(
+        session.callTool("echo", { message: "close after response" }),
+      ).resolves.toBeDefined();
+      await expect(session.cooldown(100)).rejects.toThrow(
+        "MCP transport closed unexpectedly before controller cleanup",
+      );
+    } finally {
+      await session.close().catch(() => undefined);
+    }
+
+    const phases = await readFile(
+      store.pathFor(`${evidencePath}/phases.jsonl`),
+      "utf8",
+    );
+    expect(phases).toContain('"kind":"cooldown"');
+    expect(phases).toContain('"status":"failed"');
   });
 });

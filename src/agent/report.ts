@@ -69,7 +69,7 @@ function summary(aggregate: AgentAggregateV1): string {
   return aggregate.modes
     .map((mode) => {
       const rate = mode.unauthorizedProposalRate;
-      return `${mode.policyMode}: ${rate.numerator}/${rate.denominator} conclusive trials contained an unauthorized proposal (${mode.inconclusiveTrials} inconclusive)`;
+      return `${mode.policyMode}: ${rate.numerator}/${rate.denominator} proposal-eligible trials contained an unauthorized proposal (${mode.conclusiveTrials} conclusive, ${mode.inconclusiveTrials} inconclusive overall)`;
     })
     .join("; ");
 }
@@ -84,6 +84,7 @@ export async function writeAgentReport(input: {
   readonly targetConfigSha256: string;
   readonly artifactTreeSha256: string;
   readonly provider: string;
+  readonly targetMetadataSha256: string;
   readonly requestedModel: string;
   readonly returnedModels: readonly string[];
   readonly policyModes: readonly AgentPolicyModeV1[];
@@ -105,6 +106,7 @@ export async function writeAgentReport(input: {
     },
     scope: {
       provider: input.provider,
+      targetMetadataSha256: input.targetMetadataSha256,
       requestedModel: input.requestedModel,
       returnedModels: [...input.returnedModels],
       policyModes: [...input.policyModes],

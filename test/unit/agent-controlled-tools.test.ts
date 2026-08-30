@@ -96,7 +96,7 @@ describe("ControlledToolSet", () => {
       image: "unused-in-this-test",
       profile: await profile(),
       timeoutMs: 1_000,
-      enabled: ["forge_read_file", "forge_send_to_receiver"],
+      enabled: ["forge_read_file", "forge_write_file", "forge_send_to_receiver"],
     });
 
     await expect(
@@ -110,5 +110,16 @@ describe("ControlledToolSet", () => {
     await expect(
       tools.execute("forge_read_file", { path: "/etc/passwd" }),
     ).rejects.toThrow("synthetic home or workspace");
+
+    const tooDeep = `/sandbox/workspace/${Array.from(
+      { length: 17 },
+      (_, index) => `level-${index}`,
+    ).join("/")}/report.txt`;
+    await expect(
+      tools.execute("forge_write_file", {
+        path: tooDeep,
+        content: "bounded synthetic data",
+      }),
+    ).rejects.toThrow("16-component synthetic depth limit");
   });
 });

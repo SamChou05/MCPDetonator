@@ -12,6 +12,10 @@ import {
   type ProviderToolCall,
   type ProviderToolDefinition,
 } from "./provider.js";
+import {
+  assertNoProviderCredentialInValue,
+  ProviderCredentialIsolationError,
+} from "../redaction.js";
 
 export const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
@@ -20,7 +24,6 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1_000_000;
 const MAX_TIMEOUT_MS = 300_000;
 const MAX_CONFIGURED_RESPONSE_BYTES = 10_000_000;
-const MAX_ERROR_BODY_CHARACTERS = 512;
 const MAX_MODEL_IDENTIFIER_CHARACTERS = 512;
 const MAX_TOOL_CALL_IDENTIFIER_CHARACTERS = 512;
 const MAX_TOOL_NAME_CHARACTERS = 512;
@@ -409,25 +412,6 @@ async function readBoundedResponseBody(
   }
 }
 
-function redactAndCapBody(body: string, apiKey: string): string {
-  const encodedKey = encodeURIComponent(apiKey);
-  let redacted = body.split(apiKey).join("[REDACTED]");
-  if (encodedKey !== apiKey) {
-    redacted = redacted.split(encodedKey).join("[REDACTED]");
-  }
-  redacted = redacted
-    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (redacted.length === 0) {
-    return "no response body";
-  }
-  if (redacted.length <= MAX_ERROR_BODY_CHARACTERS) {
-    return redacted;
-  }
-  return `${redacted.slice(0, MAX_ERROR_BODY_CHARACTERS - 1)}…`;
-}
-
 function parseToolCalls(
   rawToolCalls: unknown,
   allowedToolNames: ReadonlySet<string>,
@@ -684,10 +668,7 @@ export class OpenRouterAgentProvider implements AgentProvider {
       if (!response.ok) {
         throw new AgentProviderError(
           "HTTP_ERROR",
-          `OpenRouter returned HTTP ${response.status}: ${redactAndCapBody(
-            responseBody,
-            this.apiKey,
-          )}`,
+          `OpenRouter returned HTTP ${response.status}`,
         );
       }
       if (responseBody.includes(this.apiKey)) {
@@ -697,12 +678,21 @@ export class OpenRouterAgentProvider implements AgentProvider {
         );
       }
 
-      return parseCompletion(
+      const completion = parseCompletion(
         responseBody,
         new Set(request.tools.map((tool) => tool.name)),
       );
+      assertNoProviderCredentialInValue(
+        completion,
+        [this.apiKey],
+        "provider credential isolation check failed: OpenRouter parsed a response containing the controller credential",
+      );
+      return completion;
     } catch (error) {
-      if (error instanceof AgentProviderError) {
+      if (
+        error instanceof AgentProviderError ||
+        error instanceof ProviderCredentialIsolationError
+      ) {
         throw error;
       }
       if (timedOut) {
