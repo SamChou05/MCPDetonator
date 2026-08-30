@@ -860,4 +860,5 @@ Verification for this milestone:
 - `npm audit --omit=dev`: passed with 0 vulnerabilities.
 - `git diff --check`: passed before the final staging gate.
 
-Suggested commit subject: `feat: publish verified runs to S3 and Postgres`.
+Completed implementation commit: `9716f99`
+(`feat: publish verified runs to S3 and Postgres`).
