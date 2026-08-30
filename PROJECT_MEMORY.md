@@ -621,8 +621,9 @@ Requested: 2026-08-30
   replaced by an untracked `src/static/semantic-contracts.ts`, apparently from
   concurrent user work. Concurrent unstaged changes also appeared in
   `package.json`, `package-lock.json`, `src/analyze.ts`, `src/contracts/v1.ts`,
-  and additional untracked `src/static/node-semantic*.ts` files. Those paths
-  are out of scope and must not be staged.
+  `src/report.ts`, `test/unit/report-static-snapshot.test.ts`, additional
+  untracked `src/static/node-semantic*.ts` files, and untracked Node semantic
+  unit tests. Those paths are out of scope and must not be staged.
 - Root owns primary-source research, contained fixtures, study execution,
   sanitized results, verification, and Git coordination. No parallel agents
   are used.
@@ -631,8 +632,8 @@ Requested: 2026-08-30
   Reproductions use exact vulnerable public-package versions or purpose-built
   behaviorally representative fixtures inside Forge's synthetic Docker
   profiles with network blocked.
-- Status: contained implementation and live execution are complete; tracked
-  result validation and final shared verification are in progress.
+- Status: complete. Contained implementation, live execution, tracked result
+  validation, and all required shared verification gates passed.
 
 Live results:
 
@@ -661,3 +662,16 @@ Live results:
 - Tracked report:
   `experiments/security/documented-malicious-mcp-study-2026-08-30.md`; bounded
   exact metrics and evidence hashes are in the adjacent JSON record.
+
+Milestones and verification:
+
+- `f2828fe` (`test: add documented malicious MCP reproductions`) added the
+  contained fixtures, exact real-package targets, fixture documentation, and
+  focused validation.
+- `e03bf4a` (`experiment: record documented malicious MCP study`) recorded the
+  sanitized exact results and bounded regression assertions.
+- From an isolated detached worktree at `e03bf4a`: `npm run typecheck` passed;
+  `npm test` passed 58 files / 443 tests; `npm run build` passed;
+  `npm run verify:e2e` returned `status: verified`; and
+  `npm run verify:agent` returned `status: passed` with all 14 named checks
+  true.
