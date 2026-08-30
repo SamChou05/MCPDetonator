@@ -1,16 +1,24 @@
 import {
   APPROVAL_CLASS_RANK,
   approvedPolicyV2Schema,
+  auditSpecV2Schema,
+  claimProfileV2Schema,
   identifierV2Schema,
+  mandatoryCaseTemplateV2Schema,
   mcpEnrollmentRecordV2AlphaSchema,
   mcpEnrollmentReviewRecordV2AlphaSchema,
+  normalizedNodeInvocationV2AlphaSchema,
   outcomeHypothesisV2Schema,
+  targetIdentityV2Schema,
   timestampV2Schema,
   type ApprovalClassV2,
   type McpEnrollmentRecordV2Alpha,
+  type McpEnrollmentSourceV2Alpha,
   type McpEnrollmentReviewRecordV2Alpha,
   type OutcomeHypothesisV2,
 } from "../../contracts/v2/index.js";
+import { targetProvenanceV1Schema } from "../../contracts/v1.js";
+import { sha256 } from "../../evidence-store.js";
 import type { PreparedTarget } from "../../target/prepare.js";
 import { computeCatalogIdentity } from "./catalog.js";
 import { canonicalizeJson, digestCanonicalJson } from "./canonical.js";
@@ -19,24 +27,34 @@ import {
   type CompiledExperimentPlanV2,
   type CompileExperimentPlanInput,
 } from "./compile.js";
-import type { EnrolledExperimentInputs } from "./enrolled-experiment.js";
 import {
+  ENROLLED_DISCOVERY_CATALOG_BOUNDS,
+  type EnrolledExperimentInputs,
+} from "./enrolled-experiment.js";
+import {
+  ENROLLED_NODE_STDIO_SANDBOX_IDENTITY,
   verifyEnrolledDockerInvocationBinding,
   type EnrolledNodeStdioDockerInvocation,
   type EnrolledSandboxResources,
   type VerifiedV2SandboxImage,
 } from "./enrolled-sandbox.js";
 import {
+  DEFAULT_ENROLLED_APPLICATION_ARGUMENT_LIMITS,
   verifyPreparedRuntimeTree,
   type NormalizedEnrolledNodeInvocation,
   type PreparedRuntimeTreeSnapshot,
 } from "./enrolled-runtime.js";
+import {
+  CONTROLLED_SANDBOX_IMAGE_ID,
+  CONTROLLED_SANDBOX_IMAGE_REFERENCE,
+} from "./controlled-fixture.js";
 import { verifyExperimentPlanEnvelope } from "./envelope.js";
 import { deepFreezeJson } from "./freeze.js";
 import {
   cloneStrictBoundedJson,
   V2_ARTIFACT_CLONE_LIMITS,
 } from "./strict-clone.js";
+import { runtimeDescriptorV2Schema } from "./target.js";
 
 export const ENROLLED_TARGET_AUTHORITY_IDENTITY = Object.freeze({
   id: "forge-enrolled-target-authority",
@@ -77,11 +95,41 @@ export interface VerifiedEnrollmentContext {
   readonly experiment: EnrolledExperimentInputs;
   readonly image: VerifiedV2SandboxImage;
   readonly backendProfileDigest: string;
+  readonly discoveryInvocation: EnrolledNodeStdioDockerInvocation;
+  readonly discoveryEvidence: Readonly<{
+    startedAt: string;
+    completedAt: string;
+    transcript: Readonly<{
+      sha256: string;
+      byteLength: number;
+      messageCount: number;
+      toolsListRequests: 1;
+      toolsCallRequests: 0;
+      toolsListChangedNotifications: 0;
+      followupCalls: 0;
+      initializeRequests: 1;
+      initializedNotifications: 1;
+      unexpectedServerRequests: 0;
+      unexpectedClientMethods: 0;
+      sequenceContiguous: true;
+    }>;
+    cleanup: Readonly<{
+      containerName: string;
+      containerAbsent: true;
+      ephemeralDiscoveryInputsAbsent: true;
+      verifiedAt: string;
+    }>;
+  }>;
 }
 
 declare const enrollmentCandidateBrand: unique symbol;
 declare const enrolledCallReviewBrand: unique symbol;
 declare const consumedEnrolledCallBrand: unique symbol;
+const preparedEnrolledDispatchBrand: unique symbol = Symbol(
+  "forge-prepared-enrolled-dispatch",
+);
+
+export const ENROLLED_REVIEW_CAPABILITY_LIFETIME_MS = 5 * 60_000;
 
 export interface EnrollmentCandidateCapability {
   readonly [enrollmentCandidateBrand]: never;
@@ -133,6 +181,11 @@ export interface PreparedEnrolledDispatch {
   readonly dockerInvocationDigest: string;
   readonly checkedAt: string;
   readonly sequence: 0;
+  readonly authorization: ConsumedEnrolledCall["authorization"];
+  readonly consumedAt: string;
+  readonly enrollmentDigest: string;
+  readonly reviewDigest: string;
+  readonly [preparedEnrolledDispatchBrand]: true;
 }
 
 interface EnrollmentState {
@@ -166,15 +219,12 @@ export interface EnrolledTargetAuthority {
     readonly hypothesis: unknown;
     readonly reviewId: string;
     readonly reviewerId: string;
-    readonly reviewedAt: string;
-    readonly capabilityExpiresAt: string;
     readonly approvalClass: ApprovalClassV2;
   }): IssuedEnrolledCallReview;
   consumeExactCallReview(input: {
     readonly capability: EnrolledCallReviewCapability;
     readonly reviewRecord: unknown;
     readonly reviewDigest: string;
-    readonly now: string;
   }): ConsumedEnrolledCall;
   revalidateDispatch(input: {
     readonly consumed: ConsumedEnrolledCall;
@@ -182,11 +232,10 @@ export interface EnrolledTargetAuthority {
     readonly liveCatalog: unknown;
     readonly toolName: string;
     readonly arguments: unknown;
-    readonly now: string;
   }): Promise<Readonly<PreparedEnrolledDispatch>>;
-  contextForConsumed(
-    consumed: ConsumedEnrolledCall,
-  ): VerifiedEnrollmentContext;
+  verifyDispatchReceipt(
+    receipt: PreparedEnrolledDispatch,
+  ): Readonly<PreparedEnrolledDispatch>;
 }
 
 function fail(
@@ -269,12 +318,27 @@ function selectedCall(experiment: EnrolledExperimentInputs) {
   return { envelope, experimentCase, step };
 }
 
+function stricterApprovalClass(
+  left: ApprovalClassV2,
+  right: ApprovalClassV2,
+): ApprovalClassV2 {
+  return APPROVAL_CLASS_RANK[left] >= APPROVAL_CLASS_RANK[right]
+    ? left
+    : right;
+}
+
 function validateEnrollmentContext(
   record: Readonly<McpEnrollmentRecordV2Alpha>,
   context: VerifiedEnrollmentContext,
 ): void {
-  const catalog = computeCatalogIdentity(context.catalog);
+  const catalog = computeCatalogIdentity(
+    context.catalog,
+    ENROLLED_DISCOVERY_CATALOG_BOUNDS,
+  );
   const { envelope } = selectedCall(context.experiment);
+  const invocationBindings = verifyEnrolledDockerInvocationBinding(
+    context.discoveryInvocation,
+  );
   const targetIdentityDigest = digestCanonicalJson(
     "forge.target-identity",
     "v2",
@@ -286,6 +350,7 @@ function validateEnrollmentContext(
     record.preparedTree.treeSha256 !== context.snapshot.treeSha256 ||
     record.runtime.invocation.digest !== context.runtime.digest ||
     record.sandbox.profileDigest !== context.backendProfileDigest ||
+    record.sandbox.profileDigest !== invocationBindings.backendProfileDigest ||
     record.sandbox.imageId !== context.image.imageId ||
     record.sandbox.imageReference !== context.image.imageReference ||
     context.resources.manifestDigest !==
@@ -296,6 +361,42 @@ function validateEnrollmentContext(
       "enrollment record differs from retained target, runtime, sandbox, or plan state",
     );
   }
+  assertCanonicalEqual(
+    "enrolled source provenance",
+    record.source.provenance,
+    expectedSourceProvenance(context),
+  );
+  assertCanonicalEqual(
+    "enrolled prepared-tree snapshot",
+    {
+      format: record.preparedTree.format,
+      complete: record.preparedTree.complete,
+      scope: record.preparedTree.scope,
+      specialEntriesRejected: record.preparedTree.specialEntriesRejected,
+      treeSha256: record.preparedTree.treeSha256,
+      counters: record.preparedTree.counters,
+      limits: record.preparedTree.limits,
+    },
+    {
+      format: context.snapshot.format,
+      complete: context.snapshot.complete,
+      scope: context.snapshot.scope,
+      specialEntriesRejected: context.snapshot.specialEntriesRejected,
+      treeSha256: context.snapshot.treeSha256,
+      counters: context.snapshot.summary,
+      limits: context.snapshot.limits,
+    },
+  );
+  assertCanonicalEqual(
+    "enrolled normalized runtime invocation",
+    record.runtime.invocation,
+    context.runtime,
+  );
+  assertCanonicalEqual(
+    "enrolled runtime argument limits",
+    record.runtime.argumentLimits,
+    DEFAULT_ENROLLED_APPLICATION_ARGUMENT_LIMITS,
+  );
   assertCanonicalEqual("enrolled target identity", record.target.identity, envelope.plan.target);
   assertCanonicalEqual("enrolled catalog", record.discovery.catalog, catalog.identity);
   assertCanonicalEqual(
@@ -303,12 +404,379 @@ function validateEnrollmentContext(
     record.sandbox.executionBounds,
     envelope.plan.bounds,
   );
+  assertCanonicalEqual(
+    "enrolled sandbox identity",
+    record.sandbox.profile,
+    ENROLLED_NODE_STDIO_SANDBOX_IDENTITY,
+  );
+  if (
+    context.discoveryInvocation.experimentId !== "enrollment-discovery" ||
+    context.discoveryInvocation.backend.targetMount.source !==
+      context.preparedTarget.hostRoot ||
+    context.discoveryInvocation.backend.syntheticResourceMount.source !==
+      context.resources.hostRoot ||
+    context.discoveryInvocation.backend.containerProcess.runtime.digest !==
+      context.runtime.digest ||
+    context.discoveryInvocation.backend.sandboxImageId !== context.image.imageId ||
+    context.discoveryInvocation.backend.sandboxImageReference !==
+      context.image.imageReference
+  ) {
+    fail(
+      "sandbox_prerequisites_unmet",
+      "discovery invocation differs from retained target, resources, runtime, or image",
+    );
+  }
+  assertCanonicalEqual(
+    "enrolled discovery transcript",
+    {
+      sha256: record.discovery.transcript.sha256,
+      byteLength: record.discovery.transcript.byteLength,
+      toolsListRequests: record.discovery.transcript.toolsListRequests,
+      toolsCallRequests: record.discovery.transcript.toolsCallRequests,
+      toolsListChangedNotifications:
+        record.discovery.transcript.toolsListChangedNotifications,
+    },
+    {
+      sha256: context.discoveryEvidence.transcript.sha256,
+      byteLength: context.discoveryEvidence.transcript.byteLength,
+      toolsListRequests: context.discoveryEvidence.transcript.toolsListRequests,
+      toolsCallRequests: context.discoveryEvidence.transcript.toolsCallRequests,
+      toolsListChangedNotifications:
+        context.discoveryEvidence.transcript.toolsListChangedNotifications,
+    },
+  );
+  if (
+    context.discoveryEvidence.transcript.initializeRequests !== 1 ||
+    context.discoveryEvidence.transcript.initializedNotifications !== 1 ||
+    context.discoveryEvidence.transcript.unexpectedServerRequests !== 0 ||
+    context.discoveryEvidence.transcript.unexpectedClientMethods !== 0 ||
+    context.discoveryEvidence.transcript.sequenceContiguous !== true ||
+    record.discovery.startedAt !== context.discoveryEvidence.startedAt ||
+    record.discovery.completedAt !== context.discoveryEvidence.completedAt ||
+    record.discovery.cleanup.containerAbsent !== true ||
+    record.discovery.cleanup.ephemeralDiscoveryInputsAbsent !== true ||
+    record.discovery.cleanup.verifiedAt !==
+      context.discoveryEvidence.cleanup.verifiedAt ||
+    context.discoveryEvidence.cleanup.containerName !==
+      context.discoveryInvocation.containerName ||
+    context.discoveryEvidence.cleanup.containerAbsent !== true ||
+    context.discoveryEvidence.cleanup.ephemeralDiscoveryInputsAbsent !== true
+  ) {
+    fail(
+      "binding_mismatch",
+      "discovery transcript, chronology, or cleanup receipt is incomplete",
+    );
+  }
+  assertCanonicalEqual("enrolled discovery limits", record.discovery.limits, {
+    maxPages: ENROLLED_DISCOVERY_CATALOG_BOUNDS.maxPages,
+    maxTools: ENROLLED_DISCOVERY_CATALOG_BOUNDS.maxTools,
+    maxTranscriptBytes: 2_000_000,
+  });
+}
+
+function expectedSourceProvenance(
+  context: VerifiedEnrollmentContext,
+): Readonly<McpEnrollmentSourceV2Alpha> {
+  const provenance = context.preparedTarget.provenance;
+  if (provenance.install.lifecycleScripts !== "disabled") {
+    fail(
+      "sandbox_prerequisites_unmet",
+      "retained target provenance does not disable lifecycle scripts",
+    );
+  }
+  const common = {
+    sourceTreeSha256: context.snapshot.treeSha256,
+    sourceEntryCount: context.snapshot.summary.entryCount,
+    sourceRegularFileBytes: context.snapshot.summary.fileBytesHashed,
+    sourceArtifactSha256: context.experiment.target.sourceArtifact.sha256,
+    lifecycleScripts: "disabled" as const,
+  };
+  if (provenance.source.type === "npm") {
+    if (
+      provenance.source.resolved === undefined ||
+      provenance.source.integrity === undefined ||
+      provenance.packageLockSha256 === undefined
+    ) {
+      fail(
+        "sandbox_prerequisites_unmet",
+        "npm enrollment provenance lacks resolved tarball, integrity, or lock identity",
+      );
+    }
+    return {
+      kind: "npm",
+      ...common,
+      package: provenance.source.package,
+      requestedVersion: provenance.source.requestedVersion,
+      resolvedVersion: provenance.source.resolvedVersion,
+      resolvedTarball: provenance.source.resolved,
+      integrity: provenance.source.integrity,
+      packageLockSha256: provenance.packageLockSha256,
+      acquisitionNetwork: "networked_package_acquisition",
+    };
+  }
+  if (
+    provenance.source.type !== "local" ||
+    provenance.install.strategy !== "none"
+  ) {
+    fail(
+      "sandbox_prerequisites_unmet",
+      "enrolled local provenance must be a no-install local snapshot",
+    );
+  }
+  return {
+    kind: "local_snapshot",
+    ...common,
+    configuredPathSha256: sha256(provenance.source.configuredPath),
+    installMode: "none",
+    ...(provenance.packageLockSha256 === undefined
+      ? {}
+      : { packageLockSha256: provenance.packageLockSha256 }),
+    acquisitionNetwork: "none",
+  };
+}
+
+function sealExperiment(
+  input: EnrolledExperimentInputs,
+  catalogInput: unknown,
+): EnrolledExperimentInputs {
+  const submitted = verifyExperimentPlanEnvelope(input.compiled);
+  const target = deepFreezeJson(
+    targetIdentityV2Schema.parse(
+      cloneStrictBoundedJson(
+        input.target,
+        V2_ARTIFACT_CLONE_LIMITS,
+        "enrolled target identity",
+      ).clone,
+    ),
+  );
+  const runtimeDescriptor = deepFreezeJson(
+    runtimeDescriptorV2Schema.parse(
+      cloneStrictBoundedJson(
+        input.runtimeDescriptor,
+        V2_ARTIFACT_CLONE_LIMITS,
+        "enrolled runtime descriptor",
+      ).clone,
+    ),
+  );
+  const claimProfile = deepFreezeJson(
+    claimProfileV2Schema.parse(
+      cloneStrictBoundedJson(
+        input.claimProfile,
+        V2_ARTIFACT_CLONE_LIMITS,
+        "enrolled claim profile",
+      ).clone,
+    ),
+  );
+  const policy = deepFreezeJson(
+    approvedPolicyV2Schema.parse(
+      cloneStrictBoundedJson(
+        input.policy,
+        V2_ARTIFACT_CLONE_LIMITS,
+        "enrolled policy",
+      ).clone,
+    ),
+  );
+  const auditSpec = deepFreezeJson(
+    auditSpecV2Schema.parse(
+      cloneStrictBoundedJson(
+        input.auditSpec,
+        V2_ARTIFACT_CLONE_LIMITS,
+        "enrolled audit specification",
+      ).clone,
+    ),
+  );
+  const mandatoryCase = deepFreezeJson(
+    mandatoryCaseTemplateV2Schema.parse(
+      cloneStrictBoundedJson(
+        input.mandatoryCase,
+        V2_ARTIFACT_CLONE_LIMITS,
+        "enrolled mandatory case",
+      ).clone,
+    ),
+  );
+  const catalog = deepFreezeJson(
+    cloneStrictBoundedJson(
+      catalogInput,
+      V2_ARTIFACT_CLONE_LIMITS,
+      "enrolled discovery catalog",
+    ).clone,
+  );
+  computeCatalogIdentity(catalog, ENROLLED_DISCOVERY_CATALOG_BOUNDS);
+  const sourceArtifactBytes = Uint8Array.from(input.sourceArtifactBytes);
+  const runtimeSnapshotBytes = Uint8Array.from(input.runtimeSnapshotBytes);
+  const compileInput: CompileExperimentPlanInput = Object.freeze({
+    planId: identifierV2Schema.parse(input.compileInput.planId),
+    manifestId: identifierV2Schema.parse(input.compileInput.manifestId),
+    compiledAt: timestampV2Schema.parse(input.compileInput.compiledAt),
+    target: Object.freeze({
+      identity: target,
+      sourceArtifactBytes,
+      runtimeSnapshotBytes,
+      runtimeDescriptor,
+    }),
+    catalog,
+    claimProfile,
+    policy,
+    auditSpec,
+    mandatoryCases: Object.freeze([mandatoryCase]),
+  });
+  const compiled = compileExperimentPlan(compileInput);
+  if (compiled.experimentPlanDigest !== submitted.experimentPlanDigest) {
+    fail("binding_mismatch", "sealed experiment compilation changed its digest");
+  }
+  assertCanonicalEqual("sealed experiment plan", compiled.plan, submitted.plan);
+  const targetIdentityDigest = digestCanonicalJson(
+    "forge.target-identity",
+    "v2",
+    target,
+  );
+  if (
+    input.targetIdentityDigest !== targetIdentityDigest ||
+    input.caseId !== mandatoryCase.caseId ||
+    mandatoryCase.steps.length !== 1 ||
+    input.stepId !== mandatoryCase.steps[0]?.stepId
+  ) {
+    fail("binding_mismatch", "enrolled experiment identities changed");
+  }
+  return Object.freeze({
+    compileInput,
+    compiled,
+    target,
+    targetIdentityDigest,
+    runtimeDescriptor,
+    sourceArtifactBytes,
+    runtimeSnapshotBytes,
+    claimProfile,
+    policy,
+    auditSpec,
+    mandatoryCase,
+    caseId: input.caseId,
+    stepId: input.stepId,
+  });
+}
+
+function sealEnrollmentContext(
+  context: VerifiedEnrollmentContext,
+): VerifiedEnrollmentContext {
+  const provenance = deepFreezeJson(
+    targetProvenanceV1Schema.parse(
+      cloneStrictBoundedJson(
+        context.preparedTarget.provenance,
+        V2_ARTIFACT_CLONE_LIMITS,
+        "retained target provenance",
+      ).clone,
+    ),
+  );
+  const originalTarget = context.preparedTarget;
+  const preparedTarget = Object.freeze({
+    hostRoot: originalTarget.hostRoot,
+    packageRoot: originalTarget.packageRoot,
+    ...(originalTarget.hostNpmCache === undefined
+      ? {}
+      : { hostNpmCache: originalTarget.hostNpmCache }),
+    containerRoot: originalTarget.containerRoot,
+    provenance,
+    dispose: () => originalTarget.dispose(),
+  }) satisfies PreparedTarget;
+  const originalResources = context.resources;
+  const resources = Object.freeze({
+    hostRoot: originalResources.hostRoot,
+    manifestDigest: originalResources.manifestDigest,
+    verify: () => originalResources.verify(),
+    dispose: () => originalResources.dispose(),
+  }) satisfies RetainedEnrolledResources;
+  const snapshot = deepFreezeJson(
+    cloneStrictBoundedJson(
+      context.snapshot,
+      V2_ARTIFACT_CLONE_LIMITS,
+      "prepared runtime-tree snapshot",
+    ).clone as unknown as PreparedRuntimeTreeSnapshot,
+  );
+  const runtime = deepFreezeJson(
+    normalizedNodeInvocationV2AlphaSchema.parse(
+      cloneStrictBoundedJson(
+        context.runtime,
+        V2_ARTIFACT_CLONE_LIMITS,
+        "normalized enrolled runtime",
+      ).clone,
+    ),
+  ) as Readonly<NormalizedEnrolledNodeInvocation>;
+  const { digest: suppliedRuntimeDigest, ...runtimeProjection } = runtime;
+  const expectedRuntimeDigest = digestCanonicalJson(
+    "forge.enrolled-node-invocation",
+    "v1alpha1",
+    runtimeProjection,
+  );
+  if (suppliedRuntimeDigest !== expectedRuntimeDigest) {
+    fail("binding_mismatch", "normalized enrolled runtime digest is false");
+  }
+  const catalog = deepFreezeJson(
+    cloneStrictBoundedJson(
+      context.catalog,
+      V2_ARTIFACT_CLONE_LIMITS,
+      "enrolled discovery catalog",
+    ).clone,
+  );
+  const image = deepFreezeJson(
+    cloneStrictBoundedJson(
+      context.image,
+      V2_ARTIFACT_CLONE_LIMITS,
+      "verified enrollment image",
+    ).clone as unknown as VerifiedV2SandboxImage,
+  );
+  if (
+    image.imageReference !== CONTROLLED_SANDBOX_IMAGE_REFERENCE ||
+    image.imageId !== CONTROLLED_SANDBOX_IMAGE_ID ||
+    image.declaredVolumes !== false
+  ) {
+    fail("sandbox_prerequisites_unmet", "enrollment image is not the pinned verified image");
+  }
+  const discoveryInvocation = deepFreezeJson(
+    cloneStrictBoundedJson(
+      context.discoveryInvocation,
+      V2_ARTIFACT_CLONE_LIMITS,
+      "enrolled discovery invocation",
+    ).clone as unknown as EnrolledNodeStdioDockerInvocation,
+  );
+  const discoveryInvocationBinding = verifyEnrolledDockerInvocationBinding(
+    discoveryInvocation,
+  );
+  if (
+    context.backendProfileDigest !==
+    discoveryInvocationBinding.backendProfileDigest
+  ) {
+    fail("binding_mismatch", "supplied discovery profile digest is false");
+  }
+  const discoveryEvidence = deepFreezeJson(
+    cloneStrictBoundedJson(
+      context.discoveryEvidence,
+      V2_ARTIFACT_CLONE_LIMITS,
+      "enrolled discovery evidence",
+    ).clone as VerifiedEnrollmentContext["discoveryEvidence"],
+  );
+  const experiment = sealExperiment(context.experiment, catalog);
+  return Object.freeze({
+    preparedTarget,
+    resources,
+    snapshot,
+    runtime,
+    catalog,
+    experiment,
+    image,
+    backendProfileDigest: discoveryInvocationBinding.backendProfileDigest,
+    discoveryInvocation,
+    discoveryEvidence,
+  });
 }
 
 export function createEnrolledTargetAuthority(options: {
   readonly controllerId: string;
+  /** Authority-owned clock; injectable only to make deterministic tests possible. */
+  readonly clock?: () => string;
 }): EnrolledTargetAuthority {
   identifierV2Schema.parse(options.controllerId);
+  const readClock = (): string =>
+    timestampV2Schema.parse((options.clock ?? (() => new Date().toISOString()))());
   const enrollmentCapabilities = new WeakMap<
     EnrollmentCandidateCapability,
     EnrollmentState
@@ -318,6 +786,10 @@ export function createEnrolledTargetAuthority(options: {
     ReviewState
   >();
   const consumedCapabilities = new WeakMap<ConsumedEnrolledCall, ConsumedState>();
+  const dispatchReceipts = new WeakMap<
+    PreparedEnrolledDispatch,
+    Readonly<PreparedEnrolledDispatch>
+  >();
 
   return Object.freeze({
     registerVerifiedEnrollment(input: {
@@ -338,13 +810,27 @@ export function createEnrolledTargetAuthority(options: {
       } catch (error) {
         return fail("invalid_enrollment", "enrollment record is invalid", error);
       }
-      validateEnrollmentContext(record, input.context);
+      let context: VerifiedEnrollmentContext;
+      try {
+        context = sealEnrollmentContext(input.context);
+        validateEnrollmentContext(record, context);
+      } catch (error) {
+        if (error instanceof EnrolledAuthorityError) throw error;
+        return fail(
+          "invalid_enrollment",
+          "verified enrollment context is invalid",
+          error,
+        );
+      }
+      if (record.enroller.id !== options.controllerId) {
+        fail("binding_mismatch", "enrollment enroller differs from controller");
+      }
       const recordDigest = enrollmentDigest(record);
       const capability = Object.freeze({}) as EnrollmentCandidateCapability;
       enrollmentCapabilities.set(capability, {
         record,
         recordDigest,
-        context: input.context,
+        context,
         reviewClaimed: false,
       });
       return Object.freeze({ record, recordDigest, capability });
@@ -357,8 +843,6 @@ export function createEnrolledTargetAuthority(options: {
       readonly hypothesis: unknown;
       readonly reviewId: string;
       readonly reviewerId: string;
-      readonly reviewedAt: string;
-      readonly capabilityExpiresAt: string;
       readonly approvalClass: ApprovalClassV2;
     }): IssuedEnrolledCallReview {
       const state = enrollmentCapabilities.get(input.capability);
@@ -374,13 +858,22 @@ export function createEnrolledTargetAuthority(options: {
       // Burn before validation: a failed or substituted review never restores
       // authority to execute the retained untrusted target.
       state.reviewClaimed = true;
-      const submittedEnrollment = mcpEnrollmentRecordV2AlphaSchema.parse(
-        cloneStrictBoundedJson(
-          input.enrollmentRecord,
-          V2_ARTIFACT_CLONE_LIMITS,
-          "submitted enrollment record",
-        ).clone,
-      );
+      let submittedEnrollment: McpEnrollmentRecordV2Alpha;
+      try {
+        submittedEnrollment = mcpEnrollmentRecordV2AlphaSchema.parse(
+          cloneStrictBoundedJson(
+            input.enrollmentRecord,
+            V2_ARTIFACT_CLONE_LIMITS,
+            "submitted enrollment record",
+          ).clone,
+        );
+      } catch (error) {
+        return fail(
+          "binding_mismatch",
+          "submitted enrollment record is invalid",
+          error,
+        );
+      }
       if (
         input.enrollmentDigest !== state.recordDigest ||
         enrollmentDigest(submittedEnrollment) !== state.recordDigest
@@ -421,14 +914,15 @@ export function createEnrolledTargetAuthority(options: {
         hypothesis.expected.predictedEffects,
         experimentCase.predictedEffects,
       );
-      const reviewedAt = timestampV2Schema.parse(input.reviewedAt);
-      const capabilityExpiresAt = timestampV2Schema.parse(
-        input.capabilityExpiresAt,
-      );
+      const reviewedAt = readClock();
       const approvalClass = input.approvalClass;
+      const requiredApprovalClass = stricterApprovalClass(
+        experimentCase.requiredApprovalClass,
+        state.record.eligibility.requiredApprovalClass,
+      );
       if (
         APPROVAL_CLASS_RANK[approvalClass] <
-        APPROVAL_CLASS_RANK[experimentCase.requiredApprovalClass]
+        APPROVAL_CLASS_RANK[requiredApprovalClass]
       ) {
         fail(
           "review_insufficient",
@@ -438,6 +932,17 @@ export function createEnrolledTargetAuthority(options: {
       const policy = approvedPolicyV2Schema.parse(
         state.context.experiment.policy,
       );
+      const maximumExpiresAt = new Date(
+        Date.parse(reviewedAt) + ENROLLED_REVIEW_CAPABILITY_LIFETIME_MS,
+      ).toISOString();
+      const capabilityExpiresAt =
+        policy.expiresAt === undefined ||
+        Date.parse(policy.expiresAt) > Date.parse(maximumExpiresAt)
+          ? maximumExpiresAt
+          : policy.expiresAt;
+      if (Date.parse(capabilityExpiresAt) <= Date.parse(reviewedAt)) {
+        fail("expired", "enrolled policy expired before exact-call review");
+      }
       const record = deepFreezeJson(
         mcpEnrollmentReviewRecordV2AlphaSchema.parse({
           format: "forge.mcp-enrollment-review/v1alpha1",
@@ -480,7 +985,7 @@ export function createEnrolledTargetAuthority(options: {
             reviewedAt,
             decision: "approved",
             approvalClass,
-            requiredApprovalClass: experimentCase.requiredApprovalClass,
+            requiredApprovalClass,
             capabilityExpiresAt,
           },
           authority: {
@@ -515,7 +1020,6 @@ export function createEnrolledTargetAuthority(options: {
       readonly capability: EnrolledCallReviewCapability;
       readonly reviewRecord: unknown;
       readonly reviewDigest: string;
-      readonly now: string;
     }): ConsumedEnrolledCall {
       const state = reviewCapabilities.get(input.capability);
       if (state === undefined) {
@@ -528,14 +1032,23 @@ export function createEnrolledTargetAuthority(options: {
         fail("replay", "exact-call review capability was already consumed");
       }
       state.consumed = true;
-      const now = timestampV2Schema.parse(input.now);
-      const submitted = mcpEnrollmentReviewRecordV2AlphaSchema.parse(
-        cloneStrictBoundedJson(
-          input.reviewRecord,
-          V2_ARTIFACT_CLONE_LIMITS,
-          "submitted enrolled-call review",
-        ).clone,
-      );
+      const now = readClock();
+      let submitted: McpEnrollmentReviewRecordV2Alpha;
+      try {
+        submitted = mcpEnrollmentReviewRecordV2AlphaSchema.parse(
+          cloneStrictBoundedJson(
+            input.reviewRecord,
+            V2_ARTIFACT_CLONE_LIMITS,
+            "submitted enrolled-call review",
+          ).clone,
+        );
+      } catch (error) {
+        return fail(
+          "binding_mismatch",
+          "submitted exact-call review is invalid",
+          error,
+        );
+      }
       if (
         input.reviewDigest !== state.reviewDigest ||
         reviewDigest(submitted) !== state.reviewDigest
@@ -550,7 +1063,7 @@ export function createEnrolledTargetAuthority(options: {
       ) {
         fail("expired", "exact-call review is outside its validity window");
       }
-      const consumed = Object.freeze({
+      const consumed = deepFreezeJson({
         authorization: {
           expiresAt: state.reviewRecord.review.capabilityExpiresAt,
           experiment: {
@@ -584,7 +1097,6 @@ export function createEnrolledTargetAuthority(options: {
       readonly liveCatalog: unknown;
       readonly toolName: string;
       readonly arguments: unknown;
-      readonly now: string;
     }): Promise<Readonly<PreparedEnrolledDispatch>> {
       const state = consumedCapabilities.get(input.consumed);
       if (state === undefined) {
@@ -598,7 +1110,7 @@ export function createEnrolledTargetAuthority(options: {
       }
       // Atomically burn the only dispatch claim before freshness work.
       state.dispatchClaimed = true;
-      const now = timestampV2Schema.parse(input.now);
+      const now = readClock();
       if (
         Date.parse(now) < Date.parse(state.consumedAt) ||
         Date.parse(now) >=
@@ -616,6 +1128,18 @@ export function createEnrolledTargetAuthority(options: {
         input.consumed.reviewRecord,
         state.reviewRecord,
       );
+      assertCanonicalEqual("consumed authorization", input.consumed.authorization, {
+        expiresAt: state.reviewRecord.review.capabilityExpiresAt,
+        experiment: {
+          experimentPlanDigest:
+            state.reviewRecord.exactCall.experimentPlanDigest,
+          policyDigest: state.reviewRecord.exactCall.policyDigest,
+          hypothesisDigest: state.reviewRecord.exactCall.hypothesisDigest,
+          caseId: state.reviewRecord.exactCall.caseId,
+          stepId: state.reviewRecord.exactCall.stepId,
+          toolName: state.reviewRecord.exactCall.toolName,
+        },
+      });
       validateEnrollmentContext(state.record, state.context);
       const invocationBindings = verifyEnrolledDockerInvocationBinding(
         input.invocation,
@@ -646,7 +1170,10 @@ export function createEnrolledTargetAuthority(options: {
       ) {
         fail("binding_mismatch", "synthetic resource manifest changed");
       }
-      const liveCatalog = computeCatalogIdentity(input.liveCatalog);
+      const liveCatalog = computeCatalogIdentity(
+        input.liveCatalog,
+        ENROLLED_DISCOVERY_CATALOG_BOUNDS,
+      );
       const freshCompilation = compileExperimentPlan({
         ...state.context.experiment.compileInput,
         catalog: input.liveCatalog,
@@ -693,7 +1220,7 @@ export function createEnrolledTargetAuthority(options: {
       if (argumentSha256 !== state.reviewRecord.exactCall.argumentSha256) {
         fail("binding_mismatch", "dispatch argument digest changed");
       }
-      return deepFreezeJson({
+      const projection = deepFreezeJson({
         toolName: step.toolName,
         arguments: step.arguments as Record<string, unknown>,
         argumentSha256,
@@ -702,18 +1229,30 @@ export function createEnrolledTargetAuthority(options: {
         dockerInvocationDigest: invocationBindings.invocationDigest,
         checkedAt: now,
         sequence: 0 as const,
+        authorization: input.consumed.authorization,
+        consumedAt: state.consumedAt,
+        enrollmentDigest: state.recordDigest,
+        reviewDigest: state.reviewDigest,
       });
+      const receipt = Object.freeze({
+        ...projection,
+        [preparedEnrolledDispatchBrand]: true as const,
+      }) as Readonly<PreparedEnrolledDispatch>;
+      dispatchReceipts.set(receipt, receipt);
+      return receipt;
     },
 
-    contextForConsumed(consumed: ConsumedEnrolledCall): VerifiedEnrollmentContext {
-      const state = consumedCapabilities.get(consumed);
-      if (state === undefined) {
+    verifyDispatchReceipt(
+      receipt: PreparedEnrolledDispatch,
+    ): Readonly<PreparedEnrolledDispatch> {
+      const issued = dispatchReceipts.get(receipt);
+      if (issued === undefined || issued !== receipt) {
         fail(
           "invalid_capability",
-          "retained execution context requires the exact consumed capability",
+          "result attribution requires the exact live dispatch receipt",
         );
       }
-      return state.context;
+      return issued;
     },
   });
 }

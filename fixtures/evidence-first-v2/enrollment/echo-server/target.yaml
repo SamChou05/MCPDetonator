@@ -1,0 +1,37 @@
+schema: forge.target/v1
+
+target:
+  id: unfamiliar-echo-mcp
+  source:
+    type: local
+    path: .
+    install: none
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/server.js
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 10000
+    cooldownMs: 0
+    memoryMb: 192
+    cpus: 1
+    pids: 32
+
+experiments:
+  initialization: false
+  tools:
+    - id: mirror-synthetic-value
+      tool: mirror_value
+      input:
+        value: forge enrollment probe
+      expected:
+        fileReads: []
+        fileWrites: []
+        networkConnections: []
+        childExecutables: []
+  workflows: []

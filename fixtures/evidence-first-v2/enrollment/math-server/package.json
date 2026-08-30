@@ -1,0 +1,10 @@
+{
+  "name": "@forge-test/unfamiliar-math-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Second structurally distinct generic enrollment fixture",
+  "type": "module",
+  "files": [
+    "lib/main.mjs"
+  ]
+}

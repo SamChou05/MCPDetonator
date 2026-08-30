@@ -167,7 +167,7 @@ export const mcpEnrollmentSourceV2AlphaSchema = z.discriminatedUnion("kind", [
       ),
       integrity: npmIntegrityV2Schema,
       packageLockSha256: sha256V2Schema,
-      acquisitionNetwork: z.literal("registry_only"),
+      acquisitionNetwork: z.literal("networked_package_acquisition"),
     })
     .strict()
     .superRefine((source, ctx) => {
@@ -421,6 +421,7 @@ export const mcpEnrollmentDiscoveryV2AlphaSchema = z
         ),
         toolsListRequests: z.literal(1),
         toolsCallRequests: z.literal(0),
+        toolsListChangedNotifications: z.literal(0),
       })
       .strict(),
     limits: z
@@ -884,17 +885,21 @@ export const mcpEnrollmentReviewRecordV2AlphaSchema = z
     );
     const reviewedAt = Date.parse(record.review.reviewedAt);
     const capabilityExpiresAt = Date.parse(record.review.capabilityExpiresAt);
-    if (planCompiledAt < enrollmentRecordedAt) {
+    if (planCompiledAt > enrollmentRecordedAt) {
       ctx.addIssue({
         code: "custom",
-        message: "the exact-call plan cannot predate enrollment",
+        message: "the exact-call plan cannot postdate the enrollment record",
         path: ["exactCall", "planCompiledAt"],
       });
     }
-    if (hypothesisCreatedAt < planCompiledAt) {
+    if (
+      hypothesisCreatedAt < planCompiledAt ||
+      hypothesisCreatedAt < enrollmentRecordedAt
+    ) {
       ctx.addIssue({
         code: "custom",
-        message: "the hypothesis cannot predate its exact-call plan",
+        message:
+          "the hypothesis cannot predate its exact-call plan or enrollment record",
         path: ["exactCall", "hypothesisCreatedAt"],
       });
     }

@@ -92,7 +92,7 @@ function validEnrollment() {
           "https://registry.example.invalid/@example/unfamiliar-mcp/-/unfamiliar-mcp-1.2.3.tgz",
         integrity: `sha512-${"A".repeat(86)}==`,
         packageLockSha256: digest("3"),
-        acquisitionNetwork: "registry_only",
+        acquisitionNetwork: "networked_package_acquisition",
       },
     },
     preparedTree: {
@@ -182,6 +182,7 @@ function validEnrollment() {
         byteLength: 20_000,
         toolsListRequests: 1,
         toolsCallRequests: 0,
+        toolsListChangedNotifications: 0,
       },
       limits: {
         maxPages: 1,
@@ -271,7 +272,7 @@ function validReview() {
       policyDigest: digest("a"),
       hypothesisDigest: digest("b"),
       syntheticResourceManifestDigest: digest("c"),
-      planCompiledAt: "2026-08-30T12:08:00.000Z",
+      planCompiledAt: "2026-08-30T12:06:30.000Z",
       hypothesisCreatedAt: "2026-08-30T12:09:00.000Z",
       policyExpiresAt: "2026-08-30T12:15:00.000Z",
       caseId: "agent-proposed-read-case--default--r1",
@@ -541,10 +542,10 @@ describe("V2 unseen-MCP enrollment evidence contracts", () => {
   it("rejects review chronology, insufficient class, authority, and scope mutation", () => {
     const mutations: Array<(record: any) => void> = [
       (record) => {
-        record.exactCall.planCompiledAt = "2026-08-30T12:06:00.000Z";
+        record.exactCall.planCompiledAt = "2026-08-30T12:08:00.000Z";
       },
       (record) => {
-        record.exactCall.hypothesisCreatedAt = "2026-08-30T12:07:30.000Z";
+        record.exactCall.hypothesisCreatedAt = "2026-08-30T12:06:45.000Z";
       },
       (record) => {
         record.review.reviewedAt = "2026-08-30T12:08:30.000Z";

@@ -1,0 +1,39 @@
+schema: forge.target/v1
+
+target:
+  id: unseen-server-everything
+  source:
+    type: npm
+    package: "@modelcontextprotocol/server-everything"
+    version: "2026.8.18"
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/node_modules/@modelcontextprotocol/server-everything/dist/index.js
+      - stdio
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 10000
+    installTimeoutMs: 120000
+    cooldownMs: 0
+    memoryMb: 192
+    cpus: 1
+    pids: 32
+
+experiments:
+  initialization: false
+  tools:
+    - id: echo-synthetic-value
+      tool: echo
+      input:
+        message: forge blind enrollment probe
+      expected:
+        fileReads: []
+        fileWrites: []
+        networkConnections: []
+        childExecutables: []
+  workflows: []

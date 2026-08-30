@@ -1,0 +1,285 @@
+{
+  "format": "forge.v2-unseen-enrollment-study/v1alpha1",
+  "runDate": "2026-08-30",
+  "question": "Can Forge enroll exact local or npm Node.js STDIO MCPs without target-specific source changes, require an exact-call review, execute no more than one call, quarantine the result, and fail closed on incompatible candidates?",
+  "evidenceStatus": {
+    "kind": "sanitized_reproducible_semantic_summary",
+    "stableFieldsCheckedBy": "npm run verify:v2-enrollment",
+    "rawEvidenceTracked": false,
+    "perRunArtifactDigestsTracked": false,
+    "ephemeralEvidenceIndexesVerified": true
+  },
+  "executionClass": "enrolled_node_stdio_single_call",
+  "reviewMechanism": "deterministic_verifier_callback_with_exact_binding_echo",
+  "scope": {
+    "candidateSelection": "curated_fixed_not_random",
+    "candidateCounts": {
+      "localFixtures": 3,
+      "exactNpm": 3,
+      "total": 6
+    },
+    "syntheticInputsOnly": true,
+    "maxToolCallsPerCandidate": 1,
+    "callSelection": "operator_authored_yaml",
+    "hypothesisProposal": "optional_non_authoritative",
+    "supportedSources": ["exact_npm_version", "local_snapshot_install_none"],
+    "runtime": "direct_node_stdio",
+    "runtimeNetwork": "blocked",
+    "npmLifecycleScripts": "disabled",
+    "resultObservation": "result_channel_only"
+  },
+  "cases": [
+    {
+      "id": "local_echo",
+      "targetId": "unfamiliar-echo-mcp",
+      "source": {
+        "kind": "local_snapshot",
+        "installMode": "none"
+      },
+      "status": "completed",
+      "selectedTool": "mirror_value",
+      "discovery": {
+        "listCalls": 1,
+        "toolCalls": 0,
+        "catalogChanged": false
+      },
+      "execution": {
+        "listCalls": 1,
+        "toolCalls": 1,
+        "retries": 0,
+        "followupCalls": 0,
+        "opaqueDispatchReceiptVerified": true
+      },
+      "comparison": {
+        "expectation": "deviates",
+        "policy": "inconclusive",
+        "intrinsicRisk": "signals_observed",
+        "outcome": "intrinsic_hazard_evidence"
+      },
+      "sensorCoverage": {
+        "complete": ["mcp_transcript", "cleanup"],
+        "incomplete": ["process", "filesystem", "network"]
+      },
+      "quarantine": {
+        "resultExposure": "local_quarantine_only",
+        "structuralOutputOnlyStringCheck": "passed",
+        "knownEchoTaintAbsentFromNonRawArtifacts": true,
+        "rawResultExposedToPlanner": false,
+        "rawResultExposedToProvider": false,
+        "rawResultUsedForFollowup": false
+      },
+      "cleanup": "verified"
+    },
+    {
+      "id": "local_math",
+      "targetId": "unfamiliar-math-mcp",
+      "source": {
+        "kind": "local_snapshot",
+        "installMode": "none"
+      },
+      "status": "completed",
+      "selectedTool": "add_numbers",
+      "discovery": {
+        "listCalls": 1,
+        "toolCalls": 0,
+        "catalogChanged": false
+      },
+      "execution": {
+        "listCalls": 1,
+        "toolCalls": 1,
+        "retries": 0,
+        "followupCalls": 0,
+        "opaqueDispatchReceiptVerified": true
+      },
+      "comparison": {
+        "expectation": "matches",
+        "policy": "inconclusive",
+        "intrinsicRisk": "no_signal_observed",
+        "outcome": "inconclusive"
+      },
+      "sensorCoverage": {
+        "complete": ["mcp_transcript", "cleanup"],
+        "incomplete": ["process", "filesystem", "network"]
+      },
+      "quarantine": {
+        "resultExposure": "local_quarantine_only",
+        "structuralOutputOnlyStringCheck": "passed",
+        "rawResultExposedToPlanner": false,
+        "rawResultExposedToProvider": false,
+        "rawResultUsedForFollowup": false
+      },
+      "cleanup": "verified"
+    },
+    {
+      "id": "local_lifecycle_side_effect",
+      "targetId": "unfamiliar-lifecycle-side-effect-mcp",
+      "source": {
+        "kind": "local_snapshot",
+        "installMode": "none"
+      },
+      "status": "completed",
+      "selectedTool": "readiness_probe",
+      "discovery": {
+        "listCalls": 1,
+        "toolCalls": 0,
+        "catalogChanged": false
+      },
+      "execution": {
+        "listCalls": 1,
+        "toolCalls": 1,
+        "retries": 0,
+        "followupCalls": 0,
+        "opaqueDispatchReceiptVerified": true
+      },
+      "comparison": {
+        "expectation": "matches",
+        "policy": "inconclusive",
+        "intrinsicRisk": "no_signal_observed",
+        "outcome": "inconclusive"
+      },
+      "sensorCoverage": {
+        "complete": ["mcp_transcript", "cleanup"],
+        "incomplete": ["process", "filesystem", "network"]
+      },
+      "quarantine": {
+        "resultExposure": "local_quarantine_only",
+        "structuralOutputOnlyStringCheck": "passed",
+        "rawResultExposedToPlanner": false,
+        "rawResultExposedToProvider": false,
+        "rawResultUsedForFollowup": false
+      },
+      "cleanup": "verified",
+      "blindSpotDemonstration": {
+        "fixtureIntent": "initialization performs bounded child-process and temporary-filesystem effects",
+        "currentBehaviorSensors": "unavailable",
+        "effectsObservedByThisVerifier": false
+      }
+    },
+    {
+      "id": "npm_sequential_thinking",
+      "targetId": "unseen-sequential-thinking",
+      "source": {
+        "kind": "npm",
+        "package": "@modelcontextprotocol/server-sequential-thinking",
+        "version": "2026.7.4",
+        "integrity": "sha512-tmR/ieGaeweffLNBrDp1H1w4sn4M6TN5yWSbMS+YMfS+0GDyPjnNKzqCl2uqfdRiX3D44PJUhwiDGqtJp6tFhw=="
+      },
+      "status": "completed",
+      "selectedTool": "sequentialthinking",
+      "discovery": {
+        "listCalls": 1,
+        "toolCalls": 0,
+        "catalogChanged": false
+      },
+      "execution": {
+        "listCalls": 1,
+        "toolCalls": 1,
+        "retries": 0,
+        "followupCalls": 0,
+        "opaqueDispatchReceiptVerified": true
+      },
+      "comparison": {
+        "expectation": "matches",
+        "policy": "inconclusive",
+        "intrinsicRisk": "no_signal_observed",
+        "outcome": "inconclusive"
+      },
+      "sensorCoverage": {
+        "complete": ["mcp_transcript", "cleanup"],
+        "incomplete": ["process", "filesystem", "network"]
+      },
+      "quarantine": {
+        "resultExposure": "local_quarantine_only",
+        "structuralOutputOnlyStringCheck": "passed",
+        "rawResultExposedToPlanner": false,
+        "rawResultExposedToProvider": false,
+        "rawResultUsedForFollowup": false
+      },
+      "cleanup": "verified"
+    },
+    {
+      "id": "npm_server_everything",
+      "targetId": "unseen-server-everything",
+      "source": {
+        "kind": "npm",
+        "package": "@modelcontextprotocol/server-everything",
+        "version": "2026.8.18",
+        "integrity": "sha512-sBW2l6uMa9ii78QixTKjXgNSv/Ad6LB8cTGBApJMytHe+VCufLQyME55JbLl/0+fcLmcx93wsZ6ce+0aOF8YXA=="
+      },
+      "status": "rejected",
+      "stage": "catalog_validation",
+      "reasonCodes": ["catalog_changed"],
+      "enrolledToolCallAuthorityIssued": false,
+      "cleanup": "verified"
+    },
+    {
+      "id": "npm_wrtn_calculator",
+      "targetId": "unseen-wrtn-calculator",
+      "source": {
+        "kind": "npm",
+        "package": "@wrtnlabs/calculator-mcp",
+        "version": "0.2.1",
+        "integrity": "sha512-t0yEi/u/XMwj+fBI0hgkafNVCbUqTt8rBsIHKEPccH29RuY5+XU63LahXGOcPoW+OWUcmR94PaH2j8KJa6tPbw=="
+      },
+      "status": "rejected",
+      "stage": "discovery_startup",
+      "reasonCodes": ["discovery_failed"],
+      "enrolledToolCallAuthorityIssued": false,
+      "cleanup": "verified"
+    }
+  ],
+  "reviewDecline": {
+    "id": "local_review_decline",
+    "targetId": "unfamiliar-math-mcp",
+    "status": "failed",
+    "stage": "review",
+    "review": {
+      "status": "declined",
+      "exactBindingsEchoed": true,
+      "externallyAuthenticatedIdentity": false
+    },
+    "dispatch": {
+      "requestedCalls": 1,
+      "sentCalls": 0,
+      "retries": 0,
+      "followupCalls": 0
+    },
+    "cleanup": "verified"
+  },
+  "aggregate": {
+    "configuredCandidates": 6,
+    "completed": 4,
+    "rejected": 2,
+    "reviewDeclineControls": 1,
+    "npmCompleted": 1,
+    "unexpectedDispositionCount": 0,
+    "targetContainersRemaining": 0,
+    "serializedArtifactsGrantAuthority": false,
+    "targetSafetyDeclared": false
+  },
+  "conclusion": {
+    "hypothesis": "A target-independent reviewed one-call path can handle eligible exact local and npm Node.js STDIO MCPs without adding package-specific implementation code.",
+    "result": "supported_for_selected_cases",
+    "safetyVerdict": "not_assessed",
+    "generalization": "One previously unenrolled exact npm package and three local controls completed through the same generic path; two incompatible npm candidates were rejected without tool-call authority."
+  },
+  "verification": {
+    "localVerifier": "npm run verify:v2-enrollment:local",
+    "localVerifierStatus": "passed",
+    "fullVerifier": "npm run verify:v2-enrollment",
+    "fullVerifierStatus": "passed",
+    "controlledV2Regression": "npm run verify:v2-outcome",
+    "controlledV2RegressionStatus": "passed"
+  },
+  "limitations": [
+    "The call and exact arguments remain operator-authored YAML; the optional proposer predicts the result but does not select executable behavior.",
+    "Selected-case results do not establish package, catalog-wide, or transitive-dependency safety.",
+    "Process, filesystem, and network behavior remain unassessed in this result-channel-only alpha.",
+    "The lifecycle fixture intentionally performs bounded process and temporary-filesystem effects during initialization, yet the current result-only observer cannot see them.",
+    "Docker containment is not a malware-grade virtual machine boundary, so this path is not approved for known malware.",
+    "Exact npm direct versions do not pin the complete transitive dependency graph across fresh acquisitions.",
+    "The verifier callback exercises exact binding and decline behavior but is not externally authenticated human identity evidence.",
+    "One-page catalogs only are supported; catalog pagination or change signals fail closed.",
+    "Prepared-tree inspection is bounded but not a race-free filesystem snapshot."
+  ]
+}

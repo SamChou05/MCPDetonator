@@ -46,6 +46,9 @@ const SENSOR_ORDER: readonly SensorV2[] = [
 
 export interface ConsumedOutcomeExecutionBinding {
   readonly consumedAt: string;
+  /** Present for an authority-issued dispatch receipt. */
+  readonly checkedAt?: string;
+  readonly sequence?: 0;
   readonly authorization: {
     readonly expiresAt: string;
     readonly experiment: {
@@ -67,7 +70,7 @@ export interface BuildOutcomeObservationInput {
   readonly catalog: unknown;
   readonly policy: unknown;
   readonly hypothesis: unknown;
-  /** Produced inside the controller by consuming the one-use capability. */
+  /** Produced inside the controller by consumption or exact dispatch revalidation. */
   readonly consumed: ConsumedOutcomeExecutionBinding;
   /** Detached MCP CallToolResult. Omit only when no result was returned. */
   readonly result?: unknown;
@@ -226,12 +229,25 @@ export function buildOutcomeObservation(
       "outcome observation rejected: consumed authorization bindings changed",
     );
   }
-  if (
-    Date.parse(input.recordedAt) < Date.parse(input.consumed.consumedAt) ||
-    Date.parse(input.recordedAt) >= Date.parse(authorization.expiresAt)
+  if (input.consumed.checkedAt === undefined) {
+    if (
+      Date.parse(input.recordedAt) < Date.parse(input.consumed.consumedAt) ||
+      Date.parse(input.recordedAt) >= Date.parse(authorization.expiresAt)
+    ) {
+      throw new Error(
+        "outcome observation rejected: observation time is outside the authorization window",
+      );
+    }
+  } else if (
+    input.consumed.sequence !== 0 ||
+    Date.parse(input.consumed.checkedAt) <
+      Date.parse(input.consumed.consumedAt) ||
+    Date.parse(input.consumed.checkedAt) >=
+      Date.parse(authorization.expiresAt) ||
+    Date.parse(input.recordedAt) < Date.parse(input.consumed.checkedAt)
   ) {
     throw new Error(
-      "outcome observation rejected: observation time is outside the authorization window",
+      "outcome observation rejected: dispatch receipt chronology is invalid",
     );
   }
   if (!Number.isSafeInteger(input.runtimeMs) || input.runtimeMs < 0) {

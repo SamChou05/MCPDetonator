@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rmdir } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import type { z } from "zod";
@@ -28,6 +28,24 @@ function safeArtifactPath(root: string, artifactPath: string): string {
   return absoluteArtifact;
 }
 
+function validateRunId(runId: string): void {
+  if (typeof runId !== "string" || runId.length === 0) {
+    throw new Error("evidence run ID must be a non-empty path component");
+  }
+
+  if (
+    runId === "." ||
+    runId === ".." ||
+    Buffer.byteLength(runId, "utf8") > 255 ||
+    /[\u0000-\u001f\u007f]/u.test(runId) ||
+    isAbsolute(runId) ||
+    runId.includes("/") ||
+    runId.includes("\\")
+  ) {
+    throw new Error("evidence run ID must be one relative path component");
+  }
+}
+
 export class EvidenceStore {
   public readonly runDirectory: string;
 
@@ -36,10 +54,27 @@ export class EvidenceStore {
   }
 
   public static async create(outputRoot: string, runId: string): Promise<EvidenceStore> {
-    await mkdir(resolve(outputRoot), { recursive: true });
-    const runDirectory = resolve(outputRoot, runId);
-    await mkdir(runDirectory, { recursive: false });
-    await mkdir(resolve(runDirectory, "raw"));
+    validateRunId(runId);
+
+    const absoluteOutputRoot = resolve(outputRoot);
+    const runDirectory = safeArtifactPath(absoluteOutputRoot, runId);
+    await mkdir(absoluteOutputRoot, { recursive: true, mode: 0o700 });
+    await mkdir(runDirectory, { recursive: false, mode: 0o700 });
+
+    try {
+      await mkdir(resolve(runDirectory, "raw"), { mode: 0o700 });
+    } catch (setupError) {
+      try {
+        await rmdir(runDirectory);
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [setupError, cleanupError],
+          "failed to create the raw evidence directory and remove the incomplete run directory",
+        );
+      }
+      throw setupError;
+    }
+
     return new EvidenceStore(runDirectory);
   }
 

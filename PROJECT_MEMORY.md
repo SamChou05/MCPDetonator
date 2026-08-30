@@ -999,3 +999,122 @@ Foundation implementation handoff:
 
 Suggested foundation commit subject:
 `feat: add reviewed V2 MCP enrollment foundation`.
+
+Generalized runner and experiment handoff:
+
+- Foundation commit: `178d2cf`
+  (`feat: add reviewed V2 MCP enrollment foundation`). The subsequent
+  runner/verifier wave began from that commit with
+  no pre-existing changes in this isolated worktree. All editing and read-only
+  review agents have finished; root owns the remaining ledger, staging, and Git
+  work.
+- The additive runner now performs exact npm or local `install: none`
+  acquisition, bounded retained-tree validation, zero-call discovery, an exact
+  one-case/one-step plan, optional non-authoritative hypothesis proposal,
+  explicit review callback, fresh-session revalidation, and exactly one
+  `tools/call`. It has no retry or follow-up interface.
+- The authority clones and freezes its own context, uses an authority-owned
+  clock and five-minute review lifetime, consumes single-use object-identity
+  capabilities before validation, and issues a separate branded dispatch
+  receipt. Serialized enrollment, review, and dispatch records remain evidence
+  rather than bearer authority.
+- The reviewer sees the full frozen target evidence, plan, policy, hypothesis,
+  selected tool, and exact arguments. Decline, timeout, and callback errors
+  persist differentiated bounded zero-call outcomes. The verifier review is a
+  deterministic test callback, not externally authenticated human identity.
+- Discovery and execution transcripts enforce contiguous sequence, one
+  initialization exchange, allowed client methods, no unexpected server
+  requests, exact raw call arguments, one correlated response, explicit
+  catalog-change handling, one list per session, and fixed message/catalog byte
+  ceilings. An evidence index binds the fixed key-artifact subset to exact
+  paths, sizes, and SHA-256s; it is not a complete inventory of retained files.
+- Result text remains in the private raw transcript. Non-raw artifacts contain
+  bounded structural/lexical observations and comparisons. Output-only taint is
+  checked against every non-raw artifact, and no result can authorize retry or
+  follow-up.
+- Cleanup records distinguish discovery, rejection, execution, and review
+  failure. Target-container absence and removal of both temporary host-input
+  parents are checked before a completed outcome is returned. Run IDs are
+  limited to one safe path component and new evidence directories are private.
+- Three target-independent local fixtures cover suspicious returned text,
+  nested-entrypoint arithmetic, and an intentional lifecycle blind spot. Three
+  exact npm case-study configurations exercise real-package compatibility. The
+  original `controlled_fixture_only` path and verifier remain unchanged.
+
+Final experiment results:
+
+- `local_echo`: completed one `mirror_value` call; output-only taint remained
+  quarantined; comparison reported `intrinsic_hazard_evidence`.
+- `local_math`: completed one `add_numbers` call; expected result shape matched;
+  overall comparison remained `inconclusive`.
+- `local_lifecycle_side_effect`: completed one `readiness_probe` call and
+  remained `inconclusive`. Its intentional initialization child-process and
+  temporary-filesystem effects were not observed, concretely demonstrating the
+  absent process/filesystem/network sensors.
+- `@modelcontextprotocol/server-sequential-thinking@2026.7.4`: completed one
+  `sequentialthinking` call through the generic reviewed path and remained
+  `inconclusive`; no package-safety claim was made.
+- `@modelcontextprotocol/server-everything@2026.8.18`: rejected before call
+  authority at `catalog_validation` with `catalog_changed`.
+- `@wrtnlabs/calculator-mcp@0.2.1`: rejected before call authority at
+  `discovery_startup` with `discovery_failed`.
+- The separate review-decline control echoed exact bindings, sent zero calls,
+  and verified cleanup. Across the six configured candidates: four completed,
+  two rejected, one exact npm candidate completed, and zero target containers
+  remained.
+- The stable sanitized record is
+  `experiments/evidence-first-v2/unseen-enrollment-study-2026-08-30.json`, with
+  a plain-English report beside it. Generated raw evidence, run IDs, temporary
+  paths, target output, and per-run digests remain untracked.
+
+Verification completed so far for the generalized wave:
+
+- Focused tracked-study test: 1 file / 2 tests passed.
+- Final `npm run typecheck`: passed.
+- Final `npm test`: 72 files / 581 tests passed.
+- Final `npm run build`: passed.
+- `npm run verify:v2-outcome`: passed with the original controlled path.
+- `npm run verify:v2-enrollment:local`: passed all local completed, blind-spot,
+  quarantine, decline, and cleanup checks.
+- `npm run verify:v2-enrollment`: passed the exact final three-local/three-npm
+  matrix, evidence-index and transcript checks, zero-call review decline, and
+  post-success temporary-root removal. The final verifier now strict-parses and
+  deep-compares its live sanitized case, decline, and aggregate projections to
+  the tracked study record before declaring success.
+- Final `npm run verify:e2e`: passed with observer image
+  `sha256:e47884bb0758377e94985914f742fe737dfafffaf55b9e7474cc4b5a8d1dc737`,
+  deceptive run `runs/run-20260830233712-a07a0b31`, and Filesystem run
+  `runs/run-20260830233745-a9f56e28`.
+- The first final `npm run verify:agent` attempt encountered an unrelated
+  synthetic MCP transport-close before cleanup and its verifier temporary root
+  was already absent when inspected. An immediate clean rerun passed all 14
+  named checks as `agent-run-20260830233915-56fbe021`; no enrollment or Agent V1
+  source was changed between attempts.
+- Explicit-path staging, path-scoped and cached-diff review,
+  `git diff --cached --stat`, secret-pattern inspection, and
+  `git diff --cached --check` passed. No ignored `dist/`, `runs/`, or
+  `node_modules/` content is staged.
+
+Known retained limits:
+
+- Candidate selection was fixed and curated, not random; one completed public
+  npm package is evidence of selected-case generalization, not a success-rate
+  estimate or arbitrary-MCP support claim.
+- The executable tool and exact arguments are still operator-authored YAML.
+  The optional proposer predicts output only and cannot authorize behavior.
+- Process, filesystem, and network effects are unassessed. Native/Wasm modules,
+  subprocesses, and lifecycle behavior may exist even when the result looks
+  benign. Docker is not a malware-grade VM.
+- Direct npm version and SRI evidence does not freeze the complete transitive
+  dependency graph; acquisition also lacks a hard host-bind quota and does not
+  prove every dependency URL remained registry-confined.
+- Prepared-tree capture is bounded but not a race-free filesystem snapshot.
+  The authority's registration boundary trusts same-process controller-supplied
+  discovery receipts to be mutually consistent, although actual dispatch
+  independently rechecks the retained runtime, tree, and catalog.
+- The verifier cannot reconstruct private host-root/container-name digests from
+  paths the runner intentionally does not return; it verifies their bounded
+  receipts plus actual post-run absence instead.
+
+Suggested generalized-wave commit subject:
+`feat: generalize reviewed V2 MCP enrollment`.

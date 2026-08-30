@@ -90,6 +90,26 @@ export interface PrepareTargetDependencies {
   readonly runNpmInstall?: NpmInstallRunner;
 }
 
+export class NpmAcquisitionError extends Error {
+  public constructor(
+    message: string,
+    readonly cleanupVerified: boolean,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "NpmAcquisitionError";
+  }
+}
+
+export class TargetPreparationCleanupError extends Error {
+  public readonly cleanupVerified = false;
+
+  public constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "TargetPreparationCleanupError";
+  }
+}
+
 function safeDockerToken(value: string): string {
   const sanitized = value.toLowerCase().replace(/[^a-z0-9_.-]/g, "-");
   if (sanitized.length === 0) {
@@ -178,6 +198,41 @@ function commandTimedOut(error: unknown): boolean {
   );
 }
 
+function textField(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Buffer.isBuffer(value)) return value.toString("utf8");
+  return undefined;
+}
+
+export function acquisitionContainerDoesNotExist(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as {
+    readonly code?: unknown;
+    readonly exitCode?: unknown;
+    readonly status?: unknown;
+    readonly message?: unknown;
+    readonly stderr?: unknown;
+    readonly stdout?: unknown;
+  };
+  if (
+    [candidate.code, candidate.exitCode, candidate.status].some(
+      (value) => value === 0 || value === "0",
+    )
+  ) {
+    return false;
+  }
+  const diagnostic = [candidate.message, candidate.stderr, candidate.stdout]
+    .map(textField)
+    .filter((value): value is string => value !== undefined)
+    .join("\n")
+    .replace(/\r\n?/gu, "\n");
+  return diagnostic.split("\n").some((line) =>
+    /^\s*(?:docker:\s*)?error(?:\s+response\s+from\s+daemon)?\s*:\s*no\s+such\s+(?:object|container)(?::|\s|$)/iu.test(
+      line,
+    ),
+  );
+}
+
 async function removeAcquisitionContainer(
   containerName: string,
   expectedRunId: string,
@@ -209,8 +264,11 @@ async function removeAcquisitionContainer(
         `timed out inspecting acquisition container '${containerName}'`,
       );
     }
-    // A non-zero inspect normally means the `--rm` container is already gone.
-    return;
+    if (acquisitionContainerDoesNotExist(error)) return;
+    throw new Error(
+      `could not verify cleanup of acquisition container '${containerName}'`,
+      { cause: error },
+    );
   }
 
   if (actualRunId !== expectedRunId) {
@@ -403,8 +461,10 @@ export async function runNpmInstall(
       outcome: `failed to start Docker: ${message}`,
       ...(cleanupError === undefined ? {} : { cleanupError }),
     });
-    throw new Error(
+    throw new NpmAcquisitionError(
       `sandboxed npm ${options.command} could not start: ${message}${cleanupError === undefined ? "" : `; container cleanup failed: ${cleanupError}`}`,
+      cleanupError === undefined,
+      { cause: error },
     );
   }
 
@@ -502,23 +562,28 @@ export async function runNpmInstall(
   });
 
   if (timedOut) {
-    throw new Error(
+    throw new NpmAcquisitionError(
       `sandboxed npm ${options.command} timed out after ${options.timeoutMs} ms${cleanupError === undefined ? "" : `; container cleanup failed: ${cleanupError}`}`,
+      cleanupError === undefined,
     );
   }
   if (processError !== undefined) {
-    throw new Error(
+    throw new NpmAcquisitionError(
       `sandboxed npm ${options.command} failed to run: ${processError.message}${cleanupError === undefined ? "" : `; container cleanup failed: ${cleanupError}`}`,
+      cleanupError === undefined,
+      { cause: processError },
     );
   }
   if (processResult.code !== 0) {
-    throw new Error(
+    throw new NpmAcquisitionError(
       `sandboxed npm ${options.command} exited with ${processResult.code ?? `signal ${processResult.signal ?? "unknown"}`}: ${capturedText.slice(-2_000)}${cleanupError === undefined ? "" : `; container cleanup failed: ${cleanupError}`}`,
+      cleanupError === undefined,
     );
   }
   if (cleanupError !== undefined) {
-    throw new Error(
+    throw new NpmAcquisitionError(
       `sandboxed npm ${options.command} completed but container cleanup failed: ${cleanupError}`,
+      false,
     );
   }
 }
@@ -736,7 +801,14 @@ export async function prepareTarget(options: {
       dispose: async () => rm(temporaryRoot, { recursive: true, force: true }),
     };
   } catch (error) {
-    await rm(temporaryRoot, { recursive: true, force: true }).catch(() => undefined);
+    try {
+      await rm(temporaryRoot, { recursive: true, force: true });
+    } catch (cleanupError) {
+      throw new TargetPreparationCleanupError(
+        "target preparation failed and temporary-input cleanup could not be verified",
+        { cause: new AggregateError([error, cleanupError]) },
+      );
+    }
     throw error;
   }
 }

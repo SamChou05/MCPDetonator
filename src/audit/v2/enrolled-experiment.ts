@@ -41,6 +41,13 @@ export const ENROLLED_SINGLE_CALL_BOUNDS = Object.freeze({
   maxOpenFiles: 64,
 });
 
+/** Discovery ceilings that are part of the enrollment compatibility claim. */
+export const ENROLLED_DISCOVERY_CATALOG_BOUNDS = Object.freeze({
+  maxPages: 1,
+  maxTools: 1_000,
+  maxSerializedBytes: 1_000_000,
+});
+
 export interface CreateEnrolledExperimentInput {
   readonly identityPrefix: string;
   readonly targetId: string;
@@ -118,7 +125,10 @@ export function createEnrolledSingleCallExperiment(
     "v2",
     target,
   );
-  const catalogIdentity = computeCatalogIdentity(input.catalog);
+  const catalogIdentity = computeCatalogIdentity(
+    input.catalog,
+    ENROLLED_DISCOVERY_CATALOG_BOUNDS,
+  );
   const claimProfile = claimProfileV2Schema.parse({
     schema: "forge.claim-profile/v2",
     profileId: `${input.identityPrefix}-claims`,
