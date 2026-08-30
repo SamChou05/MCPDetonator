@@ -9,6 +9,7 @@ import { experimentPlanV2Schema } from "./experiment-plan.js";
 import { approvedPolicyV2Schema } from "./policy.js";
 
 export * from "./approval.js";
+export * from "./agent-proposal.js";
 export * from "./artifact-reference.js";
 export * from "./audit-result.js";
 export * from "./audit-spec.js";

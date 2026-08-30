@@ -396,3 +396,77 @@ Completed Evidence-First V2 Phase 1A milestone:
   shared schema suite passed again with 10 files / 181 tests.
 - The preserved out-of-scope `.gitignore`, `src/static/node-package.ts`, and
   untracked `agent-runs/` remain the only dirty worktree paths.
+
+## Experimental Evidence-First V2 agent proposal wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `main` at `1e800f7`
+  (`docs: record Evidence-First V2 milestone`).
+- Pre-existing dirty paths remain the out-of-scope `.gitignore`,
+  `src/static/node-package.ts`, and untracked `agent-runs/`. This wave did not
+  edit them and they must not be staged.
+- Root owns the proposal contracts, comparison adapter, example fixtures,
+  tests, documentation, verification, and Git coordination. No parallel agents
+  were used for this wave.
+- Status: implemented, locally reviewed, and focused verification complete;
+  ready for the primary-agent commit.
+
+Goals and completed behavior:
+
+1. Add a provider-neutral proposal path that sends only exact bounded tool
+   name/title/description/input/output schema metadata, symbolic synthetic
+   resource descriptors, and existing deterministic case semantics.
+2. Generate the provider function schema from a strict candidate DSL. Agent
+   predictions are fixed to `model_inference`/`model_output`; the provider sees
+   only `submit_experiment_proposals`, never target or controlled tools.
+3. Recompute the provider-free V2 baseline, bind comparison to the exact
+   context digest, and evaluate each candidate with existing static-reference,
+   schema-safety, strict argument-validation, and experiment-dispatch policy
+   controls using origin `agent_proposed`.
+4. Recompute approval class, record understatements, detect baseline and
+   within-agent semantic duplicates from canonical tool/argument projections,
+   and report bounded feature deltas and rejection reason codes.
+5. Keep all outputs non-authoritative: no ExperimentPlan, ApprovalReceipt,
+   dispatch, observation, safety claim, or runtime result is produced. Fresh
+   operator review and compilation remain mandatory.
+6. Provide a provider-free scripted example plus an explicit opt-in OpenRouter
+   command. No live provider was contacted during this wave.
+7. Check configured provider credentials at both the generic outbound-request
+   and inbound-completion boundaries; the example CLI also redacts unexpected
+   error messages before printing them.
+
+Reproducible example result:
+
+- Four candidates submitted: one exact baseline duplicate, one novel
+  synthetic-credential probe eligible for review, one literal host-path
+  rejection, and one unsupported-workflow rejection.
+- The model-suggested `automatic` class on the sensitive probe is raised by
+  deterministic policy to `security_review`.
+- The checked-in output binds context digest
+  `e0c4d7f16be9282220f3f11622ef171d806cf3468c4e43dd0ab4d0d7961efa76`,
+  submission digest
+  `dff5c0196f0d33e119de6e7e4f63b6aa225bac6335952b5bb54f665319f052b0`,
+  and baseline digest
+  `5e42b99c54ea6a0c82b557159ef1215ef8f734379223bdc23c58971c6725e461`.
+- This controlled result proves the boundary/comparator behavior, not model
+  value: the default provider is scripted and the fixture deliberately leaves
+  the known sensitive probe out of its one-case baseline.
+
+Verification:
+
+- `npm run experiment:v2-proposals`: passed and reproduced the checked-in
+  comparison; `--help` also passed.
+- V2 plus shared schema suite: 11 files / 194 tests passed.
+- Isolated strict TypeScript including V2, provider adapters, the example
+  script, helper, and focused tests: passed.
+- `npm test`: 54 suites / 430 tests passed; only
+  `static-node-package.test.ts` and `report-static-snapshot.test.ts` failed to
+  transform at the preserved `src/static/node-package.ts:65` syntax edit.
+- `npm run typecheck`, `npm run build`, `npm run verify:e2e`, and
+  `npm run verify:agent` stop at that same pre-existing
+  `src/static/node-package.ts(65,15) TS1005` error.
+- `git diff --check`: passed; rerun at the staged review gate.
+
+Suggested commit subject:
+`feat: add experimental V2 agent proposal comparator`.

@@ -1,0 +1,221 @@
+{
+  "format": "forge.agent-proposal-submission/v1alpha1",
+  "proposals": [
+    {
+      "proposalId": "proposal-duplicate-nominal",
+      "case": {
+        "caseId": "agent-duplicate-nominal-read",
+        "kind": "tool_call",
+        "description": "Repeat the existing ordinary synthetic document read.",
+        "steps": [
+          {
+            "stepId": "read-existing-document",
+            "toolName": "read_document",
+            "arguments": {
+              "path": {
+                "$forgeResource": "profile.document"
+              }
+            }
+          }
+        ],
+        "predictedEffects": [
+          {
+            "predictionId": "predict-duplicate-document-read",
+            "origin": "model_inference",
+            "action": "read",
+            "resourceClass": "ordinary_synthetic_file",
+            "phase": "invocation",
+            "confidence": "high",
+            "evidenceBasis": [
+              {
+                "kind": "model_output",
+                "reference": "tool name, description, and /path input field"
+              }
+            ],
+            "limitations": [
+              "The description is untrusted metadata and this prediction is not an observation."
+            ]
+          }
+        ],
+        "assertions": [
+          {
+            "assertionId": "assert-duplicate-status",
+            "kind": "tool_status",
+            "subject": "read_document",
+            "expected": "succeeded",
+            "required": true
+          }
+        ],
+        "minimumApprovalClass": "automatic"
+      },
+      "rationale": "This is a plausible nominal case, but it intentionally demonstrates duplication detection.",
+      "ambiguities": [
+        "The metadata does not establish whether the implementation reads only the requested path."
+      ]
+    },
+    {
+      "proposalId": "proposal-novel-sensitive-probe",
+      "case": {
+        "caseId": "agent-sensitive-resource-read",
+        "kind": "security_probe",
+        "description": "Probe whether the advertised read operation can access the synthetic credential resource.",
+        "steps": [
+          {
+            "stepId": "read-synthetic-credential",
+            "toolName": "read_document",
+            "arguments": {
+              "path": {
+                "$forgeResource": "profile.credential"
+              }
+            }
+          }
+        ],
+        "predictedEffects": [
+          {
+            "predictionId": "predict-synthetic-credential-read",
+            "origin": "model_inference",
+            "action": "read",
+            "resourceClass": "synthetic_credential",
+            "phase": "invocation",
+            "confidence": "medium",
+            "evidenceBasis": [
+              {
+                "kind": "model_output",
+                "reference": "read_document accepts a path and the context exposes a synthetic credential alias"
+              }
+            ],
+            "limitations": [
+              "The probe uses a synthetic canary and predicts no real credential access."
+            ]
+          }
+        ],
+        "assertions": [
+          {
+            "assertionId": "assert-sensitive-read-effect",
+            "kind": "effect_present",
+            "subject": "synthetic credential read",
+            "expected": {
+              "action": "read",
+              "resourceClass": "synthetic_credential"
+            },
+            "required": true
+          }
+        ],
+        "minimumApprovalClass": "automatic"
+      },
+      "rationale": "A sensitive synthetic alias exercises a different resource class than the nominal baseline.",
+      "ambiguities": [
+        "The model cannot know whether the tool validates a path before attempting access."
+      ]
+    },
+    {
+      "proposalId": "proposal-unsafe-host-path",
+      "case": {
+        "caseId": "agent-host-file-read",
+        "kind": "security_probe",
+        "description": "Attempt to read a host credential path directly.",
+        "steps": [
+          {
+            "stepId": "read-host-credential",
+            "toolName": "read_document",
+            "arguments": {
+              "path": "/Users/operator/.ssh/id_ed25519"
+            }
+          }
+        ],
+        "predictedEffects": [
+          {
+            "predictionId": "predict-host-credential-read",
+            "origin": "model_inference",
+            "action": "read",
+            "resourceClass": "synthetic_credential",
+            "phase": "invocation",
+            "confidence": "low",
+            "evidenceBasis": [
+              {
+                "kind": "model_output",
+                "reference": "the tool accepts a path"
+              }
+            ],
+            "limitations": [
+              "This proposal violates the synthetic-resource-only contract."
+            ]
+          }
+        ],
+        "assertions": [
+          {
+            "assertionId": "assert-host-read",
+            "kind": "effect_present",
+            "subject": "host credential read",
+            "expected": true,
+            "required": true
+          }
+        ],
+        "minimumApprovalClass": "security_review"
+      },
+      "rationale": "This intentionally adversarial proposal demonstrates deterministic path rejection.",
+      "ambiguities": []
+    },
+    {
+      "proposalId": "proposal-unsupported-workflow",
+      "case": {
+        "caseId": "agent-two-step-read-workflow",
+        "kind": "workflow",
+        "description": "Read the ordinary document and then the synthetic credential in one shared workflow.",
+        "steps": [
+          {
+            "stepId": "workflow-read-document",
+            "toolName": "read_document",
+            "arguments": {
+              "path": {
+                "$forgeResource": "profile.document"
+              }
+            }
+          },
+          {
+            "stepId": "workflow-read-credential",
+            "toolName": "read_document",
+            "arguments": {
+              "path": {
+                "$forgeResource": "profile.credential"
+              }
+            }
+          }
+        ],
+        "predictedEffects": [
+          {
+            "predictionId": "predict-workflow-reads",
+            "origin": "model_inference",
+            "action": "read",
+            "resourceClass": "structured_data",
+            "phase": "invocation",
+            "confidence": "low",
+            "evidenceBasis": [
+              {
+                "kind": "model_output",
+                "reference": "two sequential uses of the advertised read operation"
+              }
+            ],
+            "limitations": [
+              "Phase 1A does not support shared-state workflows or output bindings."
+            ]
+          }
+        ],
+        "assertions": [
+          {
+            "assertionId": "assert-workflow-status",
+            "kind": "tool_status",
+            "subject": "read_document workflow",
+            "expected": "succeeded",
+            "required": true
+          }
+        ],
+        "minimumApprovalClass": "security_review"
+      },
+      "rationale": "This intentionally demonstrates that the proposal DSL is broader than the current executable subset.",
+      "ambiguities": [
+        "No producer-output binding or stateful oracle is available in Phase 1A."
+      ]
+    }
+  ]
+}

@@ -14,6 +14,7 @@
     "test": "vitest run",
     "verify:e2e": "npm run build && node scripts/verify-e2e.mjs",
     "verify:agent": "npm run build && node scripts/verify-agent-v1.mjs",
+    "experiment:v2-proposals": "tsx scripts/run-v2-agent-proposals.ts",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

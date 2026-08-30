@@ -159,3 +159,8 @@ No V2 runtime work may begin merely because this compiler passes. Phase 1B
 still requires the sandbox, immutable/reverified runtime snapshot, complete
 live catalog acquisition, reference monitor, evidence-integrity, partial-run,
 and cleanup gates in [EvidenceFirstV2Plan.md](EvidenceFirstV2Plan.md).
+
+The separate [EvidenceFirstV2AgentProposals.md](EvidenceFirstV2AgentProposals.md)
+prototype now exercises the future proposer boundary without weakening this
+milestone: a provider may return bounded candidate data, but deterministic
+comparison produces no ExperimentPlan, approval, dispatch, or runtime claim.

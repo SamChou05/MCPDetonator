@@ -63,6 +63,12 @@ Consider questions like how you would generate useful trajectories, what signals
 
 This is deliberately open-ended. A well-reasoned conclusion that agent rollouts add little beyond software analysis is just as interesting as a prototype showing that they expose an important new class of behavior.
 
+The repository now includes two separate experiments for this question:
+[AgentRolloutV1.md](AgentRolloutV1.md) studies model tool-use trajectories,
+while [EvidenceFirstV2AgentProposals.md](EvidenceFirstV2AgentProposals.md)
+tests whether an untrusted model can add useful audit-plan candidates beyond a
+deterministic baseline without receiving execution authority.
+
 ---
 
 # What "done" looks like

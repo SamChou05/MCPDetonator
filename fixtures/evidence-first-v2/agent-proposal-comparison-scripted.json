@@ -1,0 +1,139 @@
+{
+  "format": "forge.agent-proposal-comparison/v1alpha1",
+  "contextDigest": "e0c4d7f16be9282220f3f11622ef171d806cf3468c4e43dd0ab4d0d7961efa76",
+  "submissionDigest": "dff5c0196f0d33e119de6e7e4f63b6aa225bac6335952b5bb54f665319f052b0",
+  "baselineDigest": "5e42b99c54ea6a0c82b557159ef1215ef8f734379223bdc23c58971c6725e461",
+  "proposer": {
+    "adapter": "scripted",
+    "requestedModel": "scripted/proposer-v1",
+    "returnedModel": "scripted/proposer-v1",
+    "routingMatch": true,
+    "prompt": {
+      "id": "forge-agent-proposal-prompt",
+      "version": "1alpha1"
+    },
+    "usage": {
+      "promptTokens": 900,
+      "completionTokens": 600,
+      "totalTokens": 1500
+    }
+  },
+  "summary": {
+    "submitted": 4,
+    "rejected": 2,
+    "duplicateBaseline": 1,
+    "duplicateAgent": 0,
+    "acceptedNovel": 1
+  },
+  "candidates": [
+    {
+      "index": 0,
+      "proposalId": "proposal-duplicate-nominal",
+      "caseId": "agent-duplicate-nominal-read",
+      "disposition": "duplicate_baseline",
+      "reasonCode": "duplicate_baseline",
+      "semanticDigest": "e38649dadeb56967f1a5da8e32c4b9fc37d66f3fc8cd8dc1c3a5bf505b054f9a",
+      "suggestedApprovalClass": "automatic",
+      "deterministicApprovalClass": "automatic",
+      "approvalUnderstated": false,
+      "features": [
+        "argument:read_document:/:object",
+        "argument:read_document:/path:resource:ordinary_synthetic_file",
+        "assertion:tool_status",
+        "kind:tool_call",
+        "prediction:read:ordinary_synthetic_file:invocation",
+        "tool:read_document"
+      ],
+      "warnings": []
+    },
+    {
+      "index": 1,
+      "proposalId": "proposal-novel-sensitive-probe",
+      "caseId": "agent-sensitive-resource-read",
+      "disposition": "accepted_novel",
+      "reasonCode": "accepted",
+      "semanticDigest": "62a5f3e28da82c040f576961b239f7e8e5d7e93a653e428513808edc1d3f9f94",
+      "suggestedApprovalClass": "automatic",
+      "deterministicApprovalClass": "security_review",
+      "approvalUnderstated": true,
+      "features": [
+        "argument:read_document:/:object",
+        "argument:read_document:/path:resource:synthetic_credential",
+        "assertion:effect_present",
+        "kind:security_probe",
+        "prediction:read:synthetic_credential:invocation",
+        "tool:read_document"
+      ],
+      "warnings": [
+        "The proposal's suggested approval class is lower than the deterministic policy requirement."
+      ]
+    },
+    {
+      "index": 2,
+      "proposalId": "proposal-unsafe-host-path",
+      "caseId": "agent-host-file-read",
+      "disposition": "rejected",
+      "reasonCode": "unsafe_reference",
+      "suggestedApprovalClass": "security_review",
+      "features": [],
+      "warnings": []
+    },
+    {
+      "index": 3,
+      "proposalId": "proposal-unsupported-workflow",
+      "caseId": "agent-two-step-read-workflow",
+      "disposition": "rejected",
+      "reasonCode": "unsupported_case_kind",
+      "suggestedApprovalClass": "security_review",
+      "features": [],
+      "warnings": []
+    }
+  ],
+  "coverageComparison": {
+    "baselineFeatures": [
+      "argument:read_document:/:object",
+      "argument:read_document:/path:resource:ordinary_synthetic_file",
+      "assertion:tool_status",
+      "kind:tool_call",
+      "prediction:read:ordinary_synthetic_file:invocation",
+      "tool:read_document"
+    ],
+    "acceptedAgentFeatures": [
+      "argument:read_document:/:object",
+      "argument:read_document:/path:resource:synthetic_credential",
+      "assertion:effect_present",
+      "kind:security_probe",
+      "prediction:read:synthetic_credential:invocation",
+      "tool:read_document"
+    ],
+    "combinedFeatures": [
+      "argument:read_document:/:object",
+      "argument:read_document:/path:resource:ordinary_synthetic_file",
+      "argument:read_document:/path:resource:synthetic_credential",
+      "assertion:effect_present",
+      "assertion:tool_status",
+      "kind:security_probe",
+      "kind:tool_call",
+      "prediction:read:ordinary_synthetic_file:invocation",
+      "prediction:read:synthetic_credential:invocation",
+      "tool:read_document"
+    ],
+    "agentOnlyFeatures": [
+      "argument:read_document:/path:resource:synthetic_credential",
+      "assertion:effect_present",
+      "kind:security_probe",
+      "prediction:read:synthetic_credential:invocation"
+    ]
+  },
+  "authority": {
+    "executionAuthorized": false,
+    "approvalIssued": false,
+    "experimentPlanProduced": false,
+    "requiredNextStep": "operator_review_and_fresh_compilation"
+  },
+  "limitations": [
+    "This comparison validates candidate-local structure, static references, frozen input schemas, policy eligibility, bounded case/step selection, and duplication; fresh compilation must still recheck aggregate resource, argument, and policy-work budgets.",
+    "Novel means absent from the supplied baseline by canonical tool-and-argument semantics, not useful, correct, safe, or capable of finding a vulnerability.",
+    "Predicted effects and rationales remain untrusted model inferences and are not observations or authorization."
+  ]
+}

@@ -1,4 +1,5 @@
 export * from "./approval.js";
+export * from "./agent-proposal.js";
 export * from "./artifacts.js";
 export * from "./canonical.js";
 export * from "./catalog.js";
@@ -7,6 +8,7 @@ export * from "./compile.js";
 export * from "./envelope.js";
 export * from "./errors.js";
 export * from "./load.js";
+export * from "./manual-fixture.js";
 export * from "./policy.js";
 export * from "./references.js";
 export * from "./reporting.js";

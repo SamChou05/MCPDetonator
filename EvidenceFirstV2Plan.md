@@ -1355,8 +1355,25 @@ Goal: determine whether semantic planning adds unique value.
 
 Add a provider-neutral proposer interface. Reuse the hardened provider adapter
 only after defining an approved provider-bound projection and its digest. The
-model receives no tools. Parse only the typed candidate DSL and run it through
-the same deterministic compiler/validator as manual candidates.
+model receives no target or controlled tools; it may receive only a controller
+function for submitting the typed candidate DSL. Parse only that DSL and run it
+through the same deterministic compiler/validator as manual candidates.
+
+Prototype checkpoint (2026-08-30):
+
+- `forge.agent-proposal-context/v1alpha1` now projects exact bounded tool
+  metadata, symbolic resources, and existing-case semantics through the
+  provider-neutral Agent V1 adapter. The provider receives only a controller
+  submission function, never target or controlled tools.
+- Candidate-local parsing, reference safety, frozen-schema validation,
+  `agent_proposed` dispatch-policy evaluation, approval recomputation,
+  canonical semantic deduplication, and feature-delta reporting are implemented
+  without producing an ExperimentPlan or ApprovalReceipt.
+- The offline scripted example and optional explicit live-provider command are
+  documented in `EvidenceFirstV2AgentProposals.md`.
+- This is boundary plumbing and a controlled comparator example, not completion
+  of Phase 4: adversarial metadata coverage and the equal-budget three-arm
+  finding evaluation below remain required.
 
 Exit criteria:
 
