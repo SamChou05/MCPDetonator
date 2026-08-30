@@ -1,0 +1,460 @@
+{
+  "schema": "forge.unseen-mcp-holdout-study/v1",
+  "runDate": "2026-08-30",
+  "baselineCommit": "a2b0516",
+  "safety": {
+    "disposableDockerProfiles": true,
+    "runtimeNetwork": "blocked",
+    "syntheticHomeAndWorkspaceOnly": true,
+    "hostMcpConfigurationsModified": false,
+    "hostCredentialsMounted": false,
+    "realServiceCredentialsUsed": false,
+    "acquisitionLifecycleScripts": "disabled",
+    "publicPackageCodeExecuted": true,
+    "declaredMaliciousTestPackageExecuted": true
+  },
+  "selection": {
+    "method": "Exact-version npm packages absent from existing Forge fixtures were frozen from registry metadata before package contents or MCP catalogs were inspected.",
+    "selectedPackageCount": 10,
+    "declaredPositiveControls": 1,
+    "unlabelledCases": 9,
+    "groundTruthLimitation": "Registry identity, publisher, and description are not security ground truth; unlabelled cases are not presumed benign."
+  },
+  "aggregate": {
+    "acquisitionCompleted": 10,
+    "scriptsDisabledAndEnabledInstallArmsCompleted": 10,
+    "catalogsDiscovered": 9,
+    "startupFailuresBeforeCatalog": 1,
+    "selectedToolInvocationsAttempted": 9,
+    "completedReports": 8,
+    "toolLevelFailuresBeforeReport": 1,
+    "packagesWithDeterministicFindings": 2,
+    "deterministicFindingCount": 5,
+    "findingRules": {
+      "runtime.unexpected_network_attempt": 4,
+      "runtime.file_scope_exceeded": 1
+    },
+    "blockedOrFailedNetworkAttempts": 4,
+    "syntheticFilesystemEntriesCreated": 1,
+    "declaredPositiveControlDeterministicFindings": 0
+  },
+  "cases": [
+    {
+      "caseId": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2026.8.18",
+      "packageTreeSha256": "ab8eb781591f1e019b50363d5b24bef6e797dec074f6d9f34a2855156017f5af",
+      "probe": {
+        "runId": "run-20260830175828-d2ade6a3",
+        "outcome": "catalog_discovered",
+        "advertisedTools": 13
+      },
+      "invocation": {
+        "runId": "run-20260830180547-86716aa9",
+        "status": "completed",
+        "tool": "get-env",
+        "reportSha256": "6822b785959a9b43c0d62cad46f4bc808c525359593aeace29278ef66f3e6375"
+      },
+      "static": {
+        "candidateFiles": 43,
+        "scannedFiles": 43,
+        "skippedFiles": 0,
+        "signals": {
+          "environment_access": 8,
+          "filesystem_access": 2,
+          "network_access": 1
+        }
+      },
+      "runtime": {
+        "effectCounts": {},
+        "filesystemChanges": 0,
+        "toolResult": {
+          "classification": "sandbox_environment_object",
+          "bytes": 193,
+          "sha256": "5c9c19dff90490b328cad8a3d1e65cf1a674fac194f17ba3eace539302fa2af7",
+          "variableCount": 5,
+          "credentialLikeVariableNameMatches": 0
+        }
+      },
+      "findings": []
+    },
+    {
+      "caseId": "sequential-thinking",
+      "package": "@modelcontextprotocol/server-sequential-thinking",
+      "version": "2026.7.4",
+      "packageTreeSha256": "eda82a929cf38eef92050ccb201e5349f024e11efc1c2a85559dce25797970df",
+      "probe": {
+        "runId": "run-20260830175828-e3b82377",
+        "outcome": "catalog_discovered",
+        "advertisedTools": 1
+      },
+      "invocation": {
+        "runId": "run-20260830180547-eede5781",
+        "status": "completed",
+        "tool": "sequentialthinking",
+        "reportSha256": "a335c8c1b830422064f7621a52777472264bc4a12d4b5a0fcc072079f284a853"
+      },
+      "static": {
+        "candidateFiles": 2,
+        "scannedFiles": 2,
+        "skippedFiles": 0,
+        "signals": {
+          "environment_access": 1
+        }
+      },
+      "runtime": {
+        "effectCounts": {},
+        "filesystemChanges": 0
+      },
+      "advertisedClaimObservation": "The lexical classifier treated the metaphorical phrase 'branch into new paths' as a filesystem claim.",
+      "findings": []
+    },
+    {
+      "caseId": "hello-world",
+      "package": "mcp-hello-world",
+      "version": "1.1.2",
+      "packageTreeSha256": "32e99f7b879440aad08c11d1350f00c4d354f94c28de1f64b4935afb2d61f6aa",
+      "probe": {
+        "runId": "run-20260830175931-0d8e1861",
+        "outcome": "catalog_discovered",
+        "advertisedTools": 3
+      },
+      "invocation": {
+        "runId": "run-20260830180705-c6694277",
+        "status": "completed",
+        "tool": "echo",
+        "reportSha256": "b82f0bb3436e311e125abc6946c6b27a2e703beedcd048eb8d090a2dfdf38073"
+      },
+      "static": {
+        "candidateFiles": 4,
+        "scannedFiles": 4,
+        "skippedFiles": 0,
+        "signals": {
+          "environment_access": 1
+        }
+      },
+      "runtime": {
+        "effectCounts": {},
+        "filesystemChanges": 0
+      },
+      "findings": []
+    },
+    {
+      "caseId": "declared-malicious",
+      "package": "malicious-mcp-server",
+      "version": "1.5.0",
+      "packageTreeSha256": "ec98c410921bde5b231638cbb9c57d826d75b1f393edf270769fe8c49658edec",
+      "probe": {
+        "runId": "run-20260830175828-946a44e3",
+        "outcome": "catalog_discovered",
+        "advertisedTools": 7
+      },
+      "invocation": {
+        "runId": "run-20260830180547-d6ead397",
+        "status": "completed",
+        "tool": "codeGenerator",
+        "reportSha256": "9b61c9044b45012bedc67c838e823e110ee73138ca03556c9b39c128eae104c6"
+      },
+      "static": {
+        "candidateFiles": 1,
+        "scannedFiles": 0,
+        "skippedFiles": 1,
+        "signals": {}
+      },
+      "runtime": {
+        "effectCounts": {},
+        "filesystemChanges": 0,
+        "toolResult": {
+          "classification": "code_like_eval_string",
+          "bytes": 10,
+          "sha256": "64e32c68cabcdc9d1c99ebcd6478559d4743d7e66643fee192ed96ae1b504361"
+        }
+      },
+      "findings": []
+    },
+    {
+      "caseId": "excel",
+      "package": "@negokaz/excel-mcp-server",
+      "version": "0.12.0",
+      "packageTreeSha256": "84edcba6d73f0a9536f77ca3daf7689c123d85d187f2c2cd7eaf8f7f0a6c0bca",
+      "probe": {
+        "runId": "run-20260830175931-52b2d2a6",
+        "outcome": "catalog_discovered",
+        "advertisedTools": 6
+      },
+      "invocation": {
+        "runId": "run-20260830180705-e9d223cd",
+        "status": "tool_error_before_report",
+        "tool": "excel_describe_sheets",
+        "failureClass": "synthetic_file_not_found",
+        "runManifestSha256": "5dd55cd86d437881c971dd070f43aafa93cddce09da0c95663701224d40cb0c6"
+      },
+      "static": {
+        "candidateFiles": 2,
+        "scannedFiles": 2,
+        "skippedFiles": 0,
+        "signals": {
+          "process_execution": 2
+        }
+      },
+      "runtime": {
+        "normalizedReportAvailable": false,
+        "partialArtifactCount": 64
+      },
+      "findings": []
+    },
+    {
+      "caseId": "eslint",
+      "package": "@eslint/mcp",
+      "version": "0.3.11",
+      "packageTreeSha256": "deffb5941241632d0a1db80f83a613be6c71c4a9ef1a7159d6b8992a6e12b519",
+      "probe": {
+        "runId": "run-20260830175931-f245ea57",
+        "outcome": "catalog_discovered",
+        "advertisedTools": 1
+      },
+      "invocation": {
+        "runId": "run-20260830180705-8068f7d7",
+        "status": "completed",
+        "tool": "lint-files",
+        "reportSha256": "978b5db420edd8015abd7badfa69908eeb691f5f7165aac8cc171426231eb040"
+      },
+      "static": {
+        "candidateFiles": 2,
+        "scannedFiles": 2,
+        "skippedFiles": 0,
+        "signals": {}
+      },
+      "runtime": {
+        "effectCounts": {},
+        "filesystemChanges": 0
+      },
+      "findings": []
+    },
+    {
+      "caseId": "panda",
+      "package": "@pandacss/mcp",
+      "version": "1.12.0",
+      "packageTreeSha256": "7b204ef2c942773c0a7a5fa15b944aee425be893c17cbf5e9352c05b49798002",
+      "probe": {
+        "runId": "run-20260830180032-75ec42b1",
+        "outcome": "startup_failed_before_catalog",
+        "failureClass": "required_project_configuration_absent",
+        "runManifestSha256": "d691997a0e9b653820997988700f2e5200c1d5d2a098964a7e8928c392e96287"
+      },
+      "invocation": {
+        "status": "not_attempted_without_catalog"
+      },
+      "static": {
+        "candidateFiles": 6,
+        "scannedFiles": 6,
+        "skippedFiles": 0,
+        "signals": {
+          "filesystem_access": 3
+        }
+      },
+      "runtime": {
+        "normalizedReportAvailable": false,
+        "partialArtifactCount": 78
+      },
+      "findings": []
+    },
+    {
+      "caseId": "mui",
+      "package": "@mui/mcp",
+      "version": "0.1.4",
+      "packageTreeSha256": "7357de2164838ffa23e26cbdfba9c56823f59a0fa531188e6de62ac3b69cbeab",
+      "probe": {
+        "runId": "run-20260830180032-6d44dadc",
+        "outcome": "catalog_discovered",
+        "advertisedTools": 2
+      },
+      "invocation": {
+        "runId": "run-20260830180819-7891988a",
+        "status": "completed",
+        "tool": "fetchDocs",
+        "reportSha256": "403ddeba833e153fcc0d5bc8df03d936609c329368e1fc2a0b2a7045af296c5b"
+      },
+      "static": {
+        "candidateFiles": 7,
+        "scannedFiles": 7,
+        "skippedFiles": 0,
+        "signals": {
+          "filesystem_access": 1
+        }
+      },
+      "runtime": {
+        "effectCounts": {
+          "file.open": 2,
+          "file.write": 2
+        },
+        "filesystemChanges": 1,
+        "createdPath": "/sandbox/home/forge/.mui-mcp.log"
+      },
+      "findings": [
+        {
+          "ruleId": "runtime.file_scope_exceeded",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "caseId": "mantine",
+      "package": "@mantine/mcp-server",
+      "version": "9.5.2",
+      "packageTreeSha256": "2a3843cf1d258ce4c49b52a0ebcf1bcb44f001bcda3dbcaba3ac5c4567595c31",
+      "probe": {
+        "runId": "run-20260830180032-13cbe528",
+        "outcome": "catalog_discovered",
+        "advertisedTools": 4
+      },
+      "invocation": {
+        "runId": "run-20260830180819-f5a1ea80",
+        "status": "completed",
+        "tool": "list_items",
+        "reportSha256": "86c7d8c4cda137e04636e7f432d2763da4f513e9333349ead9945114b8302b30"
+      },
+      "static": {
+        "candidateFiles": 13,
+        "scannedFiles": 13,
+        "skippedFiles": 0,
+        "signals": {
+          "environment_access": 4,
+          "network_access": 2
+        }
+      },
+      "runtime": {
+        "effectCounts": {
+          "file.open": 8,
+          "file.read": 6,
+          "network.connect_attempt": 4
+        },
+        "filesystemChanges": 0,
+        "networkAttempts": {
+          "count": 4,
+          "uniqueDestinations": 2,
+          "outcomes": {
+            "ENOENT": 2,
+            "ENETUNREACH": 2
+          }
+        }
+      },
+      "findings": [
+        {
+          "ruleId": "runtime.unexpected_network_attempt",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "caseId": "ui5",
+      "package": "@ui5/mcp-server",
+      "version": "0.2.18",
+      "packageTreeSha256": "c337f57db4bfaa9d1fff681466036f158461b0aacc6c4c54a5c4f795a603ffc2",
+      "probe": {
+        "runId": "run-20260830180138-6bbf86d7",
+        "outcome": "catalog_discovered",
+        "advertisedTools": 10
+      },
+      "invocation": {
+        "runId": "run-20260830180819-ece3eb69",
+        "status": "completed",
+        "tool": "get_guidelines",
+        "reportSha256": "198c918a64f41cfee8955a3ba27a66193718b716f2ef9d758622da2f31f04e13"
+      },
+      "static": {
+        "candidateFiles": 148,
+        "scannedFiles": 148,
+        "skippedFiles": 0,
+        "signals": {
+          "dynamic_module_loading": 2,
+          "environment_access": 9,
+          "filesystem_access": 16,
+          "network_access": 3
+        }
+      },
+      "runtime": {
+        "effectCounts": {
+          "file.open": 1,
+          "file.read": 1
+        },
+        "filesystemChanges": 0
+      },
+      "findings": []
+    }
+  ],
+  "exploratoryPositiveControlSweep": {
+    "package": "malicious-mcp-server",
+    "version": "1.5.0",
+    "runId": "run-20260830181206-2d6f449b",
+    "reportSha256": "5e8adebb6bf30903b6375b12c54f1b7908f00c77da72970ec82d83cf47ba036e",
+    "toolsCompleted": 7,
+    "runtimeEffectCount": 0,
+    "filesystemChangeCount": 0,
+    "deterministicFindingCount": 0,
+    "sourceCoverage": {
+      "candidateFiles": 1,
+      "scannedFiles": 0,
+      "skippedFiles": 1
+    },
+    "toolResults": [
+      {
+        "experimentId": "sweep-code-generator",
+        "classification": "code_like_eval_string",
+        "bytes": 10,
+        "sha256": "64e32c68cabcdc9d1c99ebcd6478559d4743d7e66643fee192ed96ae1b504361",
+        "hasControlCharacters": false
+      },
+      {
+        "experimentId": "sweep-customer-data",
+        "classification": "synthetic_data_leak_claim",
+        "bytes": 39,
+        "sha256": "c6abdbc2a597d6164fb1821de7141f19de2c7b5c792de00862d605c07ab629cc",
+        "hasControlCharacters": false
+      },
+      {
+        "experimentId": "sweep-echo",
+        "classification": "control_echo",
+        "bytes": 22,
+        "sha256": "bb797a0ca282257d397373a12142bf0c3d0257a0b95e017e69cbde10a56b8f19",
+        "hasControlCharacters": false
+      },
+      {
+        "experimentId": "sweep-message-formatter",
+        "classification": "control_character_payload",
+        "bytes": 19,
+        "sha256": "b97b0d3c95a273b620bbe4b97376e3fb46f7658cdf53a6ac112de9a65592db39",
+        "hasControlCharacters": true
+      },
+      {
+        "experimentId": "sweep-prompt-guard",
+        "classification": "direct_prompt_injection_requesting_system_prompt_and_secrets",
+        "bytes": 173,
+        "sha256": "1e146a8e00aaf8dee245787db2e4b7f8e6fceb4c09e19483e52a3c9dc8d417b2",
+        "hasControlCharacters": false
+      },
+      {
+        "experimentId": "sweep-timeout",
+        "classification": "control_timeout_confirmation",
+        "bytes": 20,
+        "sha256": "15a8272a6518a557d38c3ea52407aaaf13f459d64b9b6db3e499455c67b692cf",
+        "hasControlCharacters": false
+      },
+      {
+        "experimentId": "sweep-token-input",
+        "classification": "synthetic_credential_leak_claim",
+        "bytes": 39,
+        "sha256": "accc51322090c3a4de3284f41e73960852508d41cfe4a285ca6c8dec6fbdd7c5",
+        "hasControlCharacters": false
+      }
+    ]
+  },
+  "conclusions": [
+    "The setup safely acquired all ten exact packages and produced usable catalog or failure evidence for every case.",
+    "Two unlabelled packages produced concrete runtime findings: blocked DNS-related connection attempts and an undeclared synthetic-home log file.",
+    "The declared malicious E2E control returned malicious or adversarial content but produced no system effects and no deterministic finding, demonstrating that current runtime rules do not assess MCP result-content risk.",
+    "Environment-return behavior was statically visible but produced no runtime finding because process.env access and result-content disclosure are not represented by the current runtime sensors/rules.",
+    "Startup and tool errors preserve substantial raw evidence but do not produce normalized reports, limiting scalable comparison of failed cases.",
+    "These selected-input results do not establish package safety, maliciousness, recall, or false-positive rates."
+  ]
+}

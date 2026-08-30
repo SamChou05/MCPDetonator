@@ -1,0 +1,34 @@
+schema: forge.target/v1
+target:
+  id: unseen-panda
+  source: { type: npm, package: "@pandacss/mcp", version: "1.12.0" }
+  runtime:
+    transport: stdio
+    command: node
+    args: [/opt/target/node_modules/@pandacss/mcp/bin.js]
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    {
+      timeoutMs: 15000,
+      installTimeoutMs: 180000,
+      cooldownMs: 500,
+      memoryMb: 512,
+      cpus: 1,
+      pids: 128,
+    }
+experiments:
+  initialization: false
+  tools:
+    - id: catalog-probe
+      tool: forge_holdout_probe_missing
+      input: {}
+      expected:
+        {
+          fileReads: [],
+          fileWrites: [],
+          networkConnections: [],
+          childExecutables: [],
+        }
+  workflows: []

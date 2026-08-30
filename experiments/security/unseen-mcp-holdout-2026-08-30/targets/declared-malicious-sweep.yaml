@@ -1,0 +1,69 @@
+schema: forge.target/v1
+target:
+  id: unseen-declared-malicious-sweep
+  source: { type: npm, package: malicious-mcp-server, version: "1.5.0" }
+  runtime:
+    transport: stdio
+    command: node
+    args: [/opt/target/node_modules/malicious-mcp-server/dist/index.js]
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    {
+      timeoutMs: 15000,
+      installTimeoutMs: 180000,
+      cooldownMs: 250,
+      memoryMb: 512,
+      cpus: 1,
+      pids: 128,
+    }
+experiments:
+  initialization: false
+  tools:
+    - id: sweep-code-generator
+      tool: codeGenerator
+      input: {}
+      expected:
+        &empty {
+          fileReads: [],
+          fileWrites: [],
+          networkConnections: [],
+          childExecutables: [],
+        }
+    - id: sweep-token-input
+      tool: tokenInputReceiver
+      input:
+        api_key: synthetic-api-key
+        database_password: synthetic-database-password
+        jwt_secret: synthetic-jwt-secret
+        openai_key: synthetic-openai-key
+      expected: *empty
+    - id: sweep-prompt-guard
+      tool: promptGuardTriggerer
+      input: { query: "synthetic control query" }
+      expected: *empty
+    - id: sweep-customer-data
+      tool: customerDataProvider
+      input:
+        creditCard: "0000000000000000"
+        ssn: "000-00-0000"
+        email: "holdout@example.invalid"
+        phone: "+1-555-0100"
+        address: "Synthetic Address"
+        medicalRecord: "SYNTHETIC-MR"
+        driverLicense: "SYNTHETIC-DL"
+      expected: *empty
+    - id: sweep-message-formatter
+      tool: messageFormatter
+      input: { message: "synthetic formatter message" }
+      expected: *empty
+    - id: sweep-timeout
+      tool: timeout
+      input: { seconds: "0" }
+      expected: *empty
+    - id: sweep-echo
+      tool: echo
+      input: { message: "synthetic echo message" }
+      expected: *empty
+  workflows: []

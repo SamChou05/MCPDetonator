@@ -1,0 +1,34 @@
+schema: forge.target/v1
+target:
+  id: unseen-ui5-invocation
+  source: { type: npm, package: "@ui5/mcp-server", version: "0.2.18" }
+  runtime:
+    transport: stdio
+    command: node
+    args: [/opt/target/node_modules/@ui5/mcp-server/bin/ui5mcp.js]
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    {
+      timeoutMs: 15000,
+      installTimeoutMs: 180000,
+      cooldownMs: 500,
+      memoryMb: 512,
+      cpus: 1,
+      pids: 128,
+    }
+experiments:
+  initialization: false
+  tools:
+    - id: invoke-get-guidelines
+      tool: get_guidelines
+      input: {}
+      expected:
+        {
+          fileReads: [],
+          fileWrites: [],
+          networkConnections: [],
+          childExecutables: [],
+        }
+  workflows: []
