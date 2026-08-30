@@ -261,9 +261,21 @@ describe("publish-driven local dashboard refresh", () => {
     );
     expect(firstHtml).toContain("Published 2026-08-30T22:11:00Z");
     expect(firstHtml).toContain("Pinned sample");
-    expect(firstHtml).toContain("Recent published runs");
+    expect(firstHtml).toContain("Published run explorer");
     expect(firstHtml).toContain("1 published run");
-    expect(firstHtml).toContain('<details class="history-run" open>');
+    expect(firstHtml).toContain('class="run-index"');
+    expect(firstHtml).toContain('href="#published-controlled-run-1"');
+    expect(firstHtml).toContain(
+      'class="history-run" id="published-controlled-run-1"',
+    );
+    expect(firstHtml).toContain("Selected runtime scopes");
+    expect(firstHtml).toContain(
+      "2 selected initialization/tool scopes from 4 total experiments",
+    );
+    expect(firstHtml).toContain("summarize_file tool");
+    expect(firstHtml).toContain("Captured source");
+    expect(firstHtml).toContain("Not claimed");
+    expect(firstHtml).toContain("Aggregate runtime evidence");
     expect(firstHtml).toContain("<strong>Scope:</strong>");
     expect(firstHtml).not.toContain("Interpretation limits");
     expect(firstHtml).not.toContain(bundle.manifest.runId);
@@ -339,6 +351,59 @@ describe("publish-driven local dashboard refresh", () => {
     expect(afterRetry).toContain("2 published runs");
   });
 
+  it("links both target indexes to unique public ordinal run details", async () => {
+    const repository = new FakeProjectionRepository();
+    for (const [roleIndex, policy] of DEMO_TARGET_POLICIES.entries()) {
+      for (let index = 0; index < 2; index += 1) {
+        const hour = 23 - roleIndex * 2 - index;
+        const completedAt = new Date(
+          Date.UTC(2026, 7, 30, hour, 0, 0),
+        ).toISOString();
+        const publishedAt = new Date(
+          Date.UTC(2026, 7, 30, hour, 1, 0),
+        ).toISOString();
+        const bundle = await bundleForPolicy(
+          policy,
+          `dashboard-linked-${roleIndex}-${index}`,
+          completedAt,
+        );
+        repository.register(bundle);
+        const refresher = new LocalDashboardPublicationRefresher({
+          repository: repository as unknown as PostgresPublicationRepository,
+          repositoryRoot,
+        });
+        await refresher
+          .prepare(bundle)
+          .execute(publicationFor(bundle, publishedAt));
+      }
+    }
+
+    const html = await readFile(
+      join(repositoryRoot, "dist", "dashboard-site", "index.html"),
+      "utf8",
+    );
+    const indexTargets = [
+      ...html.matchAll(
+        /href="#(published-(?:controlled|reference)-run-\d+)"/gu,
+      ),
+    ].map((match) => match[1]!);
+    const detailTargets = [
+      ...html.matchAll(
+        /class="history-run" id="(published-(?:controlled|reference)-run-\d+)"/gu,
+      ),
+    ].map((match) => match[1]!);
+    expect(indexTargets).toEqual([
+      "published-controlled-run-1",
+      "published-controlled-run-2",
+      "published-reference-run-1",
+      "published-reference-run-2",
+    ]);
+    expect(detailTargets).toEqual(indexTargets);
+    expect(new Set(detailTargets).size).toBe(detailTargets.length);
+    expect(html.match(/<details class="scope-detail" open>/gu)).toHaveLength(2);
+    expect(html).not.toContain("dashboard-linked-");
+  });
+
   it("keeps at most five published history rows per selected target", async () => {
     const repository = new FakeProjectionRepository();
     const policy = DEMO_TARGET_POLICIES[0];
@@ -369,11 +434,22 @@ describe("publish-driven local dashboard refresh", () => {
       "utf8",
     );
     expect(html).toContain("5 published runs");
-    expect(html.match(/<details class="history-run"/gu)).toHaveLength(5);
-    expect(html.match(/<details class="history-run" open>/gu)).toHaveLength(1);
-    expect(html).not.toContain(`Report generated ${timestamps[0]}`);
+    const indexTargets = [
+      ...html.matchAll(/href="#(published-controlled-run-\d+)"/gu),
+    ].map((match) => match[1]!);
+    const detailTargets = [
+      ...html.matchAll(
+        /class="history-run" id="(published-controlled-run-\d+)"/gu,
+      ),
+    ].map((match) => match[1]!);
+    expect(indexTargets).toHaveLength(5);
+    expect(detailTargets).toHaveLength(5);
+    expect(new Set(indexTargets).size).toBe(5);
+    expect(detailTargets).toEqual(indexTargets);
+    expect(html.match(/Latest published run/gu)).toHaveLength(1);
+    expect(html).not.toContain(`report generated ${timestamps[0]}`);
     for (const timestamp of timestamps.slice(1)) {
-      expect(html).toContain(`Report generated ${timestamp}`);
+      expect(html).toContain(`report generated ${timestamp}`);
     }
     expect(html).not.toContain("dashboard-history-");
   });

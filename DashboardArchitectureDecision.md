@@ -12,10 +12,11 @@ explicit successful publisher invocation—either
 `publish-run --refresh-dashboard`—stores a separate safe projection in
 PostgreSQL and regenerates `index.html` from up to five recent published
 projections per reviewed target. The first row becomes that target's latest
-summary; the remaining rows form a native expandable history. Store only
-generated `index.html` and `styles.css` in a separate private S3 bucket and
-serve them through one CloudFront distribution using Origin Access Control
-(OAC).
+summary; all retained rows form a script-free explorer with ordinal sidebar
+links, visible run articles, and native disclosures for each projection's
+selected initialization/tool comparison scopes. Store only generated
+`index.html` and `styles.css` in a separate private S3 bucket and serve them
+through one CloudFront distribution using Origin Access Control (OAC).
 
 The canonical evidence bucket and PostgreSQL publisher store are not origins,
 are not copied to the site bucket, and are not reachable from the browser.
@@ -26,7 +27,7 @@ verified run -> evidence S3 -> PostgreSQL status=published
                                   v
                  bounded allowlisted safe projections
                                   |
-        pinned fallback ----------+-> latest summary + recent-run history
+        pinned fallback ----------+-> latest summary + bounded run explorer
                                       -> generated index.html + styles.css
                                       -> private site S3 <- OAC <- CloudFront
 
@@ -117,7 +118,10 @@ of every pin, so a policy change automatically stops selecting old rows. The
 projection omits report-authored summary and finding prose, IDs, hashes, paths,
 URLs, object metadata, inputs, and raw evidence. Known rule IDs map to
 code-owned titles; unknown rules use one fixed generic title. An older retry
-cannot replace a newer projection.
+cannot replace a newer projection. The explorer adds no new projection fields:
+it presents the already-stored canonical findings, semantic and aggregate
+runtime counts, filesystem change counts, and behavior-scope comparison rows.
+This preserves existing immutable projection rows and the current policy ID.
 
 The deployer also refuses AWS account root credentials before any mutation.
 AWS recommends using a federated identity or assumed role for ordinary work:

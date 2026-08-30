@@ -59,6 +59,10 @@ function capitalize(value: string): string {
   return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 
+function humanizeIdentifier(value: string): string {
+  return capitalize(value.replace(/[._]/gu, " "));
+}
+
 function formatTimestamp(value: string): string {
   return new Date(value).toISOString().replace(/\.000Z$/u, "Z");
 }
@@ -186,37 +190,156 @@ function historyFindingList(run: DemoRunV1): string {
   }`;
 }
 
-function renderHistoryRun(run: DemoRunV1, open: boolean): string {
+function renderSemanticCounts(run: DemoRunV1): string {
+  if (run.semantic.capabilityCounts.length === 0) {
+    return '<p class="meta metric-empty">No static capability callsites reported.</p>';
+  }
+  return `<dl class="metric-list">
+${run.semantic.capabilityCounts
+  .map(
+    (entry) => `                <div><dt>${escapeHtml(humanizeIdentifier(entry.capability))}</dt><dd>${entry.count}</dd></div>`,
+  )
+  .join("\n")}
+              </dl>`;
+}
+
+function renderRuntimeCounts(run: DemoRunV1): string {
+  const effects =
+    run.runtime.effectCounts.length === 0
+      ? '<p class="meta metric-empty">No runtime effects counted.</p>'
+      : `<dl class="metric-list">
+${run.runtime.effectCounts
+  .map(
+    (entry) => `                <div><dt>${escapeHtml(humanizeIdentifier(entry.effectKind))}</dt><dd>${entry.count}</dd></div>`,
+  )
+  .join("\n")}
+              </dl>`;
+  const changes = run.runtime.filesystemChangeCounts;
+  return `${effects}
+              <h6>Filesystem changes</h6>
+              <dl class="metric-list">
+                <div><dt>Created</dt><dd>${changes.created}</dd></div>
+                <div><dt>Modified</dt><dd>${changes.modified}</dd></div>
+                <div><dt>Deleted</dt><dd>${changes.deleted}</dd></div>
+                <div><dt>Type changed</dt><dd>${changes.typeChanged}</dd></div>
+              </dl>`;
+}
+
+function renderBehaviorScope(
+  scope: DemoRunV1["behaviorScopes"][number],
+  open: boolean,
+): string {
+  return `
+                <details class="scope-detail"${open ? " open" : ""}>
+                  <summary>
+                    <span class="scope-summary-content">
+                      <strong>${escapeHtml(scope.label)}</strong>
+                      <span class="scope-summary-meta">${escapeHtml(capitalize(scope.kind))} · ${scope.rows.length} capability comparisons</span>
+                    </span>
+                  </summary>
+                  <div class="scope-table-wrap" role="region" aria-label="${escapeHtml(`${scope.label} capability comparison table`)}" tabindex="0">
+                    <table>
+                      <caption class="visually-hidden">${escapeHtml(scope.label)} capability comparison</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Capability</th>
+                          <th scope="col">Advertised</th>
+                          <th scope="col">Captured source</th>
+                          <th scope="col">Selected runtime</th>
+                          <th scope="col">Operator scope</th>
+                          <th scope="col">Inside</th>
+                          <th scope="col">Outside</th>
+                          <th scope="col">Unclassified</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+${scope.rows
+  .map(
+    (row) => `                        <tr>
+                          <th scope="row">${escapeHtml(humanizeIdentifier(row.capability))}</th>
+                          <td>${escapeHtml(humanizeIdentifier(row.advertisedState))}</td>
+                          <td>${escapeHtml(humanizeIdentifier(row.staticState))}</td>
+                          <td>${escapeHtml(humanizeIdentifier(row.runtimeState))}</td>
+                          <td>${escapeHtml(humanizeIdentifier(row.operatorScope.state))}</td>
+                          <td>${row.operatorScope.insideCount}</td>
+                          <td>${row.operatorScope.outsideCount}</td>
+                          <td>${row.operatorScope.unclassifiedCount}</td>
+                        </tr>`,
+  )
+  .join("\n")}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>`;
+}
+
+function renderBehaviorScopes(run: DemoRunV1, openFirst: boolean): string {
+  if (run.behaviorScopes.length === 0) {
+    return '<p class="meta history-empty">No selected runtime scopes are available for this run.</p>';
+  }
+  return `<p class="meta scope-count">${run.behaviorScopes.length} selected initialization/tool ${run.behaviorScopes.length === 1 ? "scope" : "scopes"} from ${run.counts.experiments} total experiments. Counts below are selected policy-comparison events, not all system calls. Other experiments remain in the run total but are not expanded here.</p>
+              <div class="scope-list">
+${run.behaviorScopes
+  .map((scope, index) => renderBehaviorScope(scope, openFirst && index === 0))
+  .join("\n")}
+              </div>`;
+}
+
+function historyRunAnchor(role: DemoRunV1["role"], index: number): string {
+  return `published-${role}-run-${index + 1}`;
+}
+
+function renderHistoryRun(run: DemoRunV1, index: number): string {
   if (run.presentation.source !== "published") {
     throw new Error("dashboard history cannot contain a pinned sample");
   }
   const publishedAt = formatTimestamp(run.presentation.publishedAt);
-  const scopes = run.behaviorScopes.map((scope) => scope.label).join(" · ");
+  const scopes =
+    run.behaviorScopes.length === 0
+      ? "None"
+      : run.behaviorScopes.map((scope) => scope.label).join(" · ");
+  const anchor = historyRunAnchor(run.role, index);
   return `
-          <details class="history-run"${open ? " open" : ""}>
-            <summary>
-              <time datetime="${escapeHtml(run.analyzedAt)}">Report generated ${escapeHtml(formatTimestamp(run.analyzedAt))}</time>
-              <span>Published ${escapeHtml(publishedAt)} · ${run.counts.findings} findings · ${run.counts.experiments} experiments</span>
-            </summary>
+          <article class="history-run" id="${anchor}" aria-labelledby="${anchor}-title" tabindex="-1">
+            <header class="history-run-header">
+              <div>
+                <p class="eyebrow">${index === 0 ? "Latest published run" : `Published run ${index + 1}`}</p>
+                <h4 id="${anchor}-title">${escapeHtml(run.target.displayName)} · <time datetime="${escapeHtml(run.analyzedAt)}">report generated ${escapeHtml(formatTimestamp(run.analyzedAt))}</time></h4>
+              </div>
+              <p class="meta">Published ${escapeHtml(publishedAt)}</p>
+            </header>
             <div class="history-result">
               <p>${escapeHtml(run.summary)}</p>
-              <p class="meta">Published ${escapeHtml(publishedAt)}</p>
               <dl class="stats history-stats">
                 <div><dt>Advertised tools</dt><dd>${run.counts.advertisedTools}</dd></div>
                 <div><dt>Static callsites</dt><dd>${run.semantic.callsiteCount}<span class="stat-status">${escapeHtml(run.semantic.status)}</span></dd></div>
                 <div><dt>Outside scope</dt><dd>${escapeHtml(outsideScopeText(run))}</dd></div>
               </dl>
-              <h4>Deterministic findings</h4>
+              <h5>Deterministic findings</h5>
 ${historyFindingList(run)}
-              <h4>Evidence summary</h4>
+              <h5>Evidence summary</h5>
               <dl class="history-evidence">
                 <div><dt>Advertised</dt><dd>${escapeHtml(advertisedText(run))}</dd></div>
                 <div><dt>Found in captured source</dt><dd>${escapeHtml(foundText(run))}</dd></div>
                 <div><dt>Observed in selected tests</dt><dd>${escapeHtml(observedText(run))}</dd></div>
               </dl>
-              <p class="meta"><strong>Selected behavioral scopes:</strong> ${escapeHtml(scopes)}</p>
+              <div class="aggregate-evidence">
+                <section aria-label="Static capability callsites">
+                  <h5>Static capability callsites</h5>
+                  <p class="meta">${run.semantic.callsiteCount} total · ${escapeHtml(run.semantic.status)}</p>
+${renderSemanticCounts(run)}
+                </section>
+                <section aria-label="Aggregate runtime evidence">
+                  <h5>Aggregate runtime evidence</h5>
+                  <p class="meta">Event counts across all recorded runtime observations; they are not finding or unique-file counts and are separate from the selected-scope classifications below.</p>
+${renderRuntimeCounts(run)}
+                </section>
+              </div>
+              <h5>Selected runtime scopes</h5>
+              <p class="meta"><strong>Included:</strong> ${escapeHtml(scopes)}</p>
+${renderBehaviorScopes(run, index === 0)}
             </div>
-          </details>`;
+          </article>`;
 }
 
 function validateHistory(
@@ -257,23 +380,50 @@ function validateHistory(
   return history;
 }
 
-function renderHistoryGroup(
+function renderHistoryIndexGroup(
   current: DemoRunV1,
   history: readonly DemoRunV1[],
 ): string {
   const runs = history.filter((run) => run.role === current.role);
   return `
-        <section class="history-group" aria-label="${escapeHtml(`${current.target.displayName} published runs`)}">
-          <div class="history-group-heading">
-            <h3>${escapeHtml(current.target.displayName)}</h3>
-            <span class="meta">${runs.length} published ${runs.length === 1 ? "run" : "runs"}</span>
-          </div>
+            <section class="run-index-group" aria-label="${escapeHtml(`${current.target.displayName} published runs`)}">
+              <h3>${escapeHtml(current.target.displayName)}</h3>
 ${
   runs.length === 0
-    ? '          <p class="meta history-empty">No eligible published runs yet; the current card uses a pinned sample.</p>'
-    : runs.map((run, index) => renderHistoryRun(run, index === 0)).join("\n")
+    ? '              <p class="meta history-empty">No eligible published runs yet.</p>'
+    : `              <ol class="run-index-list">
+${runs
+  .map(
+    (run, index) => `                <li>
+                  <a href="#${historyRunAnchor(run.role, index)}">
+                    <time datetime="${escapeHtml(run.analyzedAt)}">${escapeHtml(formatTimestamp(run.analyzedAt))}</time>
+                    <span>${index === 0 ? "Latest · " : ""}${run.counts.findings} findings · ${run.counts.experiments} experiments</span>
+                  </a>
+                </li>`,
+  )
+  .join("\n")}
+              </ol>`
 }
-        </section>`;
+            </section>`;
+}
+
+function renderHistoryDetailGroup(
+  current: DemoRunV1,
+  history: readonly DemoRunV1[],
+): string {
+  const runs = history.filter((run) => run.role === current.role);
+  return `
+            <section class="history-group" aria-label="${escapeHtml(`${current.target.displayName} run details`)}">
+              <div class="history-group-heading">
+                <h3>${escapeHtml(current.target.displayName)}</h3>
+                <span class="meta">${runs.length} published ${runs.length === 1 ? "run" : "runs"}</span>
+              </div>
+${
+  runs.length === 0
+    ? '              <p class="meta history-empty">No eligible published runs yet; the current card uses a pinned sample.</p>'
+    : runs.map((run, index) => renderHistoryRun(run, index)).join("\n")
+}
+            </section>`;
 }
 
 export function renderDashboardContent(
@@ -299,11 +449,19 @@ ${exported.runs.map(renderRunCard).join("\n")}
         <div class="section-heading">
           <div>
             <p class="eyebrow">Results</p>
-            <h2 id="history-title">Recent published runs</h2>
+            <h2 id="history-title">Published run explorer</h2>
           </div>
-          <p class="section-note">Up to five eligible publications per selected target. Open a row to view its result.</p>
+          <p class="section-note">Choose a run from the index to move to its result. Up to five eligible publications per selected target.</p>
         </div>
-${exported.runs.map((run) => renderHistoryGroup(run, history)).join("\n")}
+        <div class="run-explorer">
+          <nav class="run-index" aria-label="Published run index">
+            <p class="eyebrow">Past runs</p>
+${exported.runs.map((run) => renderHistoryIndexGroup(run, history)).join("\n")}
+          </nav>
+          <div class="run-details">
+${exported.runs.map((run) => renderHistoryDetailGroup(run, history)).join("\n")}
+          </div>
+        </div>
       </section>
 
       <p class="footer-note">Generated from schema-validated, allowlisted public projections. Raw reports, traces, transcripts, paths, source snapshots, and private storage remain unpublished.</p>`;

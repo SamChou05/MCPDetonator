@@ -53,10 +53,13 @@ The dashboard builder is the security gate that constructs the initial
 field-by-field presentation from pinned, sanitized samples. Its published-run
 history is initially empty. The publisher can later replace either latest slot
 and add up to five history rows per target only with exact allowlisted,
-PostgreSQL-persisted public projections. The reviewed target/source/scope pins live in
-`dashboard/demo-policy-v1.json`; changing any pin automatically changes the
-stored policy fingerprint. Inspect the page locally before publication. Do not
-manually copy report or evidence files into `dist/dashboard-site`.
+PostgreSQL-persisted public projections. The generated page uses an ordinal
+past-runs index and visible run articles, with native disclosures for the
+already-projected selected initialization/tool comparisons. The reviewed
+target/source/scope pins live in `dashboard/demo-policy-v1.json`; changing any
+pin automatically changes the stored policy fingerprint. Inspect the page
+locally before publication. Do not manually copy report or evidence files into
+`dist/dashboard-site`.
 
 The deploy command's local checks and usage text can be exercised without AWS
 access:
@@ -115,9 +118,11 @@ After `analyze --publish --refresh-dashboard` reports
 `publication.dashboard.status` as `refreshed` (or standalone
 `publish-run --refresh-dashboard` reports `dashboard.status` as `refreshed`),
 inspect the local page. The newest eligible result becomes the current card and
-appears in the expandable `Recent published runs` section; older eligible
-results remain available up to the five-per-target bound. Then upload only the
-newly validated content to the existing exact stack:
+appears first in the `Published run explorer`; older eligible results remain in
+its past-runs index up to the five-per-target bound. Selecting a run moves to its
+canonical findings, static and aggregate runtime counts, and selected-scope
+comparison tables. Then upload only the newly validated content to the existing
+exact stack:
 
 The local publisher demo exports fake MinIO credentials under AWS's standard
 environment-variable names. Use a fresh shell, or remove those demo-only values
@@ -220,7 +225,9 @@ All four public-access-block values must be `true`; default encryption must be
   forms, frames, objects, and every unspecified resource type.
 - Results update locally at the explicit publication/refresh boundary and on
   AWS at the separate content-deployment boundary. The history is capped at
-  five eligible runs per selected target. These are representative selected
+  five eligible runs per selected target. Detailed tables are limited to the
+  selected initialization/tool scopes already present in the public projection;
+  they are not raw trace or artifact views. These are representative selected
   cases, not a universal security verdict.
 - This demo has no authentication, WAF, access-log pipeline, availability SLA,
   customer-data path, live query API, or raw-artifact drill-down.

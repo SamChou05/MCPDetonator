@@ -1460,3 +1460,79 @@ Completed: 2026-08-30
 
 Status: complete. The integration commit is the merge commit containing this
 ledger entry.
+
+## Active published-run explorer dashboard wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `main` at `286de2b`
+  (`merge: integrate deterministic trace coverage`).
+- Pre-existing out-of-scope state is the modified `.gitignore` and
+  `ImplementationPlan.md`, generated untracked `agent-runs/`, and the untracked
+  unseen-MCP holdout directory/test. This wave must not edit, stage, or commit
+  those paths.
+- User goal: make past published runs discoverable in a plain sidebar-style
+  explorer and expose useful experiment-level detail for the selected run.
+- Product boundary: retain the generated static snapshot and private
+  PostgreSQL/evidence-store boundary. The browser must not query PostgreSQL or
+  canonical S3/MinIO, and finer public detail must come only from a bounded,
+  schema-validated, policy-owned projection. Raw traces, paths, inputs,
+  transcripts, source, arbitrary report prose, IDs, hashes, URLs, and storage
+  locations remain private.
+- Interaction boundary: prioritize a utilitarian two-column run explorer using
+  native HTML navigation/disclosure and responsive CSS. Do not add a frontend
+  framework, account system, backend API, live database connection, or visual
+  ornament. Preserve the existing exact static-site delivery model unless a
+  functional requirement proves it insufficient.
+- The repository has no `.openai/hosting.json`; this is an existing custom
+  dashboard pipeline. Root is the sole site owner/editor and owns preview,
+  verification, Git coordination, and this ledger. Parallel agents are
+  read-only reviewers for projection safety, information design, and delivery
+  impact; they must not edit files, invoke Sites/hosting tools, or mutate Git,
+  Docker, databases, storage, or AWS.
+- No AWS or other hosted deployment is authorized in this wave. Local preview
+  and generated-site verification are in scope; a hosted content upload remains
+  the separate authenticated operation documented in `DashboardAwsDemo.md`.
+- Read-only projection review found that the existing `DemoRunV1` contract is
+  already sufficient: it contains canonical run-level findings, semantic and
+  aggregate runtime counts, filesystem change counts, and curated
+  `behaviorScopes` with advertised/static/runtime/operator-scope states. No
+  projection schema, policy revision, PostgreSQL migration, or re-publication
+  format change was needed. Findings remain run-level because the public
+  contract does not safely assign them to one scope.
+- Read-only delivery review confirmed that ordinal anchors, visible run
+  articles, and native scope disclosures preserve the exact two-file site,
+  strict CSP, private origin, and current deployer/CloudFormation boundary. No
+  API, JavaScript, database-facing browser code, or AWS infrastructure change
+  was needed.
+- Read-only UI review confirmed the utilitarian responsive explorer and led to
+  visible native disclosure markers, focusable ordinal run targets, an honest
+  heading hierarchy, accessible captions/keyboard-focusable overflow tables,
+  and wording that distinguishes aggregate event counts from findings and the
+  selected initialization/tool scopes from the full experiment total.
+- Implemented the explorer in `src/dashboard/render.ts`,
+  `dashboard/index.html`, and `dashboard/styles.css`; updated focused and Docker
+  publisher assertions in `test/unit/dashboard-publish-refresh.test.ts` and
+  `scripts/verify-publisher.mjs`; and synchronized the runbooks/decision record
+  in `PublisherDemo.md`, `DashboardAwsDemo.md`,
+  `DashboardArchitectureDecision.md`, and `Prototype.md`.
+- The renderer uses only public positional IDs such as
+  `published-controlled-run-1`; it still emits no private run IDs, hashes,
+  paths, raw artifacts, scripts, event handlers, external URLs, storage
+  metadata, or direct database/object-store access. History remains newest
+  first and capped at five eligible projections per target.
+- Local demo state was safely re-projected under the current policy using
+  idempotent retries of the seven already-published synthetic runs. PostgreSQL
+  now has four controlled and three reference current-policy projections, and
+  the generated local page at `127.0.0.1:4173` shows all seven. Canonical S3
+  objects were checksum-verified and not overwritten. No AWS resource or hosted
+  content was changed.
+- Verification passed: `npm run typecheck`; five focused dashboard/publisher
+  suites (60 tests); full `npm test` (76 files / 635 tests); `npm run build`;
+  `npm run build:dashboard`; `npm run verify:publisher`; `npm run verify:e2e`;
+  syntax checks for all three dashboard scripts; maximum current-policy
+  synthetic page 115,951 bytes below the 131,072-byte bound; exact two-file
+  generated inventory; and `git diff --check`.
+- Suggested commit subject: `feat: add published run explorer`.
+- Status: complete. The milestone commit is the commit containing this ledger
+  entry.

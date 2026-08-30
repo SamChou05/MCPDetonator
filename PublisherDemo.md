@@ -6,8 +6,11 @@ streams manifest-listed artifacts to an S3-compatible object store, writes
 queryable metadata to PostgreSQL, and publishes the exact `run.json` last. For
 the two reviewed demo targets, `--refresh-dashboard` can also store a
 disclosure-safe projection and regenerate the script-free results page after
-publication succeeds. The page shows the latest selected result plus up to
-five eligible published runs per target, newest completed run first.
+publication succeeds. The page shows the latest selected result plus a
+script-free run explorer with up to five eligible published runs per target,
+newest completed run first. Each retained run exposes only the projection's
+bounded canonical findings, static and aggregate runtime counts, and selected
+initialization/tool comparison scopes.
 
 The bundled stack binds only to localhost and uses conspicuously non-production
 credentials. It is for demonstration and automated verification, not shared
@@ -63,9 +66,11 @@ Success prints one JSON object containing the local `runDirectory` and a nested
 `publication` result with the manifest digest, artifact and finding counts,
 final S3 manifest location, and dashboard status. Reload the local page after
 the command completes: the controlled card should say `Published ...`; its row
-appears under `Recent published runs`; and the unrefreshed reference card
-remains clearly labeled `Pinned sample`. Open a history row to inspect its
-bounded counts, canonical findings, capability summary, and selected behavioral
+appears in the `Published run explorer`; and the unrefreshed reference card
+remains clearly labeled `Pinned sample`. Select a timestamp in the past-runs
+index to move to that run. Its result contains bounded counts, canonical
+findings, static capability callsites, aggregate runtime event and filesystem
+change counts, and native disclosure tables for selected initialization/tool
 scopes.
 
 ```bash
@@ -147,7 +152,9 @@ docker compose -f compose.publisher-demo.yml exec -T postgres \
 
 Report summaries, arbitrary finding text, paths, run/finding/event IDs, hashes,
 object keys, package-authored prose, and raw evidence are not copied into that
-projection.
+projection. The run explorer uses ordinal fragment links rather than private run
+identifiers, and its finer tables are rendered from the existing stored
+projection rather than querying PostgreSQL from the browser.
 
 ## 5. Exercise the failure boundary
 

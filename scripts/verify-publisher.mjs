@@ -340,9 +340,14 @@ async function main() {
       publishedDashboard !== initialDashboard &&
         publishedDashboard.includes("Published 2026-") &&
         publishedDashboard.includes("Pinned sample") &&
-        publishedDashboard.includes("Recent published runs") &&
+        publishedDashboard.includes("Published run explorer") &&
         publishedDashboard.includes("1 published run") &&
-        publishedDashboard.includes('<details class="history-run" open>') &&
+        publishedDashboard.includes('href="#published-controlled-run-1"') &&
+        publishedDashboard.includes(
+          'class="history-run" id="published-controlled-run-1"',
+        ) &&
+        publishedDashboard.includes("Selected runtime scopes") &&
+        publishedDashboard.includes("Aggregate runtime evidence") &&
         !publishedDashboard.includes("Interpretation limits"),
       "dashboard did not show the published run, history, and sample fallback",
     );
