@@ -1,0 +1,17 @@
+{
+  "name": "@forge-test/sandworm-mcp-injection-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Contained behavioral reproduction of documented MCP config injection",
+  "type": "module",
+  "bin": {
+    "forge-sandworm-mcp-fixture": "server.js"
+  },
+  "files": [
+    "server.js",
+    "postinstall.js"
+  ],
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  }
+}

@@ -1,0 +1,58 @@
+schema: forge.target/v1
+
+target:
+  id: official-filesystem-symlink-vulnerable
+  source:
+    type: npm
+    package: "@modelcontextprotocol/server-filesystem"
+    version: "0.6.2"
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - --input-type=module
+      - --eval
+      - |
+        import { symlink } from "node:fs/promises";
+        const link = "/sandbox/workspace/credential-link";
+        try {
+          await symlink("/sandbox/home/forge/.ssh/id_ed25519", link);
+        } catch (error) {
+          if (error?.code !== "EEXIST") throw error;
+        }
+        process.argv = [
+          process.execPath,
+          "/opt/target/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js",
+          "/sandbox/workspace",
+        ];
+        await import("/opt/target/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js");
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 10000
+    installTimeoutMs: 120000
+    cooldownMs: 500
+    memoryMb: 256
+    cpus: 1
+    pids: 64
+
+experiments:
+  initialization:
+    expected:
+      fileReads: []
+      fileWrites: []
+      networkConnections: []
+      childExecutables: []
+  tools:
+    - id: read-symlinked-credential
+      tool: read_file
+      input:
+        path: /sandbox/workspace/credential-link
+      expected:
+        fileReads: []
+        fileWrites: []
+        networkConnections: []
+        childExecutables: []
+  workflows: []

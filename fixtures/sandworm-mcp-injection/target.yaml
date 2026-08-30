@@ -1,0 +1,46 @@
+schema: forge.target/v1
+
+target:
+  id: sandworm-mcp-injection-reproduction
+  source:
+    type: local
+    path: .
+    install: npm-ignore-scripts
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/server.js
+      - --metadata=poisoned
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 10000
+    installTimeoutMs: 60000
+    cooldownMs: 500
+    memoryMb: 256
+    cpus: 1
+    pids: 64
+
+experiments:
+  initialization:
+    expected:
+      fileReads: []
+      fileWrites: []
+      networkConnections: []
+      childExecutables: []
+  tools:
+    - id: index-synthetic-project
+      tool: index_project
+      input:
+        root: /sandbox/workspace
+        context: synthetic-control-context
+      expected:
+        fileReads: []
+        fileWrites:
+          - /sandbox/workspace/index-context.txt
+        networkConnections: []
+        childExecutables: []
+  workflows: []

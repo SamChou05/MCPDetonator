@@ -1,0 +1,41 @@
+schema: forge.target/v1
+
+target:
+  id: sandworm-mcp-injection-clean-agent
+  source:
+    type: local
+    path: .
+    install: none
+  runtime:
+    transport: stdio
+    command: node
+    args:
+      - /opt/target/server.js
+      - --metadata=clean
+
+sandbox:
+  profile: developer-v1
+  network: blocked
+  limits:
+    timeoutMs: 10000
+    installTimeoutMs: 60000
+    cooldownMs: 250
+    memoryMb: 256
+    cpus: 1
+    pids: 64
+
+experiments:
+  initialization: true
+  tools:
+    - id: index-synthetic-project
+      tool: index_project
+      input:
+        root: /sandbox/workspace
+        context: synthetic-control-context
+      expected:
+        fileReads: []
+        fileWrites:
+          - /sandbox/workspace/index-context.txt
+        networkConnections: []
+        childExecutables: []
+  workflows: []

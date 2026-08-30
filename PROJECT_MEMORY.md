@@ -573,3 +573,63 @@ Completed live Evidence-First V2 agent proposal study milestone:
   all five tracked study-result files.
 - The only remaining dirty paths are the preserved out-of-scope `.gitignore`,
   `src/static/node-package.ts`, and untracked `agent-runs/`.
+
+## Active deterministic Node semantic-sidecar wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `main` at `477c9e9`
+  (`docs: record live V2 proposal study milestone`), two commits ahead of
+  `origin/main`.
+- Pre-existing dirty paths are `.gitignore`, `PROJECT_MEMORY.md`,
+  `src/static/node-package.ts`, and untracked `agent-runs/`. The existing
+  ledger edit belongs to the separate documented malicious-MCP experiment;
+  `.gitignore`, that experiment entry, and generated agent runs remain outside
+  this wave. This wave takes ownership only of the invalid one-line identifier
+  edit in `src/static/node-package.ts`, restoring its committed spelling before
+  semantic integration because no verification gate can otherwise run.
+- Root owns all code, contract, integration, documentation, ledger, Git, and
+  verification changes. Parallel reviewers are read-only and must not modify
+  the checkout.
+- Status: implementation in progress.
+
+Goals:
+
+1. Preserve the current bounded lexical Node scan while adding a separate,
+   bounded TypeScript AST/symbol evidence artifact for syntax coverage and
+   resolved sensitive Node callsites.
+2. Keep package/tool names out of analyzer logic, retain exact source evidence,
+   represent incomplete parsing/resolution honestly, and prevent semantic
+   evidence from becoming authorization or a safety verdict.
+3. Add adversarial coverage for aliases, destructuring, shadowed globals,
+   unused imports, malformed sources, unresolved modules, deterministic IDs,
+   and analysis-work ceilings.
+4. Integrate additive semantic summaries into the core report without silently
+   changing V1 lexical-signal meaning, then run focused checks and every core
+   verification gate required for static/report changes.
+
+## Documented malicious-MCP experiment wave
+
+Requested: 2026-08-30
+
+- Starting branch and commit: `main` at `477c9e9`
+  (`docs: record live V2 proposal study milestone`).
+- Pre-existing out-of-scope dirty paths remain `.gitignore`,
+  `src/static/node-package.ts`, and untracked `agent-runs/`; none is owned by
+  this wave.
+- During the wave the pre-existing `src/static/node-package.ts` edit was
+  replaced by an untracked `src/static/semantic-contracts.ts`, apparently from
+  concurrent user work. Concurrent unstaged changes also appeared in
+  `package.json` and `package-lock.json`. Those paths are out of scope and must
+  not be staged.
+- Root owns primary-source research, contained fixtures, study execution,
+  sanitized results, verification, and Git coordination. No parallel agents
+  are used.
+- Safety boundary: configured live MCP servers are inventoried only through
+  redacted metadata. No installed MCP or host client configuration is modified.
+  Reproductions use exact vulnerable public-package versions or purpose-built
+  behaviorally representative fixtures inside Forge's synthetic Docker
+  profiles with network blocked.
+- Status: primary-source selection, redacted local inventory, contained
+  reproductions, exact metadata binding, and focused fixture tests are complete;
+  live Docker execution is next.
