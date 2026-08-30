@@ -618,6 +618,9 @@ may bind both compartments in Phase 1, but they remain structurally distinct:
   bounded tools, arguments, resource classes, and data flows inside the
   detonator. They may intentionally permit a synthetic probe for behavior that
   `subjectBehaviorRules` would classify as forbidden in deployment.
+  Matching deny/review selectors are monotonic overlap gates, while satisfied
+  positive rules must collectively cover every resource class. Listing one
+  sensitive class in a review rule never authorizes an unrelated padded class.
 
 Registry admission policy remains a later relying-party decision and is not a
 third implicit meaning of either compartment. An audit ApprovalReceipt has
@@ -1001,6 +1004,8 @@ Validation order:
 
 1. Parse strict versioned candidate data; reject unknown fields, duplicate JSON
    keys/IDs, alternate versions, and malformed values.
+   Require canonical UTC timestamps at exact millisecond precision so every
+   ordering decision uses the same precision as the serialized authority data.
 2. Verify the exact target, AuditSpec, policy, `rawDiscoveryDigest`,
    `planCatalogDigest`, generator, and proposal identities available at this
    stage.
@@ -1276,6 +1281,8 @@ Exit criteria:
   envelope so `experimentPlanDigest` is never self-referential.
 - ApprovalReceipt tests proving authority is structurally separate and any
   post-hash mutation or catalog-identity mismatch invalidates the binding.
+- Nonexecution CoverageRecord/Result verification proving coverage cannot
+  predate its bound plan/receipt and a result cannot predate its coverage.
 - The receipt is explicit that Phase 1A is unsigned and non-dispatchable; a
   parsed receipt is never treated as authority by itself.
 - Unsafe plan rejection tests.

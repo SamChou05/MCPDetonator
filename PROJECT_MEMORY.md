@@ -277,8 +277,10 @@ Requested: 2026-08-29
 - Ownership: root owns all V2 documentation/code/test edits, this ledger, Git
   coordination, and verification. Parallel reviewers are read-only and must
   not modify the checkout.
-- Status: independent validation complete; Phase 1A implementation in
-  progress.
+- Status: independent validation and provider-free Phase 1A implementation are
+  complete and independently audited. Focused verification passes; repository-
+  wide gates remain blocked only by the preserved out-of-scope syntax edit
+  described below. Ready for the primary-agent implementation commit.
 
 Goals:
 
@@ -309,3 +311,78 @@ Validation milestone handoff:
 - `git diff --check`: passed for the documentation milestone.
 
 Suggested commit subject: `docs: validate evidence-first V2 architecture`.
+
+Implementation wave 1 baseline:
+
+- Starting commit: `da84a80` (`docs: validate evidence-first V2 architecture`).
+- Dirty paths at wave start remain the out-of-scope `.gitignore`,
+  `src/static/node-package.ts`, and untracked `agent-runs/`; no V2
+  implementation paths were dirty.
+- Parallel ownership is disjoint: contract work owns only `src/contracts/v2/`;
+  canonical JSON work owns `src/audit/v2/canonical.ts`,
+  `src/audit/v2/strict-json.ts`, and its focused test; catalog identity work
+  owns `src/audit/v2/catalog.ts` and its focused test. Root owns integration,
+  compiler/approval/resource modules, fixtures, remaining tests, this ledger,
+  verification, staging, and commits.
+
+Implementation review wave baseline:
+
+- Commit remains `da84a80`; uncommitted V2 implementation paths are owned by
+  root. The pre-existing `.gitignore`, `src/static/node-package.ts`, and
+  `agent-runs/` remain out of scope.
+- Contract/canonical/catalog implementation agents completed their disjoint
+  scopes without Git mutations. Root integrated the pure compiler, artifact
+  materializer, policy evaluator, approval verifier, strict artifact loader,
+  human-authored fixture, and adversarial tests.
+- Read-only reviewers are assigned contract invariants, compiler/security
+  bypasses, and tests/API coverage. They must not edit the checkout.
+- Final implementation handoff:
+  - Exactly seven strict top-level V2 schemas plus embedded target/catalog/
+    resource/bounds components keep claims, policy, specification, plan,
+    approval, coverage, and result responsibilities separate.
+  - The provider-free compiler verifies detached target artifacts, exact
+    complete catalog identity, source-bound claims, exact-target policy, and
+    AuditSpec chronology; reserves mandatory cases; materializes per-case
+    resources; resolves only static aliases; validates a deliberately narrow
+    JSON Schema subset; applies detached/frozen monotonic dispatch policy; and
+    returns a frozen plan with an external domain-separated digest.
+  - Approval remains unsigned, unauthenticated, single-use-shaped, and
+    structurally non-dispatchable. Issuance deterministically recompiles trusted
+    inputs, compares the submitted plan digest, and binds every execution
+    dimension and policy expiry. There is no process-global provenance state.
+  - Raw JSON/canonicalization reject duplicate decoded keys, ambiguous JSON,
+    property-descriptor tricks, proxies, exotic byte arrays/shared storage,
+    unsafe schema work, and sub-millisecond timestamp ambiguity. Controller
+    case/resource/schema/catalog/artifact/policy-work ceilings apply before
+    expensive expansion or copying.
+  - Phase 1A coverage/result schemas cannot claim dispatch, observations,
+    assessment, live freshness, or verified cleanup. Their verifier cross-binds
+    plan/receipt/reporting digests and exact references with receipt-to-coverage-
+    to-result chronology; it remains structural evidence only.
+  - Experiment dispatch denies/review gates match resource overlap so class
+    padding cannot evade them, while satisfied positive rules must collectively
+    cover every requested resource class. Policy limits cover every receipt-
+    bound execution dimension.
+  - The manual human-authored fixture compiles reproducibly without a provider;
+    its pinned ExperimentPlan digest is
+    `656dc2d9eee5174c24deb71778088a8982ec122fdb496a7893efff9bd1cc1c9d`.
+- Independent reviewers made no checkout or Git changes. Their refreshed final
+  audits found no remaining material contract, compiler, authority, catalog,
+  canonicalization, reporting-integrity, or bounded-work issue.
+- Verification:
+  - `npx vitest run test/unit/audit-v2-*.test.ts test/unit/mcp-input-schema.test.ts`:
+    passed (10 files / 181 tests after final authority-snapshot regression).
+  - Isolated strict TypeScript over all V2 sources/tests and the additive shared
+    schema helper: passed.
+  - `npm test`: 53 files / 417 tests passed; only
+    `static-node-package.test.ts` and `report-static-snapshot.test.ts` failed to
+    transform because the pre-existing `src/static/node-package.ts:65`
+    contains `const exclude Directories = ...`.
+  - `npm run typecheck`, `npm run build`, `npm run verify:e2e`, and
+    `npm run verify:agent`: each stopped at the same pre-existing
+    `src/static/node-package.ts(65,15) TS1005` before substantive execution.
+    Root did not alter the user-owned file.
+  - `git diff --check`: passed; rerun at the staged review gate.
+
+Suggested implementation commit subject:
+`feat: add provider-free Evidence-First V2 compiler`.

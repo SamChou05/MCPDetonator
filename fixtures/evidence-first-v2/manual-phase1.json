@@ -1,0 +1,431 @@
+{
+  "fixtureFormat": "forge.manual-phase1-fixture/v1",
+  "compile": {
+    "planId": "manual-phase1-plan",
+    "manifestId": "manual-phase1-resources",
+    "compiledAt": "2026-08-30T07:00:00.000Z"
+  },
+  "approval": {
+    "receiptId": "manual-phase1-receipt",
+    "issuerId": "local-security-reviewer",
+    "controllerId": "forge-test-controller",
+    "issuedAt": "2026-08-30T07:01:00.000Z",
+    "expiresAt": "2026-08-30T08:01:00.000Z"
+  },
+  "target": {
+    "targetId": "manual-filesystem-fixture",
+    "sourceArtifact": {
+      "artifactId": "manual-source",
+      "kind": "source_bundle",
+      "mediaType": "application/json",
+      "content": "{\"name\":\"manual-filesystem-fixture\",\"version\":\"1.0.0\"}"
+    },
+    "runtimeSnapshot": {
+      "artifactId": "manual-runtime",
+      "kind": "runtime_snapshot",
+      "mediaType": "application/vnd.forge.runtime-tree+json",
+      "content": "{\"entries\":[{\"mode\":365,\"path\":\"server.js\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"type\":\"file\"}],\"format\":\"forge.runtime-tree/v2\"}"
+    },
+    "runtimeDescriptor": {
+      "transport": "stdio",
+      "protocol": "mcp",
+      "command": "node",
+      "args": ["server.js"],
+      "cwd": "/opt/target",
+      "environment": {}
+    }
+  },
+  "catalog": {
+    "protocolVersion": "2025-06-18",
+    "server": {
+      "name": "manual-filesystem-fixture",
+      "version": "1.0.0"
+    },
+    "acquisition": {
+      "complete": true,
+      "pageCount": 1,
+      "listChangedDuringDiscovery": false
+    },
+    "tools": [
+      {
+        "name": "read_document",
+        "title": "Read a synthetic document",
+        "description": "Reads one controller-provided synthetic file.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": ["path"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "string"
+            }
+          },
+          "required": ["content"],
+          "additionalProperties": false
+        },
+        "annotations": {
+          "readOnlyHint": true
+        }
+      }
+    ]
+  },
+  "claimProfileFields": {
+    "schema": "forge.claim-profile/v2",
+    "profileId": "manual-claims",
+    "generatedAt": "2026-08-30T06:55:00.000Z",
+    "generator": {
+      "id": "manual-claim-extractor",
+      "version": "1.0.0"
+    },
+    "claims": [
+      {
+        "claimId": "claim-read-document",
+        "toolName": "read_document",
+        "action": "read",
+        "resourceClass": "ordinary_synthetic_file",
+        "selector": {
+          "kind": "schema_field",
+          "value": "/path"
+        },
+        "phase": "invocation",
+        "claimBasis": "mcp_provided_text",
+        "confidence": "medium",
+        "evidence": [
+          {
+            "source": "mcp_description",
+            "sourceDigest": "58e90ecbb4f4b53920751e1047431f2eb7a04e8925ac0d48c9836d4fc7a87a79",
+            "jsonPointer": "/tools/0/description",
+            "excerpt": "Reads one controller-provided synthetic file.",
+            "inferenceInputReferences": []
+          }
+        ],
+        "uncertainty": ["The advertised description is not observed behavior."],
+        "limitations": []
+      }
+    ],
+    "unsupportedDimensions": ["post-return behavior is not advertised"],
+    "truncations": [],
+    "limitations": ["Claims are untrusted MCP metadata evidence."]
+  },
+  "policy": {
+    "schema": "forge.audit-policy/v2",
+    "policyId": "manual-audit-policy",
+    "version": "1.0.0",
+    "owner": "local-security-team",
+    "createdAt": "2026-08-30T06:00:00.000Z",
+    "reviewedAt": "2026-08-30T06:30:00.000Z",
+    "expiresAt": "2026-08-31T06:30:00.000Z",
+    "subject": {
+      "kind": "exact_target",
+      "targetId": "manual-filesystem-fixture"
+    },
+    "subjectBehaviorRules": {
+      "defaultDecision": "review_required",
+      "rules": [
+        {
+          "ruleId": "subject-deny-credential-read",
+          "decision": "deny",
+          "toolNames": ["read_document"],
+          "actions": ["read"],
+          "resourceClasses": ["synthetic_credential"],
+          "phases": ["invocation"],
+          "selectors": [],
+          "limits": {
+            "maxOperations": 1,
+            "maxBytes": 65536,
+            "maxRuntimeMs": 5000
+          },
+          "rationale": "Credential reads are forbidden in deployment but should be probed synthetically."
+        }
+      ]
+    },
+    "experimentDispatchRules": {
+      "defaultDecision": "deny",
+      "rules": [
+        {
+          "ruleId": "dispatch-ordinary-read",
+          "decision": "allow",
+          "toolNames": ["read_document"],
+          "allowedOrigins": ["mandatory", "manual"],
+          "argumentRules": [
+            {
+              "jsonPointer": "/path",
+              "operator": "string_prefix",
+              "prefix": "/forge/synthetic/"
+            }
+          ],
+          "allowedResourceClasses": ["ordinary_synthetic_file"],
+          "allowedDataFlows": [],
+          "limits": {
+            "maxCases": 3,
+            "maxStepsPerCase": 2,
+            "maxSteps": 3,
+            "maxArgumentBytes": 65536,
+            "maxRuntimeMs": 5000,
+            "maxTotalRuntimeMs": 15000,
+            "maxOutputBytesPerStep": 65536,
+            "maxTotalOutputBytes": 196608,
+            "maxWritableBytes": 262144,
+            "maxWritableFiles": 3,
+            "maxFileBytes": 131072,
+            "maxProcesses": 16,
+            "maxMemoryMb": 256,
+            "maxCpuMs": 10000,
+            "maxOpenFiles": 64
+          },
+          "minimumApprovalClass": "automatic",
+          "rationale": "Allow a bounded read of an ordinary synthetic fixture."
+        },
+        {
+          "ruleId": "dispatch-sensitive-probe",
+          "decision": "approval_required",
+          "toolNames": ["read_document"],
+          "allowedOrigins": ["mandatory"],
+          "argumentRules": [
+            {
+              "jsonPointer": "/path",
+              "operator": "string_prefix",
+              "prefix": "/forge/synthetic/"
+            }
+          ],
+          "allowedResourceClasses": ["synthetic_credential"],
+          "allowedDataFlows": [],
+          "limits": {
+            "maxCases": 3,
+            "maxStepsPerCase": 2,
+            "maxSteps": 3,
+            "maxArgumentBytes": 65536,
+            "maxRuntimeMs": 5000,
+            "maxTotalRuntimeMs": 15000,
+            "maxOutputBytesPerStep": 65536,
+            "maxTotalOutputBytes": 196608,
+            "maxWritableBytes": 262144,
+            "maxWritableFiles": 3,
+            "maxFileBytes": 131072,
+            "maxProcesses": 16,
+            "maxMemoryMb": 256,
+            "maxCpuMs": 10000,
+            "maxOpenFiles": 64
+          },
+          "minimumApprovalClass": "security_review",
+          "rationale": "Allow only the mandatory synthetic credential probe after security review."
+        }
+      ]
+    },
+    "requiredMandatoryCaseIds": [
+      "mandatory-nominal-read",
+      "mandatory-sensitive-read"
+    ],
+    "minimumCoverage": {
+      "minimumToolCoveragePercent": 100,
+      "requiredPartitions": ["nominal"],
+      "requiredPhases": ["invocation", "post_return"],
+      "requiredSensors": ["filesystem", "mcp_transcript", "cleanup"]
+    }
+  },
+  "auditSpecFields": {
+    "schema": "forge.audit-spec/v2",
+    "specId": "manual-audit-spec",
+    "createdAt": "2026-08-30T06:56:00.000Z",
+    "generator": {
+      "id": "manual-case-author",
+      "version": "1.0.0"
+    },
+    "agentProposals": "disabled",
+    "repetitions": 1,
+    "environmentVariants": ["default"],
+    "prePlanRequirements": {
+      "acquisition": "required",
+      "scriptsDisabledPreparation": "required",
+      "lifecycleComparison": "when_supported",
+      "initializationObservation": "required",
+      "completeCatalogDiscovery": "required",
+      "cleanupVerification": "required"
+    },
+    "prePlanBounds": {
+      "maxRuntimeMs": 30000,
+      "maxArtifactBytes": 1048576,
+      "maxCatalogPages": 8,
+      "maxCatalogTools": 128,
+      "maxCatalogBytes": 1048576
+    },
+    "executionBounds": {
+      "maxCases": 3,
+      "maxStepsPerCase": 2,
+      "maxTotalSteps": 3,
+      "maxCaseRuntimeMs": 5000,
+      "maxTotalRuntimeMs": 15000,
+      "maxArgumentBytes": 65536,
+      "maxOutputBytesPerStep": 65536,
+      "maxTotalOutputBytes": 196608,
+      "maxWritableBytes": 262144,
+      "maxWritableFiles": 3,
+      "maxFileBytes": 131072,
+      "maxProcesses": 16,
+      "maxMemoryMb": 256,
+      "maxCpuMs": 10000,
+      "maxOpenFiles": 64
+    },
+    "mandatoryCaseReservation": 2,
+    "requiredSensors": ["filesystem", "mcp_transcript", "cleanup"],
+    "unsupportedCaseHandling": "reject",
+    "syntheticResources": [
+      {
+        "alias": "profile.document",
+        "resourceClass": "ordinary_synthetic_file",
+        "mediaType": "text/plain; charset=utf-8",
+        "content": "Quarterly synthetic report."
+      },
+      {
+        "alias": "profile.credential",
+        "resourceClass": "synthetic_credential",
+        "mediaType": "text/plain; charset=utf-8",
+        "content": "FORGE_SYNTHETIC_CREDENTIAL_DO_NOT_USE"
+      }
+    ],
+    "manualCases": [
+      {
+        "caseId": "manual-read-document",
+        "kind": "tool_call",
+        "description": "Read the operator-provided ordinary synthetic document.",
+        "steps": [
+          {
+            "stepId": "read-document",
+            "toolName": "read_document",
+            "arguments": {
+              "path": {
+                "$forgeResource": "profile.document"
+              }
+            }
+          }
+        ],
+        "predictedEffects": [
+          {
+            "predictionId": "predict-manual-read",
+            "origin": "operator",
+            "action": "read",
+            "resourceClass": "ordinary_synthetic_file",
+            "phase": "invocation",
+            "confidence": "high",
+            "evidenceBasis": [
+              {
+                "kind": "operator_statement",
+                "reference": "manual case intent"
+              }
+            ],
+            "limitations": ["Prediction is not an observation or authorization."]
+          }
+        ],
+        "assertions": [
+          {
+            "assertionId": "assert-manual-status",
+            "kind": "tool_status",
+            "subject": "read_document",
+            "expected": "succeeded",
+            "required": true
+          }
+        ],
+        "minimumApprovalClass": "operator_review"
+      }
+    ]
+  },
+  "mandatoryCases": [
+    {
+      "caseId": "mandatory-nominal-read",
+      "kind": "tool_call",
+      "description": "Forge-owned nominal read for the selected tool.",
+      "steps": [
+        {
+          "stepId": "read-nominal",
+          "toolName": "read_document",
+          "arguments": {
+            "path": {
+              "$forgeResource": "profile.document"
+            }
+          }
+        }
+      ],
+      "predictedEffects": [
+        {
+          "predictionId": "predict-nominal-read",
+          "origin": "deterministic_generator",
+          "action": "read",
+          "resourceClass": "ordinary_synthetic_file",
+          "phase": "invocation",
+          "confidence": "high",
+          "evidenceBasis": [
+            {
+              "kind": "deterministic_rule",
+              "reference": "mandatory nominal tool coverage"
+            }
+          ],
+          "limitations": ["Prediction is non-authoritative."]
+        }
+      ],
+      "assertions": [
+        {
+          "assertionId": "assert-nominal-status",
+          "kind": "tool_status",
+          "subject": "read_document",
+          "expected": "succeeded",
+          "required": true
+        }
+      ],
+      "minimumApprovalClass": "automatic"
+    },
+    {
+      "caseId": "mandatory-sensitive-read",
+      "kind": "security_probe",
+      "description": "Forge-owned synthetic credential access probe.",
+      "steps": [
+        {
+          "stepId": "read-sensitive",
+          "toolName": "read_document",
+          "arguments": {
+            "path": {
+              "$forgeResource": "profile.credential"
+            }
+          }
+        }
+      ],
+      "predictedEffects": [
+        {
+          "predictionId": "predict-sensitive-read",
+          "origin": "deterministic_generator",
+          "action": "read",
+          "resourceClass": "synthetic_credential",
+          "phase": "invocation",
+          "confidence": "high",
+          "evidenceBasis": [
+            {
+              "kind": "deterministic_rule",
+              "reference": "mandatory sensitive-source probe"
+            }
+          ],
+          "limitations": ["The credential is synthetic and grants no capability."]
+        }
+      ],
+      "assertions": [
+        {
+          "assertionId": "assert-sensitive-effect",
+          "kind": "effect_present",
+          "subject": "synthetic credential read",
+          "expected": {
+            "action": "read",
+            "resourceClass": "synthetic_credential"
+          },
+          "required": true
+        }
+      ],
+      "minimumApprovalClass": "operator_review"
+    }
+  ]
+}

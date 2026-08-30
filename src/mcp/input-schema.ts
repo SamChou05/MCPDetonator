@@ -20,6 +20,10 @@ export interface CompiledInputSchema {
   readonly validate: ValidateFunction<unknown>;
 }
 
+export interface CompileInputSchemaOptions {
+  readonly strictSchema?: boolean;
+}
+
 const DIALECT_BY_URI = new Map<string, InputSchemaDialect>([
   ["https://json-schema.org/draft/2020-12/schema", "2020-12"],
   ["https://json-schema.org/draft/2019-09/schema", "2019-09"],
@@ -55,27 +59,36 @@ function declaredDialect(schema: unknown): InputSchemaDialect {
   return dialect;
 }
 
-function compilerFor(dialect: InputSchemaDialect): Ajv | Ajv2019 | Ajv2020 {
-  const options = { allErrors: true, strict: false } as const;
+function compilerFor(
+  dialect: InputSchemaDialect,
+  options: CompileInputSchemaOptions,
+): Ajv | Ajv2019 | Ajv2020 {
+  const ajvOptions = {
+    allErrors: true,
+    strict: options.strictSchema ?? false,
+  } as const;
   switch (dialect) {
     case "2020-12":
-      return new Ajv2020(options);
+      return new Ajv2020(ajvOptions);
     case "2019-09":
-      return new Ajv2019(options);
+      return new Ajv2019(ajvOptions);
     case "draft-07":
-      return new Ajv(options);
+      return new Ajv(ajvOptions);
     case "draft-06": {
-      const ajv = new Ajv(options);
+      const ajv = new Ajv(ajvOptions);
       ajv.addMetaSchema(draft06MetaSchema);
       return ajv;
     }
   }
 }
 
-export function compileInputSchema(schema: unknown): CompiledInputSchema {
+export function compileInputSchema(
+  schema: unknown,
+  options: CompileInputSchemaOptions = {},
+): CompiledInputSchema {
   const dialect = declaredDialect(schema);
   try {
-    const validate = compilerFor(dialect).compile(schema as AnySchema);
+    const validate = compilerFor(dialect, options).compile(schema as AnySchema);
     return { dialect, validate };
   } catch (error) {
     throw new Error(

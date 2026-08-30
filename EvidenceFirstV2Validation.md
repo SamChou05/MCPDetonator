@@ -170,8 +170,21 @@ behavior between list and call, so containment remains necessary.
 ### 7. Can generated arguments and workflow-bound values be revalidated?
 
 Static synthetic-resource aliases are materialized, hashed, resolved to whole
-typed values, then re-bounded, schema-validated, dispatch-policy-validated, and
-data-flow-validated before final plan hashing.
+typed values, then re-bounded, schema-validated, resource-class-validated, and
+dispatch-policy-validated before final plan hashing. Phase 1A has no runtime
+taint lineage, so producer-output bindings and dispatch rules that require
+declared data-flow proof are unsupported and fail closed; they are not claimed
+as data-flow-validated until the Phase 3 reference monitor exists.
+
+The concrete implementation recognizes a finite conservative set of path- and
+network-like field-name tokens after NFKC normalization; it does not claim
+universal semantic destination detection. Recognized path fields require exact
+synthetic-resource binding and recognized network fields are unsupported.
+Up to two rounds of percent-encoded variants plus Unicode-normalized,
+slash-confusable, traversal, URI, environment/interpolation, and executable-key
+variants fail closed. Other
+literal values remain resource class `unknown`, so an explicit dispatch-policy
+decision is still required.
 
 Producer-output workflow bindings cannot be resolved at compile time. Phase 1A
 rejects them. A later reference monitor must accept only bounded detached
@@ -275,8 +288,8 @@ unless explicitly configured; bind mounts expose host-backed paths directly
 9. Make content-addressed `ArtifactReference` and recomputed `CatalogIdentity`
    strict embedded components; do not invent additional top-level contract IDs.
 10. Use RFC 8785 JCS semantics and a duplicate-key-aware raw loader.
-11. Reject producer-output workflow bindings and hazardous JSON Schema regex/
-    remote-reference features in Phase 1A.
+11. Reject producer-output workflow bindings and hazardous JSON Schema regex,
+    remote-reference, or unenforced `format` features in Phase 1A.
 12. Materialize and hash every concrete per-case/per-repetition canary before
     plan hashing; “fresh after approval” is an identity change.
 13. Treat an unsigned Phase 1A receipt as structural binding under a trusted
@@ -284,6 +297,15 @@ unless explicitly configured; bind mounts expose host-backed paths directly
 14. Give evaluation arms equal pre-outcome information.
 15. Keep deterministic static evidence outside `ClaimProfile` to avoid
     conflating claims with observations or double counting.
+16. Treat overlapping deny/review rules as monotonic gates, but require the
+    union of satisfied positive dispatch rules to cover every resource class;
+    a sensitive-class review rule must not grant an unrelated padded class.
+17. Restrict V2 timestamps to canonical UTC at exact millisecond precision.
+    Allowing finer fractions while comparing with JavaScript `Date` would make
+    distinct authority chronology collapse onto the same millisecond.
+18. Measure byte arrays through intrinsic typed-array slots, reject mutable
+    shared storage and exotic wrappers, and require nonexecution coverage to
+    postdate its bound receipt before a result can bind that coverage.
 
 ## Research attribution correction
 
@@ -322,14 +344,28 @@ The justified smallest foundation is:
   mandatory security cases before manual cases, reserves their budget,
   materializes concrete resources, resolves only static aliases, validates AJV
   schemas under the Phase 1 restrictions, applies experiment-dispatch policy,
-  and hashes the final literal plan;
+  and hashes the final literal plan. Controller-owned case/resource/step and
+  aggregate argument/case byte-node ceilings bound product expansion before
+  the final artifact-envelope preflight;
 - a controller-owned envelope and unsigned/non-dispatchable receipt issuer plus
-  structural receipt/freshness verification;
+  structural receipt/freshness verification. Issuance reruns the pure compiler
+  from trusted inputs and compares the submitted digest rather than relying on
+  process-local provenance history;
+- Phase 1A result semantics fixed to non-dispatch, inconclusive,
+  not-observed/not-assessed, freshness-not-rechecked, and unverified cleanup,
+  plus nonexecuted/model-disabled coverage that cannot claim a covered row. A
+  deterministic verifier cross-binds reporting digests and rejects ghost
+  plan/catalog references without treating the records as runtime evidence;
 - a human-authored fixture and adversarial reproducibility/mutation tests.
 
 No provider, planner, runtime adapter, V1 schema/report change, Agent V1 merge,
 automatic approval, registry, signing system, or gateway is justified in this
 phase.
+
+The resulting implementation and its non-goals are documented in
+[EvidenceFirstV2Phase1.md](EvidenceFirstV2Phase1.md). It remains an additive
+library-only path: existing V1 and Agent V1 entry points are unchanged, and a
+structurally valid Phase 1 receipt still authorizes no dispatch.
 
 ## Phase 2 readiness judgment
 
