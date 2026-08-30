@@ -386,3 +386,13 @@ Implementation review wave baseline:
 
 Suggested implementation commit subject:
 `feat: add provider-free Evidence-First V2 compiler`.
+
+Completed Evidence-First V2 Phase 1A milestone:
+
+- Commit `21d9cae` (`feat: add provider-free Evidence-First V2 compiler`)
+  contains the reviewed 49-path contracts/compiler/fixture/test/documentation
+  change.
+- Final staged review passed `git diff --cached --check`; the focused V2 plus
+  shared schema suite passed again with 10 files / 181 tests.
+- The preserved out-of-scope `.gitignore`, `src/static/node-package.ts`, and
+  untracked `agent-runs/` remain the only dirty worktree paths.
