@@ -261,3 +261,51 @@ advertised claim evidence and its source tool/catalog.
 7. Inspect `git diff --cached --stat`, `git diff --cached`, and
    `git diff --cached --check` before committing.
 8. Record the completed milestone and commit hash here.
+
+## Active Evidence-First V2 Phase 1 wave
+
+Requested: 2026-08-29
+
+- Starting branch and commit: `main` at `60ad21b`
+  (`docs: add evidence-first V2 implementation handoff`), one commit ahead of
+  `origin/main`; `f2aec0c` is an ancestor.
+- Pre-existing dirty worktree paths observed before this wave:
+  `.gitignore`, `src/static/node-package.ts`, and untracked `agent-runs/`.
+  These paths are not owned by this wave and must not be edited, staged, or
+  committed. The `src/static/node-package.ts` diff contains an unfinished
+  identifier edit; no assumption is made about its author or intent.
+- Ownership: root owns all V2 documentation/code/test edits, this ledger, Git
+  coordination, and verification. Parallel reviewers are read-only and must
+  not modify the checkout.
+- Status: independent validation complete; Phase 1A implementation in
+  progress.
+
+Goals:
+
+1. Independently validate `EvidenceFirstV2Plan.md` against the repository,
+   threat model, implementation, and relevant primary research.
+2. Document material agreements, disagreements, corrections, and prerequisites
+   in `EvidenceFirstV2Validation.md` without overstating sandbox readiness.
+3. Implement an additive, provider-free V2 contract and pure compiler path with
+   deterministic digesting, fail-closed catalog identity, receipt binding,
+   mandatory-case reservation, artifact materialization, and symbolic-reference
+   resolution.
+4. Add a reproducible manual fixture plus adversarial tests, preserve V1 and
+   Agent V1 behavior, and run every required verification gate.
+
+Validation milestone handoff:
+
+- Independently reviewed the handoff against the repository, threat model,
+  current implementation, and primary MCP/security sources. The decision and
+  fifteen material corrections are recorded in
+  `EvidenceFirstV2Validation.md` and reflected in `EvidenceFirstV2Plan.md`.
+- Corrected the README/Agent V1 research attribution: MCPTox reports a 72.8%
+  maximum across its evaluated settings; the separate MCP-ITP preprint reports
+  an 84.2% maximum, and neither result isolates tool auto-approval.
+- Phase 1A is now explicitly contracts/compiler/receipt verification only.
+  Live V2 discovery and target dispatch remain disabled pending the sandbox,
+  runtime-snapshot, complete-catalog, cleanup, and evidence-integrity gates.
+- Review agents were read-only and made no checkout changes.
+- `git diff --check`: passed for the documentation milestone.
+
+Suggested commit subject: `docs: validate evidence-first V2 architecture`.

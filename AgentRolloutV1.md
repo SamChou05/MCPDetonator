@@ -911,9 +911,10 @@ model settings:
 
 - [MCPTox: A Benchmark for Tool Poisoning Attack on Real-World MCP Servers](https://ojs.aaai.org/index.php/AAAI/article/download/40895/44856)
 
-The later MCP-ITP paper adaptively optimizes implicit poisoned descriptions and
-reports up to 84.2% attack success with malicious-tool detection as low as
-0.3%:
+The later MCP-ITP paper adaptively optimizes implicit poisoned descriptions.
+Across its evaluated settings it reports an attack-success maximum of 84.2%
+and a malicious-tool-detection minimum of 0.3%; those extrema are not one
+shared model/defense setting:
 
 - [MCP-ITP: An Automated Framework for Implicit Tool Poisoning in MCP](https://arxiv.org/abs/2601.07395)
 

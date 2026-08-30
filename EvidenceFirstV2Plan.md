@@ -158,6 +158,18 @@ Important current constraints:
 - Workflow schemas exist in [src/config.ts](src/config.ts), but non-empty
   workflows are explicitly rejected because execution is not implemented.
 
+The current V1 `treeSha256` is useful provenance but is not a complete V2
+runtime identity. Its tree digest covers sorted relative file paths plus file
+contents or symlink targets; it omits directory entries, effective modes,
+ownership, and other materialized metadata that can affect execution, and the
+host tree is mounted later without an immediate digest recheck. Before V2
+execution, define a versioned runtime-tree manifest over stable path ordering,
+entry type, content/target, effective mode, and every retained execution-
+relevant attribute; reject special files, bind command/args/cwd/protocol and
+the synthetic environment descriptor, and reverify immediately before mount
+or use an immutable content-addressed snapshot. Phase 1 contracts may bind this
+future identity shape but must not treat a V1 tree hash as that proof.
+
 ### Existing claim/static/observed/approved comparison
 
 Do not build a second unrelated comparator without first evaluating the current
@@ -195,11 +207,20 @@ with AJV for JSON Schema 2020-12, 2019-09, draft-07, and draft-06. It validates
 inputs but does not generate them. This is the natural starting point for the
 deterministic schema-driven generator.
 
+AJV compilation/validation is still work over attacker-controlled schemas.
+Phase 1A must bound schemas and arguments before AJV and reject remote
+references plus regex-bearing `pattern`/`patternProperties` (or execute them in
+a separately deadline-enforced worker) so a catalog-controlled regular
+expression cannot become a controller denial of service. Deferred or
+unsupported keywords reduce coverage; they never produce a clean result.
+
 The current [MCP interface V1 contract](src/contracts/v1.ts) preserves input
-schemas but does not preserve `outputSchema`. Stateful producer-consumer
-planning therefore needs an opt-in discovery contract that keeps a bounded
-output schema and any relevant catalog evidence; it must not infer all
-workflows from attacker-controlled names and descriptions.
+schemas but does not preserve `outputSchema`. V2 discovery must always retain
+a bounded `outputSchema` when one is advertised, even before workflow planning
+is enabled. Stateful producer-consumer planning may later consume it, but
+omitting it conditionally would make catalog identity depend on which generator
+happened to run. Workflow inference still must not rely only on
+attacker-controlled names and descriptions.
 
 [src/mcp/catalog.ts](src/mcp/catalog.ts) provides a useful bounded V1 catalog
 fingerprint, but its projection likewise omits `outputSchema`, sorts per-tool
@@ -209,16 +230,28 @@ algorithm/version that covers the ordered bounded raw discovery projection and
 every plan-relevant field, and it must reject duplicate names before any
 name-based generation or dispatch.
 
-Use two explicit fields: `rawDiscoveryDigest` over the ordered bounded raw
-discovery evidence, and `planCatalogDigest` over the exact normalized fields
-consumed by generation, policy, comparison, or provider disclosure. Both must
-include `outputSchema` when workflows use it; the provider projection remains a
-smaller separately approved digest. Persist both in discovery evidence,
+Use two explicit fields: `rawDiscoveryDigest` over a versioned ordered bounded
+discovery projection, and `planCatalogDigest` over the exact normalized fields
+consumed by generation, policy, comparison, or provider disclosure. The raw
+projection contains the server/protocol identity and flattened tool descriptors
+before an SDK can strip extension fields; it excludes JSON-RPC IDs, opaque
+cursors, response `_meta`, and page boundaries whose values are not stable
+cross-session identity. The normalized projection is sorted by exact unique
+tool name and always includes `outputSchema` when advertised. The provider
+projection remains a smaller separately approved digest. Persist both in discovery evidence,
 ExperimentPlan, ApprovalReceipt, AuditResult, and future attestation. Recompute
 both from each execution session before any tool call. A mismatch in either is
 catalog/artifact drift: block dispatch, preserve bounded drift evidence, mark
 the run inconclusive/stale, and prevent admissible publication under the old
 receipt.
+
+`tools/list` is paginated. A catalog cannot be called complete until every page
+has been retrieved under cumulative page/tool/byte/time limits, cursors have
+been checked for cycles, duplicate names have been rejected across all pages,
+and no `notifications/tools/list_changed` event invalidated the acquisition
+window. The provider-free Phase 1 compiler accepts only a controller-supplied
+catalog already marked complete; live V2 pagination and freshness acquisition
+remain part of the gated execution work.
 
 ### Supplementary Agent V1
 
@@ -495,7 +528,7 @@ claims with authorization. Use distinct artifacts and labels.
 | Namespace/artifact | Meaning | Authority |
 | --- | --- | --- |
 | `ClaimProfile` | What MCP metadata, docs, annotations, and bounded semantic/static analysis claim or suggest | Untrusted evidence |
-| `ApprovedPolicy` | What an enterprise/operator permits, denies, or requires approval for | Trusted authority |
+| `ApprovedPolicy` | Two explicitly separate trusted compartments: how observed subject behavior is appraised, and which bounded synthetic audit calls the detonator may dispatch | Trusted authority; audit-dispatch approval never grants deployment capability |
 | `AuditSpec` | Operator-approved audit request: exact target selector, policy, generator configuration, budgets, repetitions, environment variants, and manual cases | Trusted configuration, not yet executable |
 | `ExperimentPlan` | Resolved frozen plan compiled after discovery from mandatory, deterministic, reviewed, and optionally agent-proposed cases | Executable only after deterministic validation, policy evaluation, required approval, and digest binding |
 | `ApprovalReceipt` | Separate authority-issued decision over exact immutable plan/manifests and any approved case IDs, with issuer, scope, time, and expiry | Trusted authority; never embedded by MCP/model content and never mutates the plan |
@@ -526,6 +559,18 @@ These are design-level shapes, not final schemas. The implementing agent should
 write Zod contracts, invariant tests, and canonical serialization before adding
 execution.
 
+`ArtifactReference` and `CatalogIdentity` are strict embedded components rather
+than additional top-level `forge.*` artifacts in Phase 1. An
+`ArtifactReference` contains only a logical controller-store ID, kind,
+allowlisted non-executable media type, byte length, and SHA-256. It contains no
+generic URI, host path, environment reference, or executable payload. A trusted
+loader hashes a bounded detached byte sequence once and the pure compiler
+recomputes the reference; pathname resolution and symlink-safe storage remain a
+separate controller boundary. `CatalogIdentity` declares the canonicalization
+and projection versions plus `rawDiscoveryDigest` and `planCatalogDigest`; a
+caller-supplied identity is never accepted without recomputing both from the
+complete bounded catalog.
+
 ### `forge.claim-profile/v2`
 
 Purpose: preserve a bounded interpretation of what the interface appears to
@@ -536,7 +581,10 @@ Minimum content:
 - Subject artifact digest and MCP interface projection digest.
 - Extraction/generator identities and versions.
 - Per-tool claims derived separately from name, title, description, input
-  schema, output schema, annotations, docs, and static signals.
+  schema, output schema, annotations, docs, and optional semantic inference.
+  Deterministic source-analysis signals remain a separate evidence collection
+  referenced by comparison results; they are not relabeled as claims or
+  double-counted here.
 - Capability dimensions more specific than the current three broad rows:
   - action: read, write, create, delete, execute, connect, send, receive;
   - resource/data class: ordinary synthetic file, credential, configuration,
@@ -559,14 +607,29 @@ Rules:
 
 ### `forge.audit-policy/v2`
 
-Purpose: encode the independent source of authorization and risk posture.
+Purpose: encode independent subject-behavior appraisal and synthetic audit
+execution authorization without conflating them. A single top-level artifact
+may bind both compartments in Phase 1, but they remain structurally distinct:
+
+- `subjectBehaviorRules` classify observed target effects as allowed, denied,
+  or review-required for the policy subject. They are appraisal rules and do
+  not decide which synthetic probes Forge may run.
+- `experimentDispatchRules` authorize the reference monitor to run exact
+  bounded tools, arguments, resource classes, and data flows inside the
+  detonator. They may intentionally permit a synthetic probe for behavior that
+  `subjectBehaviorRules` would classify as forbidden in deployment.
+
+Registry admission policy remains a later relying-party decision and is not a
+third implicit meaning of either compartment. An audit ApprovalReceipt has
+purpose `audit_execution`; it never grants target capability or registry
+admission.
 
 Minimum content:
 
 - Policy ID, version, owner, creation/review time, and optional expiry.
 - Exact subject selector or a documented reusable policy class.
-- Default deny or review behavior.
-- Allowed/denied operations over:
+- Default deny or review behavior in each applicable compartment.
+- Subject-behavior rules and, separately, experiment-dispatch rules over:
   - tool and action;
   - file path/prefix and data class;
   - network destination/port/service class;
@@ -575,9 +638,9 @@ Minimum content:
   - lifecycle phase;
   - data source-to-sink combinations;
   - volume/rate/time limits.
-- Approval gates and conditions.
 - Required mandatory probes and minimum coverage.
-- Registry admission rules.
+- Explicit audit approval gates and conditions. Registry admission rules live
+  in a future separate artifact.
 
 The first implementation can remain a narrow Forge-owned Zod DSL. Evaluate OPA
 or Cedar only when policy reuse, analysis, and organizational authoring justify
@@ -620,6 +683,10 @@ Minimum content:
   while each concrete resolved argument is revalidated at dispatch.
 - Resolved symbolic synthetic resources and canary classes.
 - Deterministic assertions and applicable metamorphic relations.
+- Explicit non-authoritative predicted effects, each with an origin
+  (`operator`, `deterministic_generator`, or `model_inference`), confidence,
+  and evidence basis. Predictions are not claims, policy, assertions, or
+  observations and cannot authorize a case.
 - Runtime, storage, transcript, process, and experiment-count budgets.
 - Required sensors and explicit unsupported sensors.
 - Required approval class. Do not place the plan's own digest inside this
@@ -627,6 +694,11 @@ Minimum content:
   reference/envelope and the separate ApprovalReceipt. Compute it over the
   complete canonical ExperimentPlan payload, excluding the external envelope,
   and do not mutate the payload after hashing.
+
+The digest graph is acyclic: target/catalog/claim/policy/AuditSpec/resource
+identities feed the plan; the controller-owned envelope hashes the plan; the
+receipt binds those digests; and AuditResult references the receipt. No earlier
+artifact may contain the digest of a later artifact in that chain.
 
 The DSL must not permit:
 
@@ -643,8 +715,11 @@ A model proposal should reference symbolic resources such as
 `profile.documents.report` or `sink.controlled_receiver`, which the trusted
 compiler resolves to fresh synthetic manifests after structural candidate
 validation but before input/policy validation and final plan hashing. The
-ApprovalReceipt binds the final ExperimentPlan, synthetic-resource manifest,
-policy, target, AuditSpec, `rawDiscoveryDigest`, and `planCatalogDigest`.
+ApprovalReceipt binds the final ExperimentPlan, every concrete
+per-case/per-repetition synthetic-resource instance, policy, target, AuditSpec,
+`rawDiscoveryDigest`, and `planCatalogDigest`. A canary or other supposedly
+fresh value created after final plan hashing is not covered by the receipt and
+must force a new plan.
 Dynamic values produced inside a workflow follow the separate dispatch-time
 reference-monitor rule below.
 
@@ -660,11 +735,16 @@ Minimum content:
   policy, ExperimentPlan, and synthetic-resource-manifest digests.
 - Exact approval-required case IDs and decision for each, if case-specific
   approval is needed.
+- Purpose `audit_execution`, controller audience, bounded run/trial/case scope,
+  explicit reuse policy, exact execution bounds, and the compiler/runner/sandbox
+  identities applicable to the approved execution boundary.
 - Canonicalization/signature scheme identity and signature/authentication state.
 
-Phase 1 may use a trusted local/manual receipt under the prototype threat model
-while cryptographic authentication/signing is deferred; label it explicitly
-unsigned. It must still be typed and unmistakably separate from the plan.
+Phase 1 may issue a local/manual receipt through a controller-owned API while
+cryptographic authentication/signing is deferred; label it explicitly
+unsigned and non-dispatchable in this contracts/compiler-only phase. Parsing an
+unsigned receipt from an untrusted artifact never recreates authority. It must
+still be typed and unmistakably separate from the plan.
 Pre-hash validation may only classify a case as
 `approval_required`; the authority issues the receipt after canonical hashes
 exist. Changing any approved bytes requires a new plan and receipt.
@@ -883,7 +963,12 @@ secondary triage signal only, calibrated against human labels.
 This component is the critical boundary. It should be testable without a model
 or Docker.
 
-The opt-in V2 orchestration differs from current V1 configuration timing:
+The opt-in V2 orchestration differs from current V1 configuration timing.
+Acquisition, scripts-disabled preparation, lifecycle A/B work, initialization,
+and the discovery used to compile the plan are **pre-plan controller
+obligations**, not post-discovery ExperimentPlan cases. AuditSpec and coverage
+must reserve and report their budgets separately. Only post-discovery calls and
+workflows belong in the final plan:
 
 1. Prepare and hash the exact candidate/runtime snapshot.
 2. Run one explicit, sandboxed discovery phase and preserve a bounded catalog,
@@ -904,8 +989,9 @@ The opt-in V2 orchestration differs from current V1 configuration timing:
    policy, both catalog identities, AuditSpec, target, and
    synthetic-resource-manifest digest. Missing, denied, or expired approval
    blocks execution.
-8. Execute each independent case in a fresh environment; keep shared state only
-   inside an explicit workflow.
+8. After the separate V2 execution gate is satisfied, execute each independent
+   case in a fresh environment; keep shared state only inside an explicit
+   workflow.
 9. Recompute both catalog identities from every fresh session before any tool
    call and require them to match. Drift in either blocks dispatch and
    admissible publication; it is preserved as bounded inconclusive/stale
@@ -932,9 +1018,12 @@ Validation order:
 8. Compile and validate every resolved ordinary tool input against its exact
    input schema. Only the separate negative-call type may contain an
    intentionally invalid input.
-9. Evaluate every case against `ApprovedPolicy`; reject disallowed cases and
-   mark explicit approval-required cases as pending. MCP/model content cannot
-   produce approval, and no authority decision is issued before final hashes.
+9. Evaluate every case against the `experimentDispatchRules` compartment of
+   `ApprovedPolicy`; reject dispatch-unauthorized cases and mark explicit
+   approval-required cases as pending. Do not reject a synthetic negative probe
+   merely because `subjectBehaviorRules` classify the behavior being tested as
+   forbidden. MCP/model content cannot produce approval, and no authority
+   decision is issued before final hashes.
 10. Reject any attempt to alter sandbox, observer, evidence, cleanup,
     credentials, host mounts, network, target command, or mandatory coverage.
 11. Canonicalize and persist the complete immutable ExperimentPlan and all
@@ -943,12 +1032,19 @@ Validation order:
     ApprovalReceipt over those exact digests, including `rawDiscoveryDigest`
     and `planCatalogDigest`.
     Approval never precedes or mutates the bytes it authorizes.
-13. Before every dispatch, verify the plan/ApprovalReceipt/policy and both
+13. Before every future dispatch, verify the plan/ApprovalReceipt/policy and both
     catalog digests. For a workflow binding, resolve the actual tainted output
     value, reapply quotas, validate the full concrete argument against the
     current frozen schema, reevaluate policy and data-flow rules, compute the
     canonical argument hash, and issue a step-scoped reference-monitor receipt
     before calling the tool.
+
+Phase 1 resolves only static synthetic-resource aliases before argument,
+schema, policy, and bound validation. Producer-output workflow bindings cannot
+be resolved until a call returns; the Phase 1 compiler rejects them rather than
+pretending they are concrete. A later workflow reference monitor must validate
+bounded detached `structuredContent` against the frozen `outputSchema`, bind
+producer/output/value identity and taint lineage, and then perform step 13.
 
 For every rejected proposal, record a bounded reason code without persisting
 untrusted provider diagnostics or secrets. Proposal rejection rates are an
@@ -1153,24 +1249,25 @@ sample contracts rather than treating report prose as the oracle. Agent V1's
 scripted verification validates plumbing and a controlled trajectory, not
 causality between clean and poisoned metadata in a live model.
 
-### Phase 1: typed manual plan and richer deterministic comparison
+### Phase 1A: typed manual plan and provider-free compiler
 
-Goal: prove the artifact separation and compiler without any LLM.
+Goal: prove artifact separation, deterministic compilation, and receipt
+binding without any LLM or target execution.
 
 Implement versioned contracts for `ClaimProfile`, `ApprovedPolicy`,
 `AuditSpec`, `ExperimentPlan`, `ApprovalReceipt`, both V2 catalog identities,
-`CoverageRecord`, and `AuditResult`. Manually encode equivalent cases for the
-pinned official Filesystem target and the deceptive fixture. Compile a manual
-AuditSpec into a frozen ExperimentPlan, hash it and its referenced manifests,
-issue a separate local/manual ApprovalReceipt, and only then adapt it into the
-existing initialization/tool execution primitives. Extend comparison
-dimensions enough to distinguish action, resource, phase, policy, and evidence
-strength.
+`CoverageRecord`, and `AuditResult`. Add at least one human-authored manual
+fixture. Compile its AuditSpec into a frozen ExperimentPlan, materialize and
+hash every concrete synthetic resource first, hash the complete plan and its
+referenced manifests, and issue a separate unsigned/non-dispatchable local
+ApprovalReceipt through a controller-owned API. Include explicit
+non-authoritative predictions so advertised, approved, predicted, observed,
+risk, and coverage dimensions remain distinct. Do not add a runtime adapter,
+live MCP discovery, or target dispatch in Phase 1A.
 
-Do not remove `forge.target/v1`, expand `forge.report/v1` in place, or silently
-route `forge analyze` through V2. Prefer an opt-in `forge audit <audit-spec>`
-path with separate result/sample contracts while keeping the existing
-command/provider-free behavior working.
+Do not remove `forge.target/v1`, expand `forge.report/v1` in place, silently
+route `forge analyze` through V2, or add an opt-in execution CLI. A pure preview
+or compile command may be added later without changing existing commands.
 
 Exit criteria:
 
@@ -1178,17 +1275,26 @@ Exit criteria:
 - Canonical serialization and digest tests, including a controller-owned plan
   envelope so `experimentPlanDigest` is never self-referential.
 - ApprovalReceipt tests proving authority is structurally separate and any
-  post-hash mutation or catalog-identity mismatch blocks dispatch/publication.
+  post-hash mutation or catalog-identity mismatch invalidates the binding.
+- The receipt is explicit that Phase 1A is unsigned and non-dispatchable; a
+  parsed receipt is never treated as authority by itself.
 - Unsafe plan rejection tests.
-- Before opt-in V2 execution, add and test independent resource ceilings for
-  writable profile/evidence bytes and inodes, per-file size, file descriptors,
-  cumulative stdout/stderr/MCP/trace bytes, process count, memory, CPU, and
-  wall-clock time. The current core's writable host bind mounts and cumulative
-  STDIO/trace paths do not satisfy this gate.
-- Existing sample reports still validate or have an explicit versioned
-  migration.
-- Manual V2 cases produce the same or better core evidence than current target
-  configs.
+- Existing V1 and Agent V1 behavior and sample-report contracts remain
+  unchanged.
+
+### Phase 1B: gated runtime adapter and evidence equivalence
+
+Only after the following gate is independently implemented and verified may a
+V2 plan adapt into existing or extracted execution primitives. Add and test
+independent resource ceilings for writable profile/evidence bytes and inodes,
+per-file size, file descriptors, cumulative stdout/stderr/MCP/trace bytes,
+process count, memory, CPU, and wall-clock time; explicit
+acquisition/discovery/runtime boundaries; a V2 runtime-snapshot identity and
+immediate recheck or immutable mount; bounded complete catalog discovery;
+evidence integrity; and label-verified cleanup. The current core's writable
+host bind mounts and cumulative STDIO/trace paths do not satisfy this gate.
+After it passes, manual V2 cases must produce the same or better core evidence
+than equivalent current target configs without changing V1 semantics.
 
 ### Phase 2: deterministic schema generation
 
@@ -1403,11 +1509,15 @@ Keep the provider-free contracts, compiler, validators, generators, comparison,
 and tests outside `src/agent`. The agent proposer is one input adapter, not the
 owner of the audit subsystem.
 
-Use a standards-based canonical JSON representation for any future signing
-boundary. The private sorter currently used for report comparison and ordinary
-`JSON.stringify` hashes are useful internal identities but should not be
-promoted to a cross-implementation attestation format without a specified
-canonicalization algorithm and test vectors.
+Use RFC 8785 JSON Canonicalization Scheme semantics for V2 canonical digests:
+I-JSON values, UTF-16 code-unit property ordering, unchanged array order, no
+Unicode normalization, UTF-8 output, and rejection of non-finite numbers and
+lone surrogates. A bounded raw loader must reject duplicate object keys before
+`JSON.parse` or Zod can collapse them. Domain-separate/version every projection
+being hashed and include official canonicalization test vectors. The private
+sorter currently used for V1 report comparison and ordinary `JSON.stringify`
+hashes remain internal V1 identities, not V2 approval or future signing
+formats.
 
 Suggested tests:
 
@@ -1453,6 +1563,14 @@ Use a common mandatory suite, then evaluate three optional-case strategies:
 All arms must use the same artifact, environment family, policy, evidence
 sensors, finding rules, and gold labels. Differences in the model arm must not
 come from weaker policy or broader host access.
+
+All proposal strategies must also receive the same pre-outcome evidence
+projection. In particular, do not give Arm C deterministic static summaries
+derived from a hidden mutation while withholding them from the manual arm; that
+would measure privileged mutation leakage rather than semantic-planning value.
+If information access is itself under study, make it a separate preregistered
+factorial ablation. Freeze Arm B's candidate pool/ranking and Arm C's
+deterministic-versus-agent allocation before any mutation outcome is revealed.
 
 Run two analyses:
 
@@ -1640,10 +1758,14 @@ than burying it.
 
 ### Release-blocking acceptance matrix
 
-Turn these IDs into automated tests or explicit production gates. Phases 1–4
-may run on the documented prototype boundary, but any test marked
-**production** blocks registry/runtime claims until a hardened external boundary
-exists. A skipped test is visible coverage debt, not a pass.
+Turn these IDs into automated tests or explicit production gates. Provider-free
+Phase 1A is contracts/compiler work only. No live V2 discovery or target
+dispatch may run until SBX-01, SBX-02, SBX-03, SBX-04a, the V2 snapshot-identity
+gate, and applicable evidence-integrity gates pass. Later research phases may
+use only the boundary their individual gates authorize; any test marked
+**production** still blocks registry/runtime claims until a hardened external
+boundary exists. A skipped test is visible coverage debt, not a pass. Existing
+V1 execution remains unchanged by this V2 gate.
 
 | ID | Scope | Acceptance condition |
 | --- | --- | --- |
