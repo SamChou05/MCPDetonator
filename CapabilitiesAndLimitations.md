@@ -1,0 +1,304 @@
+# What Forge can and cannot do
+
+**Status:** This describes the current code as of 2026-08-29.
+
+Forge has two separate ways to test an MCP server:
+
+- The **core test** studies the server itself. It looks at the package, starts
+  it in a locked-down test environment, calls selected tools, and records what
+  the software does.
+- The **agent test** studies how an AI model behaves after seeing the server's
+  tool names, descriptions, and input rules.
+
+These tests answer different questions. They prepare the server separately,
+collect different evidence, and create different reports.
+
+## Core test: study the MCP server directly
+
+Command: `forge analyze`
+
+Put simply, Forge first looks for obvious clues in the package's code. It then
+watches what the package actually does during a few chosen tests. Finally, it
+compares those actions with the behavior you said was allowed. The result is
+supporting evidence, not a safety grade.
+
+### What you provide
+
+- The exact npm package and version, or a local Node.js project.
+- The command needed to start the MCP server.
+- The tools and example inputs Forge should test.
+- The file access, programs, and network connections you expect each tool to
+  need. Forge treats this as the allowed behavior for the test.
+- Time, memory, CPU, and process limits.
+
+`forge validate` checks that these settings are well formed without running the
+server.
+
+### The three things Forge looks at
+
+- **What is in the package:** package details, install commands, dependencies,
+  and simple clues in the source code.
+- **What the server says:** its name, version, tools, descriptions, and input
+  rules.
+- **What the server does in the selected tests:** the files it touches, programs
+  it starts, and network connections it tries.
+
+### How the core test works
+
+```text
+test settings
+    -> exact copy of the package
+    -> simple code scan
+    -> start the MCP and list its tools
+    -> call selected tools and record raw operating-system logs
+    -> turn those logs into readable actions
+    -> connect each action to a test step
+    -> check the actions and write the report
+```
+
+1. **Get the exact code that will be tested.** Forge downloads one exact npm
+   version or copies a local directory. It first prepares the package with
+   install scripts turned off. It records where the code came from and creates
+   a SHA-256 digital fingerprint for the package tree.
+
+   When the npm files needed for a clean reinstall are available, Forge also
+   runs two fresh offline installations: one with install scripts off and one
+   with them on. If the install with scripts on succeeds, Forge uses that copy
+   for the later tests. Otherwise it uses the safer scripts-off copy. Forge
+   scans the chosen copy again so the code scan and the later behavior test
+   refer to the same files.
+
+2. **Read the package information and scan the code.** Forge reads
+   `package.json` and basic information from common files that record exact
+   dependency versions, often called lockfiles. This tells Forge things such as
+   the package name, version, start files, dependencies, and install commands.
+
+   The Node.js code scan is intentionally simple. Forge does **not** fully
+   understand the program, build a syntax tree, follow function calls, or track
+   how data moves through the code. It searches JavaScript and TypeScript files
+   for a small set of recognizable patterns. Before searching, it makes two
+   cleaned copies of the text: one hides comments, and the other hides comments
+   and quoted text. This lets Forge read imported module names while reducing
+   the chance that an example inside documentation is mistaken for real code.
+
+   The scan has safety limits. By default, it reads at most 250 source files,
+   about half a megabyte from one file, about 10 megabytes across all source
+   files, and 20,000 files or folders while searching. It does not follow
+   source-file links or inspect dependency code under `node_modules`.
+
+   These are the code clues it currently recognizes:
+
+   | Code clue | What it may allow the package to do |
+   | --- | --- |
+   | Imports Node's `fs` API | Read or change files |
+   | Imports `child_process` | Start another program |
+   | Imports HTTP, socket, or DNS APIs | Use the network |
+   | Calls `fetch` or `WebSocket` | Use the network |
+   | Reads `process.env` | Read environment variables |
+   | Uses `vm`, `eval`, or `new Function` | Run code created while the program is running |
+   | Loads a module from a variable | Choose and load code while running |
+   | Loads a `.node` file or calls `process.dlopen` | Load compiled native code |
+
+   For every clue, Forge saves the file name, file fingerprint, line, column,
+   short code excerpt, and the exact captured source file. Finding a clue only
+   means that the matching text exists. It does not prove the code ever runs,
+   belongs to a particular tool, is needed, or is harmful.
+
+3. **Ask the running MCP which tools it offers.** Forge starts the MCP over
+   STDIO, meaning the server talks through its standard input and output, and
+   asks it for its tool list. It saves the server name and version, plus each
+   tool's name, description, input rules, and extra hints supplied by the
+   server. It also records the MCP requests and responses.
+
+   Before calling a selected tool, Forge checks the example input against the
+   input rules advertised by that tool. The person running Forge still chooses
+   the tools, example inputs, and allowed behavior. The core test does not trust
+   a tool description to decide what access should be allowed.
+
+4. **Record what the operating system sees.** Each test runs in Docker with no
+   external network, a read-only container and package, fake home and workspace
+   files, and strict time, memory, CPU, and process limits.
+
+   Forge uses Linux `strace`, which acts like an audit log of requests made to
+   the operating system. It follows the server and the child processes it
+   starts, adds timestamps and file names, and writes a separate raw log for
+   each process. It watches selected process, file, network, read, and write
+   operations. The MCP runs as a low-permission user with no extra system powers
+   and cannot change the protected trace logs.
+
+   The network is blocked, but attempted connections are still recorded. This
+   lets the report show that software tried to connect even when the connection
+   failed.
+
+5. **Turn the raw trace logs into readable actions.** Raw `strace` lines are
+   detailed and tied to Linux internals. Forge converts the supported lines into
+   a smaller list of actions such as:
+
+   - A process started, ran a program, or exited.
+   - A process opened, read, wrote, or deleted a file.
+   - A process tried to connect to or listen on a network address.
+
+   Forge also changes temporary host file paths back into the stable paths seen
+   inside the test container. Every readable action points back to the exact raw
+   trace line it came from. Lines Forge does not understand are skipped, but the
+   original trace files remain available for inspection. This conversion loses
+   some detail, which is why Forge keeps both forms.
+
+6. **Connect actions to the part of the test that was running.** Forge records
+   the start and end time of installation, MCP startup, each tool call, and the
+   short wait after a tool returns. It uses those times to say which step was
+   active when an action happened.
+
+   Forge also notes when each process first appeared. This helps it distinguish
+   a process created by a tool from the long-running MCP server. The connection
+   is strongest when the tool call runs by itself, creates the process, and the
+   action happens during that call. Timing by itself is weaker evidence, so the
+   report says how confident Forge is instead of claiming perfect cause and
+   effect.
+
+7. **Check the actions and write the report.** Forge applies the same fixed
+   checks to every target. The current checks look for:
+
+   - Reading a fake credential during MCP startup.
+   - Reading or writing a file outside the allowed list for a tool.
+   - Starting a program outside the allowed list.
+   - Trying an unexpected network connection.
+   - A process created by a tool continuing to act after the tool returned.
+
+   Forge also places the code scan beside the recorded behavior. For file
+   access, child programs, and network use, the report says whether Forge saw a
+   matching code clue and whether it saw matching behavior during the selected
+   tests. Environment-variable access, code created while running, modules
+   chosen while running, and compiled native code are not yet checked in this
+   side-by-side view.
+
+   “Not found in the code scan” means Forge did not find one of its known text
+   patterns. “Not seen while running” means the selected test inputs did not
+   cause matching recorded behavior. Neither statement means the ability is
+   absent from the program.
+
+The main code for these steps is in
+[`src/static/node-package.ts`](src/static/node-package.ts),
+[`src/mcp/stdio.ts`](src/mcp/stdio.ts),
+[`container/trace-entrypoint.sh`](container/trace-entrypoint.sh),
+[`src/observe/strace-parser.ts`](src/observe/strace-parser.ts),
+[`src/observe/strace-normalizer.ts`](src/observe/strace-normalizer.ts),
+[`src/attribute.ts`](src/attribute.ts), [`src/rules.ts`](src/rules.ts), and
+[`src/report.ts`](src/report.ts).
+
+### What the core test produces
+
+- A short completion message and the main
+  `runs/<run-id>/report.json` report.
+- The exact target settings and information about where the package came from.
+- The package and source-file fingerprints used to identify the tested code.
+- Package scans from before installation and from the copy actually tested.
+- MCP tool information and message logs.
+- Raw `strace` logs and the smaller list of readable actions created from them.
+- Test-step timings, action-to-step links, rule results, server error output, and
+  descriptions of the fake test environment.
+
+### What the core test cannot tell you
+
+- It currently supports local Node.js MCP servers that use STDIO and run in a
+  Linux Docker container. It does not cover every language, remote server, or
+  operating system.
+- It runs only the tool calls and inputs supplied in the settings. It does not
+  automatically explore every tool, workflow, input, or unusual edge case.
+- The code scan is a simple text-pattern search. It can miss indirect,
+  hidden, unfamiliar, dependency-provided, or deliberately disguised behavior.
+  It can also find code that never runs.
+- The operating-system recorder watches a selected set of operations. It does
+  not capture every possible effect or the readable contents of encrypted
+  network traffic.
+- Connecting an action to a tool uses timing and process history. This is useful
+  evidence, but it is not perfect proof that one exact line of code caused the
+  action.
+- Forge knows that behavior is unexpected only because a person supplied the
+  allowed behavior for the test.
+- A report with no warnings means that the selected tests found no mismatch
+  covered by the current checks. It does not mean the package is safe in every
+  situation.
+
+## Agent test: study the AI and tool descriptions together
+
+Command: `forge agent-evaluate`
+
+### What you provide
+
+- A fake user task and a reference to the MCP target settings.
+- A previously approved digital fingerprint for the exact tool names,
+  descriptions, and input rules that may be shown to the outside AI service.
+- Clear rules describing which tool actions are allowed or denied.
+- Clear checks describing what counts as successfully completing the task.
+- The model, number of trials, and limits on turns and tool calls.
+- An OpenRouter API key for a live run. The built-in offline test does not need
+  a real key.
+
+### What Forge does
+
+- Prepares the MCP independently with install scripts turned off.
+- Starts it in a fresh fake environment and asks it for its tool list.
+- Stops before contacting the outside AI service if the tool names,
+  descriptions, or input rules no longer match the approved fingerprint.
+- Lets the model choose tools and arguments, but checks every proposed action
+  against fixed allow/deny rules before running it.
+- In `enforce` mode, refuses denied actions. In `observe` mode, it may run a
+  denied action only against Forge's fake, controlled resources so the attempted
+  behavior can be measured safely.
+- Keeps the MCP's fake files separate from the fake files used by Forge's own
+  controlled tools. This prevents a tested MCP from secretly changing what the
+  AI later sees from a trusted test tool.
+- Does not send MCP tool results or MCP error details back to the outside AI
+  service.
+- Repeats the test and reports both rule-following and task-completion results.
+
+### Questions the agent test helps answer
+
+- Does wording in an approved MCP tool description change which tools the model
+  chooses or which arguments it supplies?
+- Does the model propose an action that the test rules forbid?
+- Does blocking forbidden actions still allow the task to succeed?
+- Under these exact test conditions, how often did the model follow the rules
+  and complete the task?
+
+### What the agent test produces
+
+- A short completion message and
+  `agent-runs/<run-id>/agent/report.json`.
+- A record of each trial, model response, proposed tool call, allow/deny
+  decision, and task-completion result.
+- Local MCP logs, controlled-tool actions, final observations of selected test
+  files, resource-limit evidence, and cleanup results.
+
+### What the agent test cannot tell you
+
+- Live runs currently use OpenRouter only.
+- A person must write the fake task, allow/deny rules, and success checks.
+- Because MCP results are hidden from the model, this version does not test
+  attacks placed inside an MCP tool result or long-term model memory.
+- Results apply only to the recorded model, prompt, tool set, test setup, and
+  small number of trials. A few trials cannot establish a general failure rate
+  or prove that a description caused the behavior.
+- Only fake, controlled resources are included. This test does not permit access
+  to real accounts, credentials, or external services.
+- The agent test is separate from the core report and is not yet used to approve
+  packages for a registry.
+
+## Limits shared by both tests
+
+- Neither test can give a universal “safe” or “malicious” verdict.
+- The current Docker and in-container `strace` setup is suitable for a prototype,
+  but it is not the strongest possible barrier for hostile software. A separate
+  virtual machine and an outside observer would provide stronger protection.
+- Reports are primarily JSON files intended for machines and technical review.
+  A polished web or HTML explanation is not implemented.
+- Automatic package approval, continuous checks for changed packages, and live
+  enforcement during real use remain future work.
+- The checked-in example reports are cleaned representative examples. Full test
+  runs are intentionally not committed to the repository.
+
+See [Prototype.md](Prototype.md) for commands and output files,
+[ArchitectureAndTrustModel.md](ArchitectureAndTrustModel.md) for the deeper
+security design, and [AgentRolloutV1.md](AgentRolloutV1.md) for the full agent
+test design.
