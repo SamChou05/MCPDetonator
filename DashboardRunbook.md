@@ -27,6 +27,13 @@ The page has two main views:
    up to five eligible published runs per target, newest first. Selecting a
    timestamp scrolls to that run's full article on the same page.
 
+The page also includes a bounded **Unseen MCP holdout** study section. It lists
+the package names and versions tried, whether startup/catalog discovery
+succeeded, the selected-call outcome, and the deterministic finding counts for
+each case. It deliberately excludes private run IDs, report hashes, raw
+traces, transcripts, and artifact paths. This section is a study summary, not a
+publication-history sidebar and not a general safety verdict.
+
 There is no client-side routing. Sidebar links are ordinary same-page anchors,
 such as `#published-controlled-run-1`, and all runs are already rendered in the
 single HTML document.

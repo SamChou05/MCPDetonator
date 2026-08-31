@@ -25,7 +25,10 @@ import {
   writeCompleteDashboardSite,
 } from "../../src/dashboard/local-site.js";
 import { LocalDashboardPublicationRefresher } from "../../src/dashboard/publish-refresh.js";
-import { buildDashboardDocument } from "../../src/dashboard/render.js";
+import {
+  buildDashboardDocument,
+  type UnseenHoldoutSummary,
+} from "../../src/dashboard/render.js";
 import type { VerifiedRunBundle } from "../../src/publish/bundle.js";
 import type {
   DashboardProjectionReader,
@@ -538,5 +541,100 @@ describe("publish-driven local dashboard refresh", () => {
       confidence: "high",
     });
     expect(JSON.stringify(projection)).not.toContain("internal hostname");
+  });
+});
+
+describe("unseen MCP holdout summary rendering", () => {
+  const holdout: UnseenHoldoutSummary = {
+    runDate: "2026-08-30",
+    caseCount: 3,
+    cases: [
+      {
+        caseId: "everything",
+        packageName: "@modelcontextprotocol/server-everything",
+        packageVersion: "2026.8.18",
+        probeOutcome: "catalog_discovered",
+        invocationStatus: "completed",
+        selectedTool: "get-env",
+        findings: [],
+      },
+      {
+        caseId: "panda",
+        packageName: "@pandacss/mcp",
+        packageVersion: "1.12.0",
+        probeOutcome: "startup_failed_before_catalog",
+        probeFailureClass: "required_project_configuration_absent",
+        invocationStatus: "not_attempted_without_catalog",
+        findings: [],
+      },
+      {
+        caseId: "mantine",
+        packageName: "@mantine/mcp-server",
+        packageVersion: "9.5.2",
+        probeOutcome: "catalog_discovered",
+        invocationStatus: "completed",
+        selectedTool: "list_items",
+        findings: [{ ruleId: "runtime.unexpected_network_attempt", count: 4 }],
+      },
+    ],
+  };
+
+  it("renders package names, selected-call outcomes, and bounded findings", async () => {
+    const template = await readFile(
+      join(process.cwd(), "dashboard", "index.html"),
+      "utf8",
+    );
+    const stylesheet = await readFile(
+      join(process.cwd(), "dashboard", "styles.css"),
+      "utf8",
+    );
+    const [controlledPolicy, referencePolicy] = DEMO_TARGET_POLICIES;
+    const reportFiles = await Promise.all(
+      DEMO_TARGET_POLICIES.map((policy) =>
+        readFile(join(process.cwd(), "examples", "reports", policy.sampleReportFile)),
+      ),
+    );
+    const reports = DEMO_TARGET_POLICIES.map((policy, index) => ({
+        role: policy.role,
+        reportBytes: reportFiles[index]!,
+        expectedSha256: policy.sampleReportSha256,
+        expectedTargetId: policy.targetId,
+        displayName: policy.displayName,
+        description: policy.description,
+        scopeLabels: policy.scopeLabels,
+        limitations: policy.limitations,
+        presentation: { source: "sample" as const },
+    }));
+    if (
+      reports[0] === undefined ||
+      reports[1] === undefined ||
+      reports[0].role !== "controlled" ||
+      reports[1].role !== "reference"
+    ) {
+      throw new Error("dashboard policies did not produce a canonical pair");
+    }
+    const exported = buildDemoExportV1({
+      reports: [reports[0], reports[1]],
+    });
+    const document = buildDashboardDocument({
+      template,
+      stylesheet,
+      exported,
+      unseenHoldout: holdout,
+    });
+
+    expect(document.html).toContain("Unseen MCP holdout");
+    expect(document.html).toContain("@modelcontextprotocol/server-everything");
+    expect(document.html).toContain("@pandacss/mcp");
+    expect(document.html).toContain("@mantine/mcp-server");
+    expect(document.html).toContain("Completed · get-env");
+    expect(document.html).toContain(
+      "Startup failed: required_project_configuration_absent",
+    );
+    expect(document.html).toContain("runtime.unexpected_network_attempt ×4");
+    expect(document.html).not.toContain("run-2026");
+    expect(document.html).not.toMatch(/[0-9a-f]{64}/u);
+    expect(controlledPolicy).toBeDefined();
+    expect(referencePolicy).toBeDefined();
   });
 });

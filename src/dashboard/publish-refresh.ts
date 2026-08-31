@@ -28,14 +28,17 @@ import {
   type DemoTargetPolicy,
 } from "./demo-policy.js";
 import { replaceDashboardIndex } from "./local-site.js";
+import { loadUnseenHoldoutSummary } from "./holdout-summary.js";
 import {
   buildDashboardDocument,
   DASHBOARD_HISTORY_LIMIT_PER_TARGET,
+  type UnseenHoldoutSummary,
 } from "./render.js";
 
 export interface LocalDashboardPublicationRefresherOptions {
   readonly repository: PostgresPublicationRepository;
   readonly repositoryRoot: string;
+  readonly unseenHoldout?: UnseenHoldoutSummary | undefined;
 }
 
 function projectionJson(run: DemoRunV1): PublicationPublicMetadata {
@@ -186,11 +189,23 @@ class PreparedLocalDashboardRefresh implements PreparedDashboardRefresh {
             "utf8",
           ),
         ]);
+        const unseenHoldout = await loadUnseenHoldoutSummary(
+          this.options.repositoryRoot,
+        ).catch((error: unknown) => {
+          if (
+            !(error instanceof Error) ||
+            (error as NodeJS.ErrnoException).code !== "ENOENT"
+          ) {
+            throw error;
+          }
+          return undefined;
+        });
         const document = buildDashboardDocument({
           template,
           stylesheet,
           exported,
           history: published.map((entry) => entry.run),
+          unseenHoldout,
         });
         const disposition = await replaceDashboardIndex({
           outputDirectory: join(

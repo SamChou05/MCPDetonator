@@ -38,6 +38,30 @@ export interface DashboardBuildManifestV1 {
   readonly files: readonly [DashboardFileReceipt, DashboardFileReceipt];
 }
 
+export interface UnseenHoldoutCaseSummary {
+  readonly caseId: string;
+  readonly packageName: string;
+  readonly packageVersion: string;
+  readonly probeOutcome: "catalog_discovered" | "startup_failed_before_catalog";
+  readonly probeFailureClass?: string;
+  readonly invocationStatus:
+    | "completed"
+    | "tool_error_before_report"
+    | "not_attempted_without_catalog";
+  readonly selectedTool?: string;
+  readonly invocationFailureClass?: string;
+  readonly findings: readonly {
+    readonly ruleId: string;
+    readonly count: number;
+  }[];
+}
+
+export interface UnseenHoldoutSummary {
+  readonly runDate: string;
+  readonly caseCount: number;
+  readonly cases: readonly UnseenHoldoutCaseSummary[];
+}
+
 function escapeHtml(value: unknown): string {
   return String(value).replace(/[&<>"']/gu, (character) => {
     const entities: Readonly<Record<string, string>> = {
@@ -426,12 +450,119 @@ ${
             </section>`;
 }
 
+function holdoutProbeText(caseSummary: UnseenHoldoutCaseSummary): string {
+  if (caseSummary.probeOutcome === "catalog_discovered") return "Catalog discovered";
+  return `Startup failed: ${caseSummary.probeFailureClass ?? "unspecified failure"}`;
+}
+
+function holdoutInvocationText(caseSummary: UnseenHoldoutCaseSummary): string {
+  if (caseSummary.invocationStatus === "completed") {
+    return `Completed · ${caseSummary.selectedTool ?? "selected tool"}`;
+  }
+  if (caseSummary.invocationStatus === "tool_error_before_report") {
+    return `Tool error · ${caseSummary.invocationFailureClass ?? "unspecified failure"}`;
+  }
+  return "Not attempted without a catalog";
+}
+
+function holdoutFindingText(caseSummary: UnseenHoldoutCaseSummary): string {
+  if (caseSummary.findings.length === 0) return "No deterministic findings";
+  return caseSummary.findings
+    .map((finding) => `${finding.ruleId} ×${finding.count}`)
+    .join("; ");
+}
+
+function validateUnseenHoldoutSummary(
+  input: UnseenHoldoutSummary,
+): UnseenHoldoutSummary {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(input.runDate)) {
+    throw new Error("unseen holdout run date must be YYYY-MM-DD");
+  }
+  if (input.caseCount !== input.cases.length) {
+    throw new Error("unseen holdout case count does not match its cases");
+  }
+  const seenCaseIds = new Set<string>();
+  for (const caseSummary of input.cases) {
+    if (caseSummary.caseId.length === 0 || seenCaseIds.has(caseSummary.caseId)) {
+      throw new Error("unseen holdout case IDs must be nonempty and unique");
+    }
+    seenCaseIds.add(caseSummary.caseId);
+    if (
+      caseSummary.packageName.length === 0 ||
+      caseSummary.packageVersion.length === 0
+    ) {
+      throw new Error("unseen holdout package identity is incomplete");
+    }
+    if (caseSummary.invocationStatus === "completed" && !caseSummary.selectedTool) {
+      throw new Error("completed unseen holdout case lacks its selected tool");
+    }
+    if (
+      caseSummary.probeOutcome === "startup_failed_before_catalog" &&
+      !caseSummary.probeFailureClass
+    ) {
+      throw new Error("failed unseen holdout probe lacks a failure class");
+    }
+    for (const finding of caseSummary.findings) {
+      if (finding.ruleId.length === 0 || finding.count < 1) {
+        throw new Error("unseen holdout findings must have a rule and positive count");
+      }
+    }
+  }
+  return input;
+}
+
+function renderUnseenHoldoutSummary(
+  holdout: UnseenHoldoutSummary,
+): string {
+  return `
+      <section class="section" aria-labelledby="unseen-holdout-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Prospective study</p>
+            <h2 id="unseen-holdout-title">Unseen MCP holdout</h2>
+          </div>
+          <p class="section-note">Study date ${escapeHtml(holdout.runDate)} · ${holdout.caseCount} exact-version npm packages</p>
+        </div>
+        <p class="meta">These are selected-input study summaries, not publication-history runs and not general safety verdicts. Raw evidence and private run identities remain undisclosed.</p>
+        <div class="table-scroll" tabindex="0">
+          <table>
+            <caption>Package, selected-call outcome, and deterministic findings</caption>
+            <thead>
+              <tr>
+                <th scope="col">MCP package</th>
+                <th scope="col">Startup / catalog</th>
+                <th scope="col">Selected call</th>
+                <th scope="col">Findings</th>
+              </tr>
+            </thead>
+            <tbody>
+${holdout.cases
+  .map(
+    (caseSummary) => `              <tr>
+                <th scope="row">${escapeHtml(caseSummary.packageName)} <span class="meta">${escapeHtml(caseSummary.packageVersion)}</span></th>
+                <td>${escapeHtml(holdoutProbeText(caseSummary))}</td>
+                <td>${escapeHtml(holdoutInvocationText(caseSummary))}</td>
+                <td>${escapeHtml(holdoutFindingText(caseSummary))}</td>
+              </tr>`,
+  )
+  .join("\n")}
+            </tbody>
+          </table>
+        </div>
+      </section>`;
+}
+
 export function renderDashboardContent(
   input: DemoExportV1,
   historyInput: readonly DemoRunV1[] = [],
+  unseenHoldoutInput?: UnseenHoldoutSummary,
 ): string {
   const exported = demoExportV1Schema.parse(input);
   const history = validateHistory(exported, historyInput);
+  const unseenHoldout =
+    unseenHoldoutInput === undefined
+      ? undefined
+      : validateUnseenHoldoutSummary(unseenHoldoutInput);
   const [controlled, reference] = exported.runs;
   if (controlled?.role !== "controlled" || reference?.role !== "reference") {
     throw new Error("demo export did not contain the canonical run pair");
@@ -463,6 +594,8 @@ ${exported.runs.map((run) => renderHistoryDetailGroup(run, history)).join("\n")}
           </div>
         </div>
       </section>
+
+${unseenHoldout === undefined ? "" : renderUnseenHoldoutSummary(unseenHoldout)}
 
       <p class="footer-note">Generated from schema-validated, allowlisted public projections. Raw reports, traces, transcripts, paths, source snapshots, and private storage remain unpublished.</p>`;
 }
@@ -526,6 +659,7 @@ export function buildDashboardDocument(input: {
   readonly stylesheet: string;
   readonly exported: DemoExportV1;
   readonly history?: readonly DemoRunV1[];
+  readonly unseenHoldout?: UnseenHoldoutSummary | undefined;
 }): {
   readonly html: string;
   readonly stylesheet: string;
@@ -539,7 +673,7 @@ export function buildDashboardDocument(input: {
   const html = `${input.template
     .replace(
       DASHBOARD_TEMPLATE_MARKER,
-      renderDashboardContent(exported, history),
+      renderDashboardContent(exported, history, input.unseenHoldout),
     )
     .trimEnd()}\n`;
   assertSafeDashboardOutput(html, input.stylesheet, exported, history);
