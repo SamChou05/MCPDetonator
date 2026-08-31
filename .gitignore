@@ -1,12 +1,22 @@
-node_modules/
-dist/
-coverage/
-runs/
-agent-runs/
-agent-runs-verification/
-*.tgz
-.DS_Store
+# Secrets
 keys.md
+notes/
 .env
 .env.*
 !.env.example
+
+# Dependencies and builds
+node_modules/
+dist/
+coverage/
+
+# Generated detonation artifacts
+runs/
+reports/
+evidence/
+artifacts/
+*.tgz
+*.log
+
+# OS files
+.DS_Store

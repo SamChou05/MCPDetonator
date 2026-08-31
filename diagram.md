@@ -1,7 +1,7 @@
 # Core detonation flow
 
 This diagram covers `forge analyze`. The separate `forge agent-evaluate` path
-is documented in `AgentRolloutV1.md`.
+is documented in `docs/history/agent-rollout-v1.md`.
 
 ```mermaid
 flowchart TD

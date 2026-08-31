@@ -92,7 +92,7 @@ command:
   page unless `--refresh-dashboard` is supplied, and remains the retry command
   for an already-completed run.
 - the public AWS copy changes only after the explicit content-only deployment
-  in [`DashboardAwsDemo.md`](DashboardAwsDemo.md).
+  in [`DashboardAwsDemo.md`](../dashboard/dashboard-aws-demo.md).
 
 Neither form deploys the website to AWS. Evidence publication requires either
 `analyze --publish` or the explicit `publish-run` command, and website upload

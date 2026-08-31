@@ -64,12 +64,12 @@ Consider questions like how you would generate useful trajectories, what signals
 This is deliberately open-ended. A well-reasoned conclusion that agent rollouts add little beyond software analysis is just as interesting as a prototype showing that they expose an important new class of behavior.
 
 The repository now includes two separate experiments for this question:
-[AgentRolloutV1.md](AgentRolloutV1.md) studies model tool-use trajectories,
-while [EvidenceFirstV2AgentProposals.md](EvidenceFirstV2AgentProposals.md)
+[AgentRolloutV1.md](docs/history/agent-rollout-v1.md) studies model tool-use trajectories,
+while [EvidenceFirstV2AgentProposals.md](docs/history/evidence-first-v2-agent-proposals.md)
 tests whether an untrusted model can add useful audit-plan candidates beyond a
 deterministic baseline without receiving execution authority.
 
-[EvidenceFirstV2Enrollment.md](EvidenceFirstV2Enrollment.md) documents the
+[EvidenceFirstV2Enrollment.md](docs/history/evidence-first-v2-enrollment.md) documents the
 separate reviewed alpha for one operator-authored call against an unfamiliar
 exact npm or local Node STDIO target. Its result-channel comparison remains
 inconclusive whenever process, filesystem, or network sensors are unavailable.
@@ -83,7 +83,7 @@ By the end of the day on Sunday, we'd like to see:
 Within the prototype's explicitly documented local Node.js/STDIO/Linux scope,
 the repository now satisfies each requested deliverable. These checkmarks do
 not claim universal behavior coverage; see
-[`CapabilitiesAndLimitations.md`](CapabilitiesAndLimitations.md).
+[`CapabilitiesAndLimitations.md`](docs/architecture/capabilities-and-limitations.md).
 
 - [x] A working prototype we can point at a real local MCP server and get back a concrete report of what it observed.
 - [x] Some useful static analysis of the MCP itself: its tools, inputs, dependencies, source behavior, and anything else you think helps establish what the software claims or appears to do.
@@ -97,17 +97,17 @@ Our goal is to measure your ability to make intelligent design choices and think
 
 # Repository implementation
 
-- [`Prototype.md`](Prototype.md) explains the implemented architecture,
+- [`Prototype.md`](docs/publishing/prototype.md) explains the implemented architecture,
   evidence model, verified cases, limitations, and core demo.
 - [`case-studies/trace-corpus/README.md`](case-studies/trace-corpus/README.md)
   provides four pinned public MCP targets and a manifest-bound coverage
   summarizer; the [recorded experiment](experiments/baseline/trace-coverage-corpus-2026-08-30.md)
   explains which gaps warranted implementation work.
-- [`PublisherDemo.md`](PublisherDemo.md) runs the optional synthetic
+- [`PublisherDemo.md`](docs/publishing/publisher-demo.md) runs the optional synthetic
   S3/PostgreSQL completed-run publisher locally.
-- [`HardenedEvidenceInfrastructurePlan.md`](HardenedEvidenceInfrastructurePlan.md)
+- [`HardenedEvidenceInfrastructurePlan.md`](docs/history/hardened-evidence-infrastructure-plan.md)
   separates that bounded integration slice from the remaining production
   hardening roadmap.
-- [`DashboardAwsDemo.md`](DashboardAwsDemo.md) builds, publish-refreshes, and
-  deploys the minimal script-free results report; [`DashboardArchitectureDecision.md`](DashboardArchitectureDecision.md)
+- [`DashboardAwsDemo.md`](docs/dashboard/dashboard-aws-demo.md) builds, publish-refreshes, and
+  deploys the minimal script-free results report; [`DashboardArchitectureDecision.md`](docs/dashboard/dashboard-architecture-decision.md)
   records the alternatives, database boundary, cost, and replacement triggers.

@@ -444,7 +444,7 @@ Command: `forge agent-evaluate`
 - The checked-in example reports are cleaned representative examples. Full test
   runs are intentionally not committed to the repository.
 
-See [Prototype.md](Prototype.md) for commands and output files,
-[ArchitectureAndTrustModel.md](ArchitectureAndTrustModel.md) for the deeper
-security design, and [AgentRolloutV1.md](AgentRolloutV1.md) for the full agent
+See [Prototype.md](../publishing/prototype.md) for commands and output files,
+[ArchitectureAndTrustModel.md](architecture-and-trust-model.md) for the deeper
+security design, and [AgentRolloutV1.md](../history/agent-rollout-v1.md) for the full agent
 test design.

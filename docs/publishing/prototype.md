@@ -235,8 +235,8 @@ moves only validated HTML/CSS to the AWS site bucket.
 The S3 `run.json` is an artifact-completeness marker, not a cross-store atomic
 commit. PostgreSQL `status = 'published'` is query authority; hosted use still
 needs reconciliation for a database failure after manifest upload. See
-[`PublisherDemo.md`](PublisherDemo.md) for the synthetic localhost walkthrough
-and [`HardenedEvidenceInfrastructurePlan.md`](HardenedEvidenceInfrastructurePlan.md)
+[`PublisherDemo.md`](publisher-demo.md) for the synthetic localhost walkthrough
+and [`HardenedEvidenceInfrastructurePlan.md`](../history/hardened-evidence-infrastructure-plan.md)
 for the production sequencing and remaining controls.
 
 ## Containment model

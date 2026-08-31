@@ -4,7 +4,7 @@ This runbook is the quick operator path for the local, script-free dashboard.
 It covers what the page shows, how to start it, how to refresh it from
 published runs, and what to do when the run history disappears. The publisher
 and AWS deployment boundaries are covered separately in
-[`PublisherDemo.md`](PublisherDemo.md) and [`DashboardAwsDemo.md`](DashboardAwsDemo.md).
+[`PublisherDemo.md`](../publishing/publisher-demo.md) and [`DashboardAwsDemo.md`](dashboard-aws-demo.md).
 
 ## What the dashboard is
 
@@ -203,7 +203,7 @@ docker compose -f compose.publisher-demo.yml stop postgres minio
 ```
 
 To remove the local demo data as well, follow the reset instructions in
-[`PublisherDemo.md`](PublisherDemo.md). Do not remove named volumes unless the
+[`PublisherDemo.md`](../publishing/publisher-demo.md). Do not remove named volumes unless the
 local synthetic demo data is no longer needed.
 
 ## Common questions
@@ -218,7 +218,7 @@ There is no server-side per-run route.
 
 The local page refreshes immediately from eligible local publications. The
 hosted copy changes only after the separate content deployment documented in
-`DashboardAwsDemo.md`.
+`dashboard-aws-demo.md`.
 
 **Why does rebuilding lose run history?**
 
