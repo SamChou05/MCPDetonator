@@ -3,7 +3,7 @@
 This runbook publishes the bounded synthetic Forge dashboard to a generated
 CloudFront HTTPS URL. It creates one private S3 site-origin bucket, one
 CloudFront distribution/OAC, and one CloudFront response-headers policy through
-[`infra/aws/dashboard.yaml`](infra/aws/dashboard.yaml).
+[`infra/aws/dashboard.yaml`](../../infra/aws/dashboard.yaml).
 
 It does **not** publish the run directory, `run.json`, reports, manifests,
 traces, source captures, the canonical evidence bucket, or PostgreSQL data.

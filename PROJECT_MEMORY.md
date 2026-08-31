@@ -7,9 +7,30 @@ actual diff, and the current commit before acting.
 ## Last synchronized baseline
 
 - Branch: `main`
-- Commit: `c62f862` (`feat: harden deterministic lifecycle evidence`)
-- Remote: `origin/main` at `9fc0809`
-- Worktree at synchronization: clean.
+- Commit: `28756c5` (`docs: add unified analysis bridge next steps`)
+- Remote: `origin/main` at `28756c5`
+- Worktree at synchronization: submission-cleanup edits in progress; see the
+  active wave below and verify against `git status` before acting.
+
+## Active submission-cleanup wave
+
+Requested: 2026-08-31
+
+- Starting commit: `28756c5` (`docs: add unified analysis bridge next steps`).
+- Starting worktree: pre-existing edits in `ImplementationPlan.md`,
+  `dashboard/styles.css`, and `src/dashboard/render.ts`; one trailing-space-only
+  edit in `case-studies/filesystem/target.yaml`; generated `agent-runs/` output.
+- Ownership: root agent owns the cleanup, documentation, verification, and Git
+  handoff. No parallel editing agents are active.
+- Goal: preserve the original prompt verbatim as `PROJECT_SPEC.md`, replace the
+  README with a reviewer-first guide, remove generated submission noise, finish
+  the active dashboard presentation change, and run the full verification gate.
+- Status: complete and awaiting path-scoped review/commit. `PROJECT_SPEC.md`
+  matches the pre-cleanup `README.md` SHA-256 exactly. The new README is a
+  reviewer-first quick start. Generated Agent V1 output is removed and
+  `agent-runs/` is ignored. Reviewer-facing links affected by the earlier docs
+  move are corrected. The existing holdout-table presentation change is
+  retained and verified.
 
 Completed milestones:
 
@@ -26,18 +47,29 @@ Completed milestones:
   attribution, supported failed syscall evidence, terminal signal exits, and
   operator-authored initialization scope.
 
-Latest recorded full verification before this synchronization:
+Latest submission verification:
 
 - `npm run typecheck`: passed.
-- `npm test`: 34 files / 168 tests passed.
+- `npm test`: 88 files / 747 tests passed.
 - `npm run build`: passed.
-- `npm run verify:agent`: passed with deterministic run
-  `agent-run-20260830020728-de7e2502`.
+- `npm run build:dashboard`: passed.
 - `npm run verify:e2e`: passed with observer image
-  `sha256:202b74abbbbe420a1dde24b55aee632c6801dc5ad8799b2042f0676ea2b01ee2`,
-  deceptive run `runs/run-20260830013807-8daa4796`, and Filesystem run
-  `runs/run-20260830013840-c9ebf039`.
+  `sha256:4f87a3a60cd668eaaea2eb57e9e15a5ba209a13f833148727be48574bb5721e7`,
+  deceptive run `runs/run-20260831170804-1ef2f71a`, and Filesystem run
+  `runs/run-20260831170837-4835886b`.
+- `npm run verify:agent`: passed all 14 named checks with deterministic run
+  `agent-run-20260831170919-5ad68038`.
+- `npm run verify:publisher`: passed publication, idempotent retry, dashboard
+  refresh, and tamper-rejection checks.
+- `npm run verify:v2-outcome`: passed the controlled comparison and quarantine
+  checks.
+- `npm run verify:v2-enrollment:local`: passed three local cases plus the review
+  decline and cleanup control.
+- `npm run verify:v2-enrollment`: passed the full six-candidate matrix with four
+  completed cases, two expected rejections, and no remaining target containers.
 - `npm audit --omit=dev`: passed with 0 vulnerabilities.
+- Reviewer-facing local Markdown links, tracked sensitive paths, and
+  `git diff --check`: passed.
 
 Generated `runs/`, `agent-runs/`, build output, and dependencies are ignored
 and are not durable source artifacts.

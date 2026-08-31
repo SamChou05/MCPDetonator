@@ -560,6 +560,61 @@ h3 {
   padding: 0.55rem 0;
 }
 
+.holdout-table-wrap {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.holdout-table-wrap:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}
+
+.holdout-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.holdout-table-wrap caption {
+  text-align: left;
+  padding: 0 0 0.55rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.holdout-table-wrap th,
+.holdout-table-wrap td {
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.holdout-table-wrap thead th {
+  background: var(--subtle);
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.holdout-table-wrap tbody th[scope="row"] {
+  font-weight: 400;
+  color: var(--text);
+}
+
+.holdout-table-wrap tbody th[scope="row"] .meta {
+  display: block;
+  margin-top: 0.15rem;
+}
+
+.holdout-finding-positive {
+  color: var(--high);
+  font-weight: 700;
+}
+
 .footer-note {
   margin: 2.5rem 0 0;
   padding-top: 0.8rem;

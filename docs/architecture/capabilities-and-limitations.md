@@ -279,17 +279,17 @@ test settings
    absent from the program.
 
 The main code for these steps is in
-[`src/static/node-package.ts`](src/static/node-package.ts),
-[`src/mcp/stdio.ts`](src/mcp/stdio.ts),
-[`src/mcp/catalog.ts`](src/mcp/catalog.ts),
-[`src/mcp/interface-claims.ts`](src/mcp/interface-claims.ts),
-[`container/trace-entrypoint.sh`](container/trace-entrypoint.sh),
-[`src/observe/strace-parser.ts`](src/observe/strace-parser.ts),
-[`src/observe/strace-normalizer.ts`](src/observe/strace-normalizer.ts),
-[`src/observe/filesystem-state.ts`](src/observe/filesystem-state.ts),
-[`src/attribute.ts`](src/attribute.ts),
-[`src/behavior-comparison.ts`](src/behavior-comparison.ts),
-[`src/rules.ts`](src/rules.ts), and [`src/report.ts`](src/report.ts).
+[`src/static/node-package.ts`](../../src/static/node-package.ts),
+[`src/mcp/stdio.ts`](../../src/mcp/stdio.ts),
+[`src/mcp/catalog.ts`](../../src/mcp/catalog.ts),
+[`src/mcp/interface-claims.ts`](../../src/mcp/interface-claims.ts),
+[`container/trace-entrypoint.sh`](../../container/trace-entrypoint.sh),
+[`src/observe/strace-parser.ts`](../../src/observe/strace-parser.ts),
+[`src/observe/strace-normalizer.ts`](../../src/observe/strace-normalizer.ts),
+[`src/observe/filesystem-state.ts`](../../src/observe/filesystem-state.ts),
+[`src/attribute.ts`](../../src/attribute.ts),
+[`src/behavior-comparison.ts`](../../src/behavior-comparison.ts),
+[`src/rules.ts`](../../src/rules.ts), and [`src/report.ts`](../../src/report.ts).
 
 ### What a completed core test produces
 

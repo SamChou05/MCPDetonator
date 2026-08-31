@@ -12,6 +12,7 @@ coverage/
 
 # Generated detonation artifacts
 runs/
+agent-runs/
 reports/
 evidence/
 artifacts/

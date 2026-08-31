@@ -6,7 +6,9 @@ delivery. Command-level instructions live in the runbooks and prototype guide.
 
 ## Start here
 
-- [`README.md`](README.md) — assignment background and high-level capability.
+- [`README.md`](README.md) — reviewer quick start, verified demonstrations, and
+  high-level capability.
+- [`PROJECT_SPEC.md`](PROJECT_SPEC.md) — the original unmodified take-home prompt.
 - [`DashboardRunbook.md`](DashboardRunbook.md) — local dashboard and publisher
   workflow.
 - [`docs/publishing/prototype.md`](docs/publishing/prototype.md) — core

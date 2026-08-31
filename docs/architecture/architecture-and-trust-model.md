@@ -10,7 +10,7 @@ Forge cannot reach without trusted external policy. It is the product-level
 source of truth for scope, assumptions, and honest claims.
 
 Detailed implementation mechanics remain in [Design.md](../history/design.md), current
-delivery status remains in [ImplementationPlan.md](ImplementationPlan.md), and
+delivery status remains in [ImplementationPlan.md](../../ImplementationPlan.md), and
 the implemented supplementary rollout harness remains in
 [AgentRolloutV1.md](../history/agent-rollout-v1.md).
 

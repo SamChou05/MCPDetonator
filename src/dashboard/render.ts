@@ -465,10 +465,15 @@ function holdoutInvocationText(caseSummary: UnseenHoldoutCaseSummary): string {
   return "Not attempted without a catalog";
 }
 
-function holdoutFindingText(caseSummary: UnseenHoldoutCaseSummary): string {
-  if (caseSummary.findings.length === 0) return "No deterministic findings";
+function holdoutFindingHtml(caseSummary: UnseenHoldoutCaseSummary): string {
+  if (caseSummary.findings.length === 0) {
+    return escapeHtml("No deterministic findings");
+  }
   return caseSummary.findings
-    .map((finding) => `${finding.ruleId} ×${finding.count}`)
+    .map(
+      (finding) =>
+        `<span class="holdout-finding-positive">${escapeHtml(`${finding.ruleId} ×${finding.count}`)}</span>`,
+    )
     .join("; ");
 }
 
@@ -524,7 +529,7 @@ function renderUnseenHoldoutSummary(
           <p class="section-note">Study date ${escapeHtml(holdout.runDate)} · ${holdout.caseCount} exact-version npm packages</p>
         </div>
         <p class="meta">These are selected-input study summaries, not publication-history runs and not general safety verdicts. Raw evidence and private run identities remain undisclosed.</p>
-        <div class="table-scroll" tabindex="0">
+        <div class="holdout-table-wrap" tabindex="0">
           <table>
             <caption>Package, selected-call outcome, and deterministic findings</caption>
             <thead>
@@ -542,7 +547,7 @@ ${holdout.cases
                 <th scope="row">${escapeHtml(caseSummary.packageName)} <span class="meta">${escapeHtml(caseSummary.packageVersion)}</span></th>
                 <td>${escapeHtml(holdoutProbeText(caseSummary))}</td>
                 <td>${escapeHtml(holdoutInvocationText(caseSummary))}</td>
-                <td>${escapeHtml(holdoutFindingText(caseSummary))}</td>
+                <td>${holdoutFindingHtml(caseSummary)}</td>
               </tr>`,
   )
   .join("\n")}

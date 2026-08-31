@@ -23,19 +23,22 @@ target config
 
 The system is tested as a reusable pipeline, not as a detector written around one fixture. The real case study and deceptive control use the same observer image, contracts, target preparation, normalizer, correlator, rules, and report generator. Each run records the resolved immutable Docker image ID; only target YAML and target artifacts differ between the cases.
 
-## README completion gate
+## Project-spec completion gate
 
-The README's “What done looks like” list remains the acceptance gate.
+The original project specification's “What done looks like” list remains the
+acceptance gate. It is preserved verbatim in [`PROJECT_SPEC.md`](PROJECT_SPEC.md).
 
-| README outcome | Current status | Evidence and boundary |
+| Project-spec outcome | Current status | Evidence and boundary |
 | --- | --- | --- |
 | Point Forge at a real local MCP and return a concrete report | Complete for the scoped prototype | The pinned official Filesystem MCP is acquired from npm and executed locally; a sanitized representative report is [`examples/reports/official-filesystem.report.json`](examples/reports/official-filesystem.report.json). |
 | Useful static analysis of tools, inputs, dependencies, and source behavior | Complete within a focused Node scope | Forge preserves exact package provenance; parses manifest claims, entrypoints, scripts, dependency counts, and available lock metadata; and emits evidence-linked lexical source capability signals. MCP tool descriptions and input schemas are discovered during the controlled MCP handshake rather than inferred statically. |
 | Observe initialization and one or more tool calls | Complete | Each initialization/tool input runs in a fresh container. Forge records MCP messages plus process, file, and socket evidence through the tool's cooldown. The Filesystem case study exercises real reads and writes; the deceptive control exercises initialization-sensitive and delayed post-return behavior. |
 | Connect runtime behavior to lifecycle events or specific tools | Complete for isolated experiments | The correlator records each event's active phase and infers process origin from that process's first observed event; isolated matching phases receive higher confidence. Parent/child lineage is preserved separately. Attribution remains an inference with raw references, not proof of unique causality. |
-| If time permits, address agent behavior | Implemented as a separate opt-in V1 | [`AgentRolloutV1.md`](AgentRolloutV1.md) defines the methodology and implemented boundary. `forge agent-evaluate` has separate scenarios, contracts, reports, controlled tools, clean/poisoned fixtures, fake-provider tests, and a Docker-backed poisoned-fixture verifier. A canonical ordered target-field projection destined for provider function fields is hash-bound before disclosure; complete wire bytes are not. Target results remain local. It does not change `forge analyze` or `forge.report/v1`. |
+| If time permits, address agent behavior | Implemented as a separate opt-in V1 | [`AgentRolloutV1.md`](docs/history/agent-rollout-v1.md) defines the methodology and implemented boundary. `forge agent-evaluate` has separate scenarios, contracts, reports, controlled tools, clean/poisoned fixtures, fake-provider tests, and a Docker-backed poisoned-fixture verifier. A canonical ordered target-field projection destined for provider function fields is hash-bound before disclosure; complete wire bytes are not. Target results remain local. It does not change `forge analyze` or `forge.report/v1`. |
 
-The four required core outcomes are demonstrated. “Complete” here means the bounded prototype meets the README criterion, not that two runs prove universal MCP coverage or production-grade hostile-code containment.
+The four required core outcomes are demonstrated. “Complete” here means the
+bounded prototype meets the project-spec criterion, not that two runs prove
+universal MCP coverage or production-grade hostile-code containment.
 
 ## Implemented building blocks
 
@@ -165,9 +168,15 @@ a live OpenRouter request.
 
 1. **Challenge generalization with an unseen third target.** Select another independently authored Node/STDIO MCP and require a configuration-only integration. Any failure should improve a generic adapter or contract, never add package/tool-name branches.
 2. **Harden evidence fidelity.** Failed exec/file attempts, terminal signal exits, and bounded filesystem state deltas now have adversarial coverage. Continue with syscall-level create/rename/truncate semantics, concurrent children, timeouts, sockets, and partial-run preservation. Expand the syscall model only where a concrete blind spot justifies it.
-3. **Deepen capability correlation.** The first semantic-callsite sidecar is now additive. Next, validate its catalog on an independent corpus, add entrypoint/MCP-handler reachability and carefully scoped dependency-source context, then decide from measured precision/recall whether semantic evidence should enter the four-way comparison. Add source-to-sink data flow only with explicit uncertainty and resource bounds.
-4. **Improve isolation before hostile production use.** Move execution to disposable Linux workers or microVMs and put observation outside the target boundary, potentially with eBPF or another host-side sensor.
-5. **Add breadth only after the core is stronger.** Multi-tool core workflows, HTML, LLM explanation, and integration of the standalone Agent V1 results remain lower priority than target generalization and evidence correctness.
+3. **Add controlled network observation.** Route target traffic only to a synthetic local sink or proxy so Forge can safely retain bounded request metadata such as protocol, destination, method, host, and path without enabling uncontrolled Internet access or claiming visibility into encrypted traffic it did not terminate.
+4. **Add missing runtime sensors.** Instrument environment-variable access, Node module loading, additional filesystem mutation forms, worker threads, and other concrete blind spots that the current focused `strace` normalizer does not model. Keep kernel-observed facts separate from any userspace instrumentation.
+5. **Deepen static analysis.** Validate the semantic sink catalog on an independent corpus, discover MCP registration and handler roots, construct bounded local call graphs, and classify sensitive callsites by handler reachability. Add carefully scoped dependency-source context and source-to-sink data flow only with explicit uncertainty, truncation, and resource bounds.
+6. **Improve causal attribution.** Add monotonic request boundaries, complete descendant-process lineage, and matched no-tool control experiments before considering an optional Node probe that carries invocation IDs through asynchronous work. Preserve the distinction between a kernel-observed event, a userspace invocation association, and causal proof.
+7. **Strengthen isolation before hostile production use.** Move execution to disposable Linux workers or microVMs and put observation outside the target boundary, potentially with eBPF or another host-side sensor. Reduce the target's ability to detect, interfere with, or share privileges with the trusted observer.
+8. **Expand the target corpus.** Add independently authored MCPs and adversarial cases, then expand to additional languages and transports only through generic adapters. Any failure should improve shared contracts or collection logic rather than introduce package- or tool-name branches.
+9. **Extend agent evaluation.** Add result-channel prompt injection, cross-tool information flow, multiple providers/models, repeated rollouts, and statistical confidence. Continue separating model proposals, deterministic authorization, controlled execution, utility, and target runtime effects.
+
+Multi-tool core workflows, HTML presentation, LLM explanation, and integration of standalone Agent V1 results should remain secondary to evidence correctness, causal honesty, and isolation.
 
 ## Honest scope limits
 
